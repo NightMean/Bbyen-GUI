@@ -4,10 +4,14 @@ import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
 import winston from 'winston'
 
-import { Config } from './config'
+import { Config, ChannelEntry } from './config'
 import setupLogger from './lib/logger'
 import { subscriptionIterator } from './google/iterators'
 import findNullishValues from './lib/findNullishValues'
+
+// Extract canonical channel ids from a list of normalized channel entries.
+const channelIds = (entries?: ChannelEntry[]): string[] =>
+	(entries ?? []).map(entry => entry.id)
 
 interface ChannelDetails {
 	title: string,
@@ -134,8 +138,7 @@ export const updateSubscriptionsFromAPI = async (
 			continue
 		}
 
-		if (Array.isArray(config.blacklistedChannelIds) &&
-				config.blacklistedChannelIds.includes(channelId)) {
+		if (channelIds(config.blacklistedChannelIds).includes(channelId)) {
 			logger.debug([
 				'Ignoring channel in blacklist: ',
 				`${title} (${channelId})`,
@@ -143,8 +146,8 @@ export const updateSubscriptionsFromAPI = async (
 			continue
 		}
 
-		if (Array.isArray(config.whitelistedChannelIds) &&
-				!config.whitelistedChannelIds.includes(channelId)) {
+		if (config.whitelistedChannelIds &&
+				!channelIds(config.whitelistedChannelIds).includes(channelId)) {
 			logger.debug([
 				'Ignoring channel not in whitelist: ',
 				`${title} (${channelId})`,
@@ -194,7 +197,8 @@ export const updateSubscriptionsFromWhitelist = async (
 
 	// Read all known subs from the database
 	const savedSubscriptions = await getSavedSubscriptions(db)
-	const whitelistedChannelIds = new Set<string>(config.whitelistedChannelIds)
+	const whitelistedChannelIds = new Set<string>(
+		channelIds(config.whitelistedChannelIds))
 
 	const newlyWhitelisted = Array.from(whitelistedChannelIds)
 		.filter(x => !savedSubscriptions.has(x))
