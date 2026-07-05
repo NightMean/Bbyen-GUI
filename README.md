@@ -92,7 +92,8 @@ it is mandatory to configure certain values and to set up Google API credentials
 	  `notifyOnFirstScan` (default `true`) controls whether a newly added
 	  channel's existing videos are emailed on the first scan; set it to `false`
 	  to record them silently and only be notified about videos published after
-	  that first scan.
+	  that first scan. `mode` selects how channels are discovered — see
+	  [Operating modes](#operating-modes).
 
 	- **`secrets.json`** — email credentials (`email.auth.user` and
 	  `email.auth.pass`). Alternatively, set the environment variables
@@ -137,14 +138,40 @@ npm start
 sudo docker-compose up
 ```
 
+## Operating modes
+
+Run `npm run setup` to choose how the app discovers channels; it writes `mode`
+to `config.json`.
+
+- **youtube** (default) — logs into your Google account (OAuth), auto-detects
+  your subscriptions, and fetches full video metadata (duration, livestream
+  filtering). Re-authenticate any time with `npm run login`.
+- **whitelist** — no login. You list the channels yourself in `channels.json`
+  as raw 24-character IDs (`UC...`); URLs and handles are rejected. Emails omit
+  the duration badge and do not filter livestreams (every new upload notifies).
+  Good for a headless setup where you don't want to grant YouTube access.
+
 ## Authentication
 
-On the first run, you will need to authenticate the app, tying it to your Google account (the subscriptions will come from whatever account you use):
+Run `npm run setup` (or `npm run login` to re-authenticate in youtube mode).
+On the first login you will authenticate the app, tying it to your Google
+account (the subscriptions will come from whatever account you use):
 1. A browser window should open automatically. If not, or if the system is headless, the URL will be printed in the console. Copy/paste it into a new tab.
 1. Follow the instructions on this page.
 1. You may have to click "Advanced" and "Got to bbyen (unsafe)". This is because the app hasn't been verified, but the server is trustworthy (you are running it).
 1. After authenticating in the website, Google should automatically redirect you to your server, which will transfer the authentication code. In this case you will see a message "Authorization successful. You may now close this tab.".
 If this does not work (if you see "Unable to connect"), please copy/paste the URL from the browser address bar into the console.
+
+Normal runs (`npm start`) never launch the browser: in youtube mode, if the
+stored token is missing or expired, the app sends an alert email and exits
+rather than blocking. Run `npm run login` to re-authenticate.
+
+## Failure alerts
+
+When a backend run fails — YouTube authentication, API quota, or any other
+error — the app emails you once per issue (repeats are suppressed until the
+problem clears and recurs). This is gated by `logging.emailOnError` in
+`config.json`.
 
 ## Advanced Configuration
 

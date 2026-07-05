@@ -1,5 +1,20 @@
 # Change Log
 
+## [3.2.0] 2026-07-05
+
+### New features
+- Add a no-login "whitelist" mode that discovers videos from public RSS feeds
+  without a Google login. Requires raw channel IDs; omits video duration and
+  livestream filtering.
+- Add an interactive `npm run setup` wizard to choose youtube or whitelist mode,
+  and `npm run login` for re-authentication.
+- Send an alert email when a backend run fails (authentication, quota, or other
+  error), once per issue until it recovers. Gated by logging.emailOnError.
+
+### Changes
+- Normal startup no longer launches interactive browser auth; use
+  `npm run setup` / `npm run login`. A bad token alerts by email and exits.
+
 ## [3.1.0] 2026-07-05
 
 ### Breaking changes
