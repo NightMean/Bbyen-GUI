@@ -14,6 +14,14 @@ import { CONFIG_DIR, CONFIG_FILE } from '../../config'
 const SCOPES = [ 'https://www.googleapis.com/auth/youtube.readonly' ]
 const TOKEN_FILE = path.join(CONFIG_DIR, '.google-auth-token.json')
 
+// Thrown when no valid token exists and interactive login is not permitted.
+export class AuthError extends Error {
+	constructor(message: string) {
+		super(message)
+		this.name = 'AuthError'
+	}
+}
+
 // Load config / credentials lazily inside the functions that need them,
 // rather than at module import time. A top-level `import(...)` starts an
 // unawaited promise that produces a floating unhandled rejection if the file
@@ -125,7 +133,10 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
  * generating new ones
  */
 
-const getToken = async (oauth2Client: OAuth2Client) => {
+const getToken = async (
+	oauth2Client: OAuth2Client,
+	interactive: boolean,
+) => {
 	const logger = await setupLogger({ label: 'google-auth' })
 
 	try {
@@ -135,14 +146,20 @@ const getToken = async (oauth2Client: OAuth2Client) => {
 	} catch (err) {
 
 		// A missing token file is expected on first run; anything else (corrupt
-		// JSON, permission error) is worth logging before we fall back to
-		// generating a new token so the reason is not silently swallowed.
+		// JSON, permission error) is worth logging before we decide what to do.
 		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-			logger.info('No stored token found, generating a new one.')
+			logger.info('No stored token found.')
 		} else {
 			logger.warn(
-				`Could not read stored token (${(err as Error).message}). ` +
-				'Generating a new one.')
+				`Could not read stored token (${(err as Error).message}).`)
+		}
+
+		// Normal service runs must never launch the interactive browser flow
+		// (it would hang on a headless server). Only the setup/login commands
+		// pass interactive: true.
+		if (!interactive) {
+			throw new AuthError(
+				'No valid YouTube token. Run `npm run login` to authenticate.')
 		}
 		return await genAuthToken(oauth2Client)
 	}
@@ -154,7 +171,9 @@ const getToken = async (oauth2Client: OAuth2Client) => {
  * back to generating new tokens
  */
 
-const authorize = async () => {
+const authorize = async (
+	{ interactive }: { interactive: boolean } = { interactive: false },
+) => {
 	const credentials = await loadCredentials()
 	const config = await loadConfig()
 	const oauth2Client = new OAuth2Client(
@@ -163,7 +182,7 @@ const authorize = async () => {
 		`http://localhost:${config.port}/authorization_code`,
 	)
 
-	oauth2Client.setCredentials(await getToken(oauth2Client))
+	oauth2Client.setCredentials(await getToken(oauth2Client, interactive))
 
 	return oauth2Client
 }
