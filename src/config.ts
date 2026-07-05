@@ -12,6 +12,8 @@ import configSchema from '../config.example.json'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
+export const CHANNELS_FILE = path.join(CONFIG_DIR, 'channels.json')
+export const SECRETS_FILE = path.join(CONFIG_DIR, 'secrets.json')
 
 export interface EmailConfig {
 	host: string,
@@ -181,6 +183,23 @@ export const normalizeChannelFactory = (
 	].join(' '))
 }
 
+// Resolve email credentials: env vars win, secrets.json is the fallback.
+// Fail loud if neither source provides both values.
+export const resolveEmailCredentials = (
+	secrets: { email?: { auth?: { user?: string, pass?: string } } } | null,
+): { user: string, pass: string } => {
+	const user = process.env.BBYEN_EMAIL_USER ?? secrets?.email?.auth?.user
+	const pass = process.env.BBYEN_EMAIL_PASS ?? secrets?.email?.auth?.pass
+	if (!user || !pass) {
+		throw new Error([
+			'Email credentials missing.',
+			'Set BBYEN_EMAIL_USER and BBYEN_EMAIL_PASS,',
+			'or provide secrets.json with email.auth.user and email.auth.pass.',
+		].join(' '))
+	}
+	return { user, pass }
+}
+
 // Turn a raw channels.json entry (string or object) into a ChannelEntry with a
 // canonical channel id. Preserves the notify / notifyOnFirstScan flags.
 export const normalizeChannelEntries = async (
@@ -245,14 +264,43 @@ export const loadConfig = async (
 		}
 	}
 
-	const config = JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
-	validateConfig(config)
-	const normalizedConfig = await normalizeConfig(config)
+	// Read general config and validate against the example schema.
+	const general = JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
+	validateConfig(general)
 
-	if (!deepEqual(config, normalizedConfig)) {
+	// Read channels file (optional arrays inside).
+	const channels = JSON.parse((await fs.readFile(CHANNELS_FILE)).toString())
+
+	// Read secrets file if present; env vars may supply creds instead.
+	let secrets: any = null
+	try {
+		secrets = JSON.parse((await fs.readFile(SECRETS_FILE)).toString())
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+			throw err
+		}
+	}
+	const { user, pass } = resolveEmailCredentials(secrets)
+
+	// Merge, inject credentials, normalize channel entries.
+	const merged = {
+		...general,
+		email: { ...general.email, auth: { user, pass } },
+		whitelistedChannelIds: channels.whitelistedChannelIds,
+		blacklistedChannelIds: channels.blacklistedChannelIds,
+	}
+	const normalizedConfig = await normalizeConfig(merged)
+
+	// Persist channel-id normalization back to channels.json if it changed
+	// (e.g. URL entries rewritten to canonical ids).
+	const normalizedChannels = {
+		whitelistedChannelIds: normalizedConfig.whitelistedChannelIds,
+		blacklistedChannelIds: normalizedConfig.blacklistedChannelIds,
+	}
+	if (!deepEqual(channels, normalizedChannels)) {
 		await fs.writeFile(
-			CONFIG_FILE, JSON.stringify(normalizedConfig, null, '\t'))
+			CHANNELS_FILE, JSON.stringify(normalizedChannels, null, '\t'))
 	}
 
-	return normalizedConfig as Config
+	return normalizedConfig
 }
