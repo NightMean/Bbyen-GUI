@@ -51,7 +51,7 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 	})
 
 	logger.debug(`Opening authorization url: ${authUrl}`)
-	console.log(`Autneticating. If a browser window is not automatically opened, please open the following link: ${authUrl}`)
+	console.log(`Authenticating. If a browser window is not automatically opened, please open the following link: ${authUrl}`)
 	open(authUrl)
 
 	// Set up a webserver to automatically get the code after Google redirects to
@@ -121,13 +121,24 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
  */
 
 const getToken = async (oauth2Client: OAuth2Client) => {
+	const logger = await setupLogger({ label: 'google-auth' })
+
 	try {
 		const contents = await fs.readFile(TOKEN_FILE)
 		return JSON.parse(contents.toString())
 
 	} catch (err) {
 
-		// If an error occured while reading token, gen new one
+		// A missing token file is expected on first run; anything else (corrupt
+		// JSON, permission error) is worth logging before we fall back to
+		// generating a new token so the reason is not silently swallowed.
+		if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+			logger.info('No stored token found, generating a new one.')
+		} else {
+			logger.warn(
+				`Could not read stored token (${(err as Error).message}). ` +
+				'Generating a new one.')
+		}
 		return await genAuthToken(oauth2Client)
 	}
 }
