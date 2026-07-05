@@ -14,8 +14,13 @@ import { CONFIG_DIR, CONFIG_FILE } from '../../config'
 const SCOPES = [ 'https://www.googleapis.com/auth/youtube.readonly' ]
 const TOKEN_FILE = path.join(CONFIG_DIR, '.google-auth-token.json')
 
-const config = import(CONFIG_FILE)
-const credentials = import(path.join(CONFIG_DIR, 'google-credentials.json'))
+// Load config / credentials lazily inside the functions that need them,
+// rather than at module import time. A top-level `import(...)` starts an
+// unawaited promise that produces a floating unhandled rejection if the file
+// is missing (e.g. during tests or before setup).
+const loadConfig = () => import(CONFIG_FILE)
+const loadCredentials = () =>
+	import(path.join(CONFIG_DIR, 'google-credentials.json'))
 
 /**
  * Store given token to `TOKEN_FILE`
@@ -84,7 +89,7 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 				}
 				server.close()
 			})
-			server.listen((await config).port)
+			server.listen((await loadConfig()).port)
 		})
 
 	// Also support copy/pasting the code if the automatic method does not work
@@ -134,10 +139,12 @@ const getToken = async (oauth2Client: OAuth2Client) => {
  */
 
 const authorize = async () => {
+	const credentials = await loadCredentials()
+	const config = await loadConfig()
 	const oauth2Client = new OAuth2Client(
-		(await credentials).installed.client_id,
-		(await credentials).installed.client_secret,
-		`http://localhost:${(await config).port}/authorization_code`,
+		credentials.installed.client_id,
+		credentials.installed.client_secret,
+		`http://localhost:${config.port}/authorization_code`,
 	)
 
 	oauth2Client.setCredentials(await getToken(oauth2Client))
