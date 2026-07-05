@@ -5,4 +5,6 @@ node_modules
 database.sqlite-journal
 .google-auth-token.json
 config.json
+secrets.json
+channels.json
 google-credentials.json

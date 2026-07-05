@@ -1,0 +1,8 @@
+{
+	"whitelistedChannelIds": [
+		"UCcUNYFu8wNDncymesUOtPrg",
+		{ "id": "UCVekgNuouyp2rpGLMEoWddA", "notify": false },
+		{ "id": "UCmZdjVse4X2fGwUrIT1cnog", "notifyOnFirstScan": false }
+	],
+	"blacklistedChannelIds": []
+}

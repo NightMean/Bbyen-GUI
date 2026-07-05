@@ -3,10 +3,6 @@
 		"host": "smtp.example.com",
 		"port": 465,
 		"secure": true,
-		"auth": {
-			"user": "your-automated-email@example.com",
-			"pass": "your-automated-email-password"
-		},
 		"sendingContact": "\"BBYEN\" <your-automated-email@example.com>",
 		"destination": "your-personal-email@example.com"
 	},
@@ -26,5 +22,6 @@
 		"level": "info",
 		"stackTraceLimit": 10,
 		"emailOnError": true
-	}
+	},
+	"notifyOnFirstScan": true
 }

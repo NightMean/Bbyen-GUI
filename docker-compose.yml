@@ -6,6 +6,10 @@ services:
     container_name: bbyen
     volumes:
       - ./config.json:/usr/src/app/config.json
+      - ./channels.json:/usr/src/app/channels.json
+      # Email credentials: mount secrets.json, or instead set
+      # BBYEN_EMAIL_USER / BBYEN_EMAIL_PASS environment variables.
+      - ./secrets.json:/usr/src/app/secrets.json
       - ./google-credentials.json:/usr/src/app/google-credentials.json
       - ./.google-auth-token.json:/usr/src/app/.google-auth-token.json
       - ./database.sqlite:/usr/src/app/database.sqlite
