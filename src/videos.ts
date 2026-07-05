@@ -65,6 +65,7 @@ interface IGetChannelsVideos {
 	parser: RSSParser,
 	sendVideoEmail: SendVideoEmail,
 	db: sqlite.Database,
+	config: Config,
 }
 const getChannelsVideos = async ({
 	channel,
@@ -74,12 +75,17 @@ const getChannelsVideos = async ({
 	auth,
 	sendVideoEmail,
 	db,
+	config,
 }: IGetChannelsVideos): Promise<boolean> => {
 	const { channelId, channelThumbnail } = channel
 
 	const videosSent = new Set((await db.all(SQL`
 		SELECT videoId FROM videos WHERE channelId=${channelId};
 	`)).map(v => v.videoId))
+
+	// A channel with no recorded videos is being scanned for the first time.
+	// Computed once so every video in this run shares the same value.
+	const isFirstScan = videosSent.size === 0
 
 	const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
 	const feed = await parser.parseURL(url)
@@ -159,19 +165,33 @@ const getChannelsVideos = async ({
 				continue
 			}
 
-			await sendVideoEmail({
-				date: videoDate,
-				channelId,
-				channelTitle,
-				channelThumbnail,
-				videoId,
-				videoThumbnail,
-				videoTitle,
-				isLiveStreamOrPremere,
-				videoDuration: formatDuration(videoDuration),
-				videoURL: `https://www.youtube.com/watch?v=${videoId}`,
-			})
+			const entry = config.channelSettingsById?.get(channelId)
+			const sendEmail = shouldSendEmail(config, entry, isFirstScan)
 
+			if (sendEmail) {
+				await sendVideoEmail({
+					date: videoDate,
+					channelId,
+					channelTitle,
+					channelThumbnail,
+					videoId,
+					videoThumbnail,
+					videoTitle,
+					isLiveStreamOrPremere,
+					videoDuration: formatDuration(videoDuration),
+					videoURL: `https://www.youtube.com/watch?v=${videoId}`,
+				})
+			} else {
+				logger.verbose([
+					`Skipping email for ${channelTitle} (${channelId}):`,
+					entry?.notify === false
+						? 'channel muted'
+						: 'first-scan backlog suppressed',
+				].join(' '))
+			}
+
+			// Always record the video so muted / suppressed videos are not
+			// re-notified on a later run.
 			await db.run(SQL`
 				INSERT INTO videos (videoId, channelId)
 				VALUES (${videoId}, ${channelId});
@@ -204,6 +224,7 @@ interface IParseFeedsAndNotify {
 	auth: OAuth2Client,
 	service: youtube_v3.Youtube,
 	sendVideoEmail: SendVideoEmail,
+	config: Config,
 }
 export const parseFeedsAndNotify = async (
 	{ db, ...rest }: IParseFeedsAndNotify,
