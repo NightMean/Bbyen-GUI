@@ -181,6 +181,39 @@ export const normalizeChannelFactory = (
 	].join(' '))
 }
 
+// Turn a raw channels.json entry (string or object) into a ChannelEntry with a
+// canonical channel id. Preserves the notify / notifyOnFirstScan flags.
+export const normalizeChannelEntries = async (
+	normalizeChannel: (channel: string) => Promise<string>,
+	entries: RawChannelEntry[] | undefined,
+): Promise<ChannelEntry[] | undefined> => {
+	if (!entries) {
+		return undefined
+	}
+	return Promise.all(entries.map(async (entry) => {
+		if (typeof entry === 'string') {
+			return { id: await normalizeChannel(entry) }
+		}
+		return { ...entry, id: await normalizeChannel(entry.id) }
+	}))
+}
+
+// Build an O(1) lookup keyed by channel id, containing only entries that carry
+// a per-channel setting (notify or notifyOnFirstScan). Derived state, not
+// persisted.
+export const buildChannelSettingsMap = (
+	entries: ChannelEntry[] | undefined,
+): Map<string, ChannelEntry> => {
+	const map = new Map<string, ChannelEntry>()
+	for (const entry of entries ?? []) {
+		if (entry.notify !== undefined ||
+				entry.notifyOnFirstScan !== undefined) {
+			map.set(entry.id, entry)
+		}
+	}
+	return map
+}
+
 export const loadConfig = async (
 	service: youtube_v3.Youtube,
 	auth: OAuth2Client,
@@ -191,20 +224,26 @@ export const loadConfig = async (
 
 	const normalizeChannel = normalizeChannelFactory(logger, service, auth)
 
-	// Allow the channel to be the URL, which may not be the channel ID
+	// Allow channel entries to be the URL or an object; normalize to
+	// canonical ids and attach the lookup map.
 	const normalizeConfig = async ({
 		whitelistedChannelIds,
 		blacklistedChannelIds,
 		...config
-	}: Config) => ({
-		...config,
-		whitelistedChannelIds: whitelistedChannelIds
-			? await Promise.all(whitelistedChannelIds.map(normalizeChannel))
-			: undefined,
-		blacklistedChannelIds: blacklistedChannelIds
-			? await Promise.all(blacklistedChannelIds.map(normalizeChannel))
-			: undefined,
-	})
+	}: any): Promise<Config> => {
+		const whitelist = await normalizeChannelEntries(
+			normalizeChannel as (c: string) => Promise<string>,
+			whitelistedChannelIds)
+		const blacklist = await normalizeChannelEntries(
+			normalizeChannel as (c: string) => Promise<string>,
+			blacklistedChannelIds)
+		return {
+			...config,
+			whitelistedChannelIds: whitelist,
+			blacklistedChannelIds: blacklist,
+			channelSettingsById: buildChannelSettingsMap(whitelist),
+		}
+	}
 
 	const config = JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
 	validateConfig(config)
