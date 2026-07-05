@@ -51,13 +51,18 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 	})
 
 	logger.debug(`Opening authorization url: ${authUrl}`)
-	console.log(`Authenticating. If a browser window is not automatically opened, please open the following link: ${authUrl}`)
+	console.log(
+		'Authenticating. If a browser window is not automatically opened, ' +
+		`please open the following link: ${authUrl}`)
 	open(authUrl)
 
 	// Set up a webserver to automatically get the code after Google redirects to
-	// localhost
+	// localhost. Resolve the port before constructing the Promise so the
+	// executor itself stays synchronous (an async executor would swallow
+	// rejections thrown before the first await).
+	const port = (await loadConfig()).port
 	const automatedMethod: Promise<Credentials> =
-		new Promise(async (resolve, reject) => {
+		new Promise((resolve, reject) => {
 			const server = http.createServer(async (req, res) => {
 				logger.debug(`[${req.method}] ${req.url}`)
 				if (!req.url?.startsWith('/authorization_code')) {
@@ -89,7 +94,7 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 				}
 				server.close()
 			})
-			server.listen((await loadConfig()).port)
+			server.listen(port)
 		})
 
 	// Also support copy/pasting the code if the automatic method does not work

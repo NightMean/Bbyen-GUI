@@ -36,7 +36,7 @@ export const init = async ({ filename }: { filename: string }) => {
 
 	// Migration if db was created before 'deleted' column.
 	const subscriptions = await db.all(SQL`PRAGMA table_info(subscriptions)`)
-	if (!subscriptions.some(col => col.name === "deleted")) {
+	if (!subscriptions.some(col => col.name === 'deleted')) {
 		await db.exec(SQL`
 			ALTER TABLE subscriptions ADD COLUMN deleted INTEGER DEFAULT 0;
 		`)

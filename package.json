@@ -6,15 +6,19 @@
   "scripts": {
     "test": "vitest",
     "start": "ts-node --transpile-only src/index.ts",
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit",
     "ncu": "npm-check-updates"
   },
   "author": "Marcel Robitaille <marcelrobitaille11@gmail.com>",
   "license": "MIT",
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/node": "18.11.4",
     "eslint": "9.14.0",
     "nodemon": "2.0.20",
     "npm-check-updates": "16.3.2",
+    "typescript-eslint": "^8.62.1",
     "vitest": "^2.1.5"
   },
   "dependencies": {

@@ -1,0 +1,4 @@
+# Normalize line endings to LF on checkout for all text files. The codebase and
+# the ESLint linebreak-style rule both expect LF; without this, Windows
+# autocrlf checks files out with CRLF and every line fails linting.
+* text=auto eol=lf

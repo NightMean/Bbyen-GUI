@@ -43,7 +43,7 @@ export const shouldSendEmail = (
 // Works like Rust Option<T>.map
 const mapOption = <Type>(
 	fn: (arg: string) => Type,
-		value: string | null | undefined,
+	value: string | null | undefined,
 ): Type | null => {
 	if (!value) {
 		return null
@@ -209,14 +209,14 @@ const getChannelsVideos = async ({
 					'Email quota has run out.',
 					'Abandoning, will retry on next timer trigger.',
 				)
-				return false;
+				return false
 			}
 
 			logger.error(err)
 		}
 	}
 
-	return true;
+	return true
 }
 
 interface IParseFeedsAndNotify {

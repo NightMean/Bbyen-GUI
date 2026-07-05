@@ -7,7 +7,7 @@ import  {
 	normalizeChannelFactory,
 	normalizeChannelEntries,
 	buildChannelSettingsMap,
-} from "./config"
+} from './config'
 
 function createMagicStub<T extends object>(): T {
 	return new Proxy({} as T, {
@@ -28,14 +28,14 @@ describe('normalizeChannel', async () => {
 
 	const normalizeChannel = normalizeChannelFactory(logger, service, auth)
 
-	test("already a channel id", async () => {
-		expect(await normalizeChannel("UCzgA9CBrIXPtkB2yNTTiy1w"))
-			.toBe("UCzgA9CBrIXPtkB2yNTTiy1w")
+	test('already a channel id', async () => {
+		expect(await normalizeChannel('UCzgA9CBrIXPtkB2yNTTiy1w'))
+			.toBe('UCzgA9CBrIXPtkB2yNTTiy1w')
 	})
 	// /c/ and /channel/ always seem to give 404 now
-	test("already a channel id", async () => {
-		expect(await normalizeChannel("https://www.youtube.com/@Level2Jeff"))
-			.toBe("UCzgA9CBrIXPtkB2yNTTiy1w")
+	test('already a channel id', async () => {
+		expect(await normalizeChannel('https://www.youtube.com/@Level2Jeff'))
+			.toBe('UCzgA9CBrIXPtkB2yNTTiy1w')
 	})
 })
 

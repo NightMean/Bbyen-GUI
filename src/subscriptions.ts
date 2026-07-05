@@ -27,10 +27,10 @@ interface IUpdateSubscriptions {
 
 // Read all known subs from the database
 const getSavedSubscriptions = async (db: sqlite.Database) =>
-		new Set<string>(
-			(await db.all(SQL`SELECT channelId FROM subscriptions WHERE deleted=0;`))
-				.map(sub => sub.channelId)
-		)
+	new Set<string>(
+		(await db.all(SQL`SELECT channelId FROM subscriptions WHERE deleted=0;`))
+			.map(sub => sub.channelId)
+	)
 
 // Add any new subscriptions to the database
 const insertNewSubscriptions = async (
@@ -45,7 +45,7 @@ const insertNewSubscriptions = async (
 		DELETE FROM subscriptions WHERE channelId=?;`)
 
 	for (const channelId of newSubscriptions) {
-		await stmtClean.run(channelId);
+		await stmtClean.run(channelId)
 	}
 
 	await stmtClean.finalize()
@@ -133,7 +133,7 @@ export const updateSubscriptionsFromAPI = async (
 		if (!title || !channelId || !thumbnail) {
 			const missingKeys = findNullishValues({ title, channelId, thumbnail })
 			logger.warn(
-				`Could not find all required fields in subscription`,
+				'Could not find all required fields in subscription',
 				{ sub, missingKeys })
 			continue
 		}
@@ -222,7 +222,7 @@ export const updateSubscriptionsFromWhitelist = async (
 
 			if (!title || !channelId || !thumbnail) {
 				logger.warn(
-					`Could not find all required fields in channel`,
+					'Could not find all required fields in channel',
 					{ channel })
 				continue
 			}

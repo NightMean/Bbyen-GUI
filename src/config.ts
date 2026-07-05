@@ -46,15 +46,15 @@ export interface Config {
 		filename: string,
 	},
 	timers: {
-		subscriptions: "2 days",
-		videos: "20 minutes"
+		subscriptions: '2 days',
+		videos: '20 minutes'
 	},
 	kickoff: {
 		subscriptions: boolean,
 		videos: boolean,
 	},
 	logging: {
-		level: "error" | "warn" | "info" | "http" | "verbose" | "debug" | "silly",
+		level: 'error' | 'warn' | 'info' | 'http' | 'verbose' | 'debug' | 'silly',
 		stackTraceLimit: number,
 		emailOnError: boolean,
 	},
@@ -166,7 +166,7 @@ export const normalizeChannelFactory = (
 	}
 
 	// If it's the custom channel URL, try to get the ID from the API
-	if (/^https:\/\/www.youtube.com\/(?:c\/|channel\/|)[^\/]*/.test(channel)) {
+	if (/^https:\/\/www.youtube.com\/(?:c\/|channel\/|)[^/]*/.test(channel)) {
 		logger.verbose('String matches URL with channel name')
 		console.log('String matches URL with channel name')
 		return await Promise.any([
