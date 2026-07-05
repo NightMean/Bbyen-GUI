@@ -2,12 +2,12 @@ import process from 'process'
 import axios from 'axios'
 import path from 'path'
 import fs from 'fs/promises'
+import { isDeepStrictEqual } from 'util'
 import JSSoup from 'jssoup'
 import winston from 'winston'
 import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
 
-import deepEqual from './lib/deepEqual'
 import configSchema from '../config.example.json'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
@@ -297,7 +297,7 @@ export const loadConfig = async (
 		whitelistedChannelIds: normalizedConfig.whitelistedChannelIds,
 		blacklistedChannelIds: normalizedConfig.blacklistedChannelIds,
 	}
-	if (!deepEqual(channels, normalizedChannels)) {
+	if (!isDeepStrictEqual(channels, normalizedChannels)) {
 		await fs.writeFile(
 			CHANNELS_FILE, JSON.stringify(normalizedChannels, null, '\t'))
 	}
