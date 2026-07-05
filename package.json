@@ -6,6 +6,8 @@
   "scripts": {
     "test": "vitest",
     "start": "ts-node --transpile-only src/index.ts",
+    "setup": "ts-node --transpile-only src/setup.ts",
+    "login": "ts-node --transpile-only src/login.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "ncu": "npm-check-updates"
