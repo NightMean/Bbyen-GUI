@@ -150,10 +150,7 @@ const getChannelsVideos = async ({
 				videoTitle,
 				isLiveStreamOrPremere,
 				videoDuration: formatDuration(videoDuration),
-				videoURL: [
-					'https://www.youtube.com/attribution_link?u=/',
-					encodeURIComponent(`watch?v=${videoId}`),
-				].join(''),
+				videoURL: `https://www.youtube.com/watch?v=${videoId}`,
 			})
 
 			await db.run(SQL`
