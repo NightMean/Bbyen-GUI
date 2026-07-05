@@ -33,6 +33,7 @@ export interface ISendVideoEmail {
 export interface ISendErrorEmail {
 	stack: string,
 	message: string,
+	subject?: string,
 }
 
 export const init = async (config: EmailConfig) => {
@@ -59,7 +60,7 @@ export const init = async (config: EmailConfig) => {
 		transporter.sendMail({
 			from: config.sendingContact,
 			to: config.destination,
-			subject: 'BBYEN encountered and error',
+			subject: error.subject ?? 'BBYEN encountered and error',
 			html: errorTemplate({ error }),
 		})
 
