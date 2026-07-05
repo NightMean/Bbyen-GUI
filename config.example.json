@@ -6,6 +6,7 @@
 		"sendingContact": "\"BBYEN\" <your-automated-email@example.com>",
 		"destination": "your-personal-email@example.com"
 	},
+	"mode": "youtube",
 	"port": 3030,
 	"database": {
 		"filename": "database.sqlite"

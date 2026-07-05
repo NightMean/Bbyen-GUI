@@ -3,10 +3,14 @@ import winston from 'winston'
 import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
 
+import fs from 'fs/promises'
+
 import  {
 	normalizeChannelFactory,
 	normalizeChannelEntries,
 	buildChannelSettingsMap,
+	loadEmailConfig,
+	CONFIG_FILE,
 } from './config'
 
 function createMagicStub<T extends object>(): T {
@@ -74,5 +78,28 @@ describe('buildChannelSettingsMap', () => {
 	})
 	test('undefined yields empty map', () => {
 		expect(buildChannelSettingsMap(undefined).size).toBe(0)
+	})
+})
+
+describe('loadEmailConfig', () => {
+	test('reads email block and resolves env credentials', async () => {
+		process.env.BBYEN_EMAIL_USER = 'u@example.com'
+		process.env.BBYEN_EMAIL_PASS = 'pw'
+		await fs.writeFile(CONFIG_FILE, JSON.stringify({
+			email: {
+				host: 'h', port: 465, secure: true,
+				sendingContact: 's', destination: 'd',
+			},
+			mode: 'youtube',
+		}))
+		try {
+			const email = await loadEmailConfig()
+			expect(email.auth).toEqual({ user: 'u@example.com', pass: 'pw' })
+			expect(email.host).toBe('h')
+		} finally {
+			await fs.unlink(CONFIG_FILE)
+			delete process.env.BBYEN_EMAIL_USER
+			delete process.env.BBYEN_EMAIL_PASS
+		}
 	})
 })

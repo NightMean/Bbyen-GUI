@@ -41,6 +41,7 @@ export type RawChannelEntry = string | {
 
 export interface Config {
 	email: EmailConfig,
+	mode: 'youtube' | 'whitelist',
 	port: number,
 	database: {
 		filename: string,
@@ -232,6 +233,30 @@ export const buildChannelSettingsMap = (
 	}
 	return map
 }
+
+// Read just the email configuration (general config file + resolved
+// credentials). Exposed so the mailer can be initialized before YouTube auth,
+// allowing a startup auth failure to be emailed.
+export const loadEmailConfig = async (): Promise<EmailConfig> => {
+	const general = JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
+
+	let secrets: { email?: { auth?: { user?: string, pass?: string } } } | null
+		= null
+	try {
+		secrets = JSON.parse((await fs.readFile(SECRETS_FILE)).toString())
+	} catch (err) {
+		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+			throw err
+		}
+	}
+	const { user, pass } = resolveEmailCredentials(secrets)
+	return { ...general.email, auth: { user, pass } }
+}
+
+// Read the raw config file without channel normalization (which may call the
+// API). Used at startup to decide the mode before authenticating.
+export const loadConfigRaw = async (): Promise<Config> =>
+	JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
 
 export const loadConfig = async (
 	service: youtube_v3.Youtube,
