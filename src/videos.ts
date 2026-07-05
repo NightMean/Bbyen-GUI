@@ -9,6 +9,7 @@ import { parse as parseDuration, Duration } from 'duration-fns'
 
 import setupLogger from './lib/logger'
 import { SendVideoEmail } from './email'
+import { Config, ChannelEntry } from './config'
 import findNullishValues from './lib/findNullishValues'
 
 const formatDuration = (duration: Duration) => {
@@ -18,6 +19,24 @@ const formatDuration = (duration: Duration) => {
 	const seconds = String(duration.seconds).padStart(2, '0')
 
 	return [ hours, minutes, seconds ].join('')
+}
+
+// Decide whether to send an email for a video from a given channel.
+// Muted channels never notify. On a channel's first scan (no videos yet
+// recorded), honor the per-channel override else the global flag. Otherwise
+// always notify. The video is recorded in the DB regardless of this result.
+export const shouldSendEmail = (
+	config: Pick<Config, 'notifyOnFirstScan'>,
+	entry: ChannelEntry | undefined,
+	isFirstScan: boolean,
+): boolean => {
+	if (entry?.notify === false) {
+		return false
+	}
+	if (isFirstScan) {
+		return entry?.notifyOnFirstScan ?? config.notifyOnFirstScan
+	}
+	return true
 }
 
 // Helper to deal with YouTube data API giving back a bunch of options

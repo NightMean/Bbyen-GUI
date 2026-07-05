@@ -25,6 +25,18 @@ export interface EmailConfig {
 	destination: string,
 }
 
+export interface ChannelEntry {
+	id: string,
+	notify?: boolean,
+	notifyOnFirstScan?: boolean,
+}
+
+export type RawChannelEntry = string | {
+	id: string,
+	notify?: boolean,
+	notifyOnFirstScan?: boolean,
+}
+
 export interface Config {
 	email: EmailConfig,
 	port: number,
@@ -44,8 +56,10 @@ export interface Config {
 		stackTraceLimit: number,
 		emailOnError: boolean,
 	},
-	whitelistedChannelIds: string[],
-	blacklistedChannelIds: string[],
+	notifyOnFirstScan: boolean,
+	whitelistedChannelIds?: ChannelEntry[],
+	blacklistedChannelIds?: ChannelEntry[],
+	channelSettingsById?: Map<string, ChannelEntry>,
 }
 
 // Check that all the keys present in the example config file are also present

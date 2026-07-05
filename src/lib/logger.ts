@@ -2,7 +2,6 @@ import winston from 'winston'
 
 import { CONFIG_FILE } from '../config'
 
-const config = import(CONFIG_FILE)
 const { format, transports } = winston
 
 // const join = format(info => ({
@@ -13,10 +12,14 @@ const { format, transports } = winston
 const isObjectEmpty = (object: Object) => Object.keys(object).length === 0
 
 const createLogger = async ({ label }: { label: string }) => {
-	Error.stackTraceLimit = (await config).logging.stackTraceLimit
+	// Load config lazily here rather than at module import time, so importing
+	// the logger (or anything that transitively imports it) does not eagerly
+	// read config.json and produce a floating unhandled rejection.
+	const config: any = await import(CONFIG_FILE)
+	Error.stackTraceLimit = config.logging.stackTraceLimit
 
 	return winston.createLogger({
-		level: (await config).logging.level,
+		level: config.logging.level,
 		transports: [
 			new transports.Console(),
 		],
