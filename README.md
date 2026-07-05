@@ -45,9 +45,11 @@ You may run it on bare metal, or take advantage of the Docker image published to
 	npm install --production
 	```
 
-1. Copy the template configuration file and save it as `config.json`
+1. Copy the template configuration files
 	```
 	cp config.example.json config.json
+	cp channels.example.json channels.json
+	cp secrets.example.json secrets.json
 	```
 
 1. [Perform the initial configuration](#initial-configuration)
@@ -63,10 +65,14 @@ You may run it on bare metal, or take advantage of the Docker image published to
 	```
 	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/docker-compose.yml
 	```
-1. Copy the configuration file template and save it as `config.json`
+1. Copy the configuration file templates
 	```
 	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/config.example.json \
 	  -O config.json
+	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/channels.example.json \
+	  -O channels.json
+	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/secrets.example.json \
+	  -O secrets.json
 	```
 1. [Perform the initial configuration](#initial-configuration)
 
@@ -75,13 +81,26 @@ You may run it on bare metal, or take advantage of the Docker image published to
 After installing the software using either the bare metal or Docker method,
 it is mandatory to configure certain values and to set up Google API credentials.
 
-1. Populate the `config.json` file
+1. Populate the configuration files
 
-	Update `email.host`, `email.auth`, and `email.sendingContact`. These are the settings to send email over SMTP.
+	The configuration is split across three files:
 
-	Change `email.destination` to the email address where videos should be sent.
+	- **`config.json`** — general settings. Update `email.host`,
+	  `email.sendingContact`, and `email.destination` (the address where videos
+	  are sent). Optionally change `timers.subscriptions` and `timers.videos` to
+	  configure how often subscriptions are updated and videos are checked.
+	  `notifyOnFirstScan` (default `true`) controls whether a newly added
+	  channel's existing videos are emailed on the first scan; set it to `false`
+	  to record them silently and only be notified about videos published after
+	  that first scan.
 
-	Optionally change `timers.subscriptions` and `timers.videos` to configure how often your list of subscriptions is updated and how often new videos are checked for emailed about respectively.
+	- **`secrets.json`** — email credentials (`email.auth.user` and
+	  `email.auth.pass`). Alternatively, set the environment variables
+	  `BBYEN_EMAIL_USER` and `BBYEN_EMAIL_PASS`, which take precedence over the
+	  file. If both env vars are set, `secrets.json` is not required.
+
+	- **`channels.json`** — the channel whitelist / blacklist. See
+	  [Channel Whitelist and Blacklist](#channel-whitelist-and-blacklist).
 
 1. Set up Google API credentials
 
@@ -136,19 +155,39 @@ or only receive notifications from a list of channels (whitelist).
 Unfortunately, there is no way to check the notification status (bell icon set to "all", "personalized", or "none") from the API.
 Thus, blacklist and whitelist options were added to the configuration file.
 
-You can use the keys `blacklistedChannelIds` and `whitelistedChannelIds` in the top level of `config.json`.
-These should be arrays of the channel IDs you want to include/exclude.
+You can use the keys `blacklistedChannelIds` and `whitelistedChannelIds` in `channels.json`.
+These should be arrays of the channels you want to include/exclude.
 For example:
 ```json
 {
-	"email": {},
-	...
 	"blacklistedChannelIds": [ "xxx", "yyy" ],
 	"whitelistedChannelIds": [ "zzz" ]
 }
 ```
 If the key `whitelistedChannelIds` is present, notifications will only be sent for those channels.
 If `blacklistedChannelIds` is present, any notifications that would be sent for channels are skipped.
+
+#### Per-channel settings
+
+A whitelist entry may be a plain channel ID string, or an object that carries
+per-channel settings:
+
+```json
+{
+	"whitelistedChannelIds": [
+		"UCcUNYFu8wNDncymesUOtPrg",
+		{ "id": "UCVekgNuouyp2rpGLMEoWddA", "notify": false },
+		{ "id": "UCmZdjVse4X2fGwUrIT1cnog", "notifyOnFirstScan": false }
+	]
+}
+```
+
+- **`notify`** (default `true`) — set to `false` to *mute* a channel. Its videos
+  are still tracked in the database, but no email is sent. This is useful for
+  keeping a channel's history without receiving notifications.
+- **`notifyOnFirstScan`** — overrides the global `notifyOnFirstScan` for this
+  channel. Set to `false` to record the channel's existing videos silently when
+  it is first added and only be notified about newer videos.
 
 The channel ID is usually at the end of the URL of the channel's page.
 However, sometimes this is not the true ID but some customized shorter and readable string.

@@ -1,5 +1,22 @@
 # Change Log
 
+## [3.1.0] 2026-07-05
+
+### Breaking changes
+- Split `config.json` into three files: `config.json` (general settings),
+  `secrets.json` (email credentials, or use BBYEN_EMAIL_USER / BBYEN_EMAIL_PASS
+  environment variables), and `channels.json` (channel lists). See the
+  `.example.json` templates and README.
+
+### New features
+- Per-channel muting: set `{ "id": "...", "notify": false }` in
+  `channels.json` to track a channel without receiving emails.
+- First-scan backlog control: `notifyOnFirstScan` (global, default true) and a
+  per-channel override suppress the initial flood of emails when a channel is
+  newly added while still recording its videos.
+- Open videos in the YouTube app on mobile by using the canonical watch URL
+  instead of an attribution link.
+
 ## [3.0.2] 2025-01-03
 
 ### Fixes
