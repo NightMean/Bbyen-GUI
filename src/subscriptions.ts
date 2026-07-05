@@ -1,3 +1,5 @@
+import axios from 'axios'
+import JSSoup from 'jssoup'
 import sqlite from 'sqlite'
 import SQL from 'sql-template-strings'
 import { youtube_v3 } from 'googleapis'
@@ -8,10 +10,34 @@ import { Config, ChannelEntry } from './config'
 import setupLogger from './lib/logger'
 import { subscriptionIterator } from './google/iterators'
 import findNullishValues from './lib/findNullishValues'
+import { classifyError } from './lib/classifyError'
+import { notifyError, clearErrorState } from './lib/alertState'
+import { assertChannelId } from './lib/channelId'
+import { ISendErrorEmail } from './email'
 
 // Extract canonical channel ids from a list of normalized channel entries.
 const channelIds = (entries?: ChannelEntry[]): string[] =>
 	(entries ?? []).map(entry => entry.id)
+
+// Scrape a channel's avatar URL from its public page (no API). Best-effort:
+// returns a placeholder on any failure so a missing avatar never blocks
+// notifications.
+const AVATAR_PLACEHOLDER =
+	'https://www.gstatic.com/youtube/img/creator/no_avatar.png'
+
+const scrapeChannelAvatar = async (channelId: string): Promise<string> => {
+	try {
+		const url = `https://www.youtube.com/channel/${channelId}`
+		const response = await axios(url)
+		const soup = new JSSoup(response.data)
+		const meta = soup.findAll('meta')
+			.find((m: { attrs?: { property?: string, content?: string } }) =>
+				m.attrs?.property === 'og:image')
+		return meta?.attrs?.content ?? AVATAR_PLACEHOLDER
+	} catch {
+		return AVATAR_PLACEHOLDER
+	}
+}
 
 interface ChannelDetails {
 	title: string,
@@ -23,6 +49,7 @@ interface IUpdateSubscriptions {
 	service: youtube_v3.Youtube,
 	auth: OAuth2Client,
 	config: Config,
+	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
 }
 
 // Read all known subs from the database
@@ -243,25 +270,67 @@ export const updateSubscriptionsFromWhitelist = async (
 	await removeDeletedSubscriptions(db, logger, removedSubscriptions.values())
 }
 
+// Whitelist discovery without the API (no-login mode). Requires raw channel
+// IDs. The channel title is stored as the ID placeholder and refined later from
+// the RSS feed by the videos task; the avatar is scraped once per channel.
+export const updateSubscriptionsFromWhitelistNoApi = async (
+	{ db, config, logger }: {
+		db: sqlite.Database,
+		config: Config,
+		logger: winston.Logger,
+	},
+) => {
+	const savedSubscriptions = await getSavedSubscriptions(db)
+
+	const ids: string[] = []
+	for (const entry of config.whitelistedChannelIds ?? []) {
+		try {
+			ids.push(assertChannelId(entry.id))
+		} catch (err) {
+			logger.warn((err as Error).message)
+		}
+	}
+	const whitelistedChannelIds = new Set<string>(ids)
+
+	const newlyWhitelisted = ids.filter(x => !savedSubscriptions.has(x))
+	const channelDetails: Map<string, ChannelDetails> = new Map()
+	for (const channelId of newlyWhitelisted) {
+		channelDetails.set(channelId, {
+			title: channelId,
+			thumbnail: await scrapeChannelAvatar(channelId),
+		})
+	}
+
+	const removedSubscriptions = new Set(
+		[...savedSubscriptions].filter(sub => !whitelistedChannelIds.has(sub)))
+
+	await insertNewSubscriptions(db, logger, newlyWhitelisted, channelDetails)
+	await removeDeletedSubscriptions(db, logger, removedSubscriptions.values())
+}
+
 export const updateSubscriptions = async (args: IUpdateSubscriptions) => {
 	const logger = await setupLogger({ label: 'subscriptions' })
 
 	try {
-		return Array.isArray(args.config.whitelistedChannelIds)
-			? await updateSubscriptionsFromWhitelist(args)
-			: await updateSubscriptionsFromAPI(args)
-
-	} catch (err) {
-
-		logger.debug(JSON.stringify(err, null, '	'))
-
-		// Avoid printing huge error object for quota issues
-		if ((err as any)?.errors?.[0]?.reason) {
-			logger.warn('Quota up. Failed to update subscriptions.')
-
-			return
+		if (args.config.mode === 'whitelist') {
+			await updateSubscriptionsFromWhitelistNoApi({
+				db: args.db, config: args.config, logger,
+			})
+		} else if (Array.isArray(args.config.whitelistedChannelIds)) {
+			await updateSubscriptionsFromWhitelist(args)
+		} else {
+			await updateSubscriptionsFromAPI(args)
 		}
 
-		logger.error(err)
+		// A successful run means auth and quota are healthy account-wide.
+		clearErrorState([ 'auth', 'quota', 'other' ])
+
+	} catch (err) {
+		logger.debug(JSON.stringify(err, null, '\t'))
+		await notifyError(classifyError(err), err, {
+			sendErrorEmail: args.sendErrorEmail,
+			emailOnError: args.config.logging.emailOnError,
+			logger,
+		})
 	}
 }
