@@ -8,9 +8,11 @@ import { OAuth2Client } from 'google-auth-library'
 import { parse as parseDuration, Duration } from 'duration-fns'
 
 import setupLogger from './lib/logger'
-import { SendVideoEmail } from './email'
+import { SendVideoEmail, ISendErrorEmail } from './email'
 import { Config, ChannelEntry } from './config'
 import findNullishValues from './lib/findNullishValues'
+import { classifyError } from './lib/classifyError'
+import { notifyError, clearErrorState } from './lib/alertState'
 
 const formatDuration = (duration: Duration) => {
 	const hours = duration.hours === 0 ? '' : `${duration.hours}:`
@@ -91,50 +93,71 @@ const getChannelsVideos = async ({
 	const feed = await parser.parseURL(url)
 		.catch((err) => {
 			logger.warn(`Error parsing videos from '${url}': ${err.message}`)
-			return { items: [] }
+			return { items: [], title: undefined }
 		})
+
+	// In whitelist mode there is no API channel title; the RSS feed title is the
+	// channel name.
+	const rssChannelTitle = (feed as { title?: string }).title
 
 	for (let { videoId } of feed.items) {
 		try {
 
 			if (videosSent.has(videoId)) continue
 
-			const details = (await service.videos.list({
-				auth,
-				part: ['contentDetails,snippet,liveStreamingDetails'],
-				id: videoId,
-			}))?.data?.items?.[0]
+			let videoDate: Date | null
+			let videoTitle: string | null
+			let channelTitle: string | null
+			let videoThumbnail: string | null
+			let videoDuration: Duration | null
+			let isLiveStreamOrPremere: boolean
 
-			if (details === undefined) {
-				logger.warn(`Video list is unedfined for video '${videoId}'`)
-				continue
-			}
+			if (config.mode === 'whitelist') {
+				// RSS-only: no duration, no livestream status. Notify all.
+				const item = feed.items.find(it => it.videoId === videoId) as
+					{ title?: string, isoDate?: string, pubDate?: string }
+					| undefined
+				videoDate = mapOption(
+					s => new Date(s), item?.isoDate ?? item?.pubDate)
+				videoTitle = mapOption(s => truncate(s, 70), item?.title)
+				channelTitle = rssChannelTitle ?? channel.channelTitle
+				videoThumbnail =
+					`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+				videoDuration = null
+				isLiveStreamOrPremere = false
+			} else {
+				const details = (await service.videos.list({
+					auth,
+					part: ['contentDetails,snippet,liveStreamingDetails'],
+					id: videoId,
+				}))?.data?.items?.[0]
 
-			const videoDate =
-				mapOption(s => new Date(s), details.snippet?.publishedAt)
+				if (details === undefined) {
+					logger.warn(`Video list is unedfined for video '${videoId}'`)
+					continue
+				}
 
-			const videoTitle =
-				mapOption(s => truncate(s, 70), details.snippet?.title)
+				videoDate =
+					mapOption(s => new Date(s), details.snippet?.publishedAt)
+				videoTitle =
+					mapOption(s => truncate(s, 70), details.snippet?.title)
+				channelTitle = details.snippet?.channelTitle ?? null
+				videoThumbnail = (
+					details.snippet?.thumbnails?.maxres?.url ??
+					details.snippet?.thumbnails?.standard?.url ??
+					details.snippet?.thumbnails?.high?.url
+				) ?? null
+				videoDuration =
+					mapOption(parseDuration, details.contentDetails?.duration)
+				isLiveStreamOrPremere =
+					details && 'liveStreamingDetails' in details
 
-			const channelTitle = details.snippet?.channelTitle ?? null
-			const videoThumbnail = (
-				details.snippet?.thumbnails?.maxres?.url ??
-				details.snippet?.thumbnails?.standard?.url ??
-				details.snippet?.thumbnails?.high?.url
-			) ?? null
-
-			const videoDuration =
-				mapOption(parseDuration, details.contentDetails?.duration)
-
-			const isLiveStreamOrPremere =
-				details && 'liveStreamingDetails' in details
-
-			// Only send the notification once the livestream ended
-			// I prefer to watch the VOD later
-			// TODO: Consider making this configurable
-			if (isLiveStreamOrPremere &&
-					!details.liveStreamingDetails?.actualEndTime) {
-				continue
+				// Only send the notification once the livestream ended
+				// I prefer to watch the VOD later
+				if (isLiveStreamOrPremere &&
+						!details.liveStreamingDetails?.actualEndTime) {
+					continue
+				}
 			}
 
 			logger.verbose(
@@ -144,11 +167,12 @@ const getChannelsVideos = async ({
 
 			// Not really a better way to do this in TypeScript
 			// https://stackoverflow.com/questions/57928920/typescript-narrowing-of-keys-in-objects-when-passed-to-function
+			// Duration is only required in youtube mode (RSS has no duration).
 			if (videoDate === null ||
 					videoTitle === null ||
 					channelTitle === null ||
-					videoDuration === null ||
-					videoThumbnail === null) {
+					videoThumbnail === null ||
+					(config.mode !== 'whitelist' && videoDuration === null)) {
 
 				const missingKeys = findNullishValues({
 					videoDate,
@@ -160,7 +184,7 @@ const getChannelsVideos = async ({
 
 				logger.warn(
 					`Could not find all required fields for video '${videoId}'`,
-					{ details, missingKeys },
+					{ missingKeys },
 				)
 				continue
 			}
@@ -178,7 +202,8 @@ const getChannelsVideos = async ({
 					videoThumbnail,
 					videoTitle,
 					isLiveStreamOrPremere,
-					videoDuration: formatDuration(videoDuration),
+					videoDuration: videoDuration
+						? formatDuration(videoDuration) : '',
 					videoURL: `https://www.youtube.com/watch?v=${videoId}`,
 				})
 			} else {
@@ -225,6 +250,7 @@ interface IParseFeedsAndNotify {
 	service: youtube_v3.Youtube,
 	sendVideoEmail: SendVideoEmail,
 	config: Config,
+	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
 }
 export const parseFeedsAndNotify = async (
 	{ db, ...rest }: IParseFeedsAndNotify,
@@ -268,8 +294,15 @@ export const parseFeedsAndNotify = async (
 			}
 		}
 
+		// A successful run means auth and quota are healthy account-wide.
+		clearErrorState([ 'auth', 'quota', 'other' ])
+
 		logger.info('Finished checking for new videos')
 	} catch (err) {
-		logger.error(err)
+		await notifyError(classifyError(err), err, {
+			sendErrorEmail: rest.sendErrorEmail,
+			emailOnError: rest.config.logging.emailOnError,
+			logger,
+		})
 	}
 }
