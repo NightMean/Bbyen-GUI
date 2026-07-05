@@ -12,6 +12,7 @@ import setIntervalInstant from './lib/setIntervalInstant'
 import { ISendErrorEmail } from './email'
 import { classifyError } from './lib/classifyError'
 import { notifyError } from './lib/alertState'
+import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
 
 const main = async () => {
@@ -57,16 +58,23 @@ const main = async () => {
 		const config = await loadConfig(service, auth as OAuth2Client)
 		const db = await database.init(config.database)
 
+		// Reject over-long intervals up front: Node's timer delay is a 32-bit
+		// int, so anything larger silently fires every 1 ms.
+		const subscriptionsTimer = assertTimerWithinLimit(
+			'subscriptions', parseDuration(config.timers.subscriptions) as number)
+		const videosTimer = assertTimerWithinLimit(
+			'videos', parseDuration(config.timers.videos) as number)
+
 		setIntervalInstant(
 			updateSubscriptions,
-			parseDuration(config.timers.subscriptions),
+			subscriptionsTimer,
 			config.kickoff.subscriptions,
 			{ db, service, auth, config, sendErrorEmail },
 		)
 
 		setIntervalInstant(
 			parseFeedsAndNotify,
-			parseDuration(config.timers.videos),
+			videosTimer,
 			config.kickoff.videos,
 			{ db, service, auth, sendVideoEmail, config, sendErrorEmail },
 		)
