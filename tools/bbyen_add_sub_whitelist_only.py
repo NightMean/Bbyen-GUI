@@ -251,8 +251,11 @@ def list_channels():
     config = load_config()
     whitelist = config.get("whitelistedChannelIds", [])
     print(f"\nTotal whitelisted channels: {len(whitelist)}\n")
-    for channel_id in whitelist:
-        print(f"https://www.youtube.com/channel/{channel_id}")
+    try:
+        for channel_id in whitelist:
+            print(f"https://www.youtube.com/channel/{channel_id}")
+    except BrokenPipeError:
+        pass
 
 def main():
     print(f"Using config file: {CONFIG_FILE}")
