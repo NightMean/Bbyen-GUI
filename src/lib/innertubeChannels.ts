@@ -17,7 +17,15 @@ export interface YouTubeProfile {
 
 const ACCOUNTS_LIST_URL =
 	'https://www.youtube.com/youtubei/v1/account/accounts_list'
+const SUBSCRIBE_URL =
+	'https://www.youtube.com/youtubei/v1/subscription/subscribe'
+const UNSUBSCRIBE_URL =
+	'https://www.youtube.com/youtubei/v1/subscription/unsubscribe'
+const MODIFY_CHANNEL_PREFERENCE_URL =
+	'https://www.youtube.com/youtubei/v1/notification/modify_channel_preference'
 const CLIENT_VERSION = '2.20240101.00.00'
+
+export type BellNotificationPreference = 'all' | 'personalized' | 'none'
 
 /**
  * Normalizes cookies from any format (JSON array from browser extensions,
@@ -297,4 +305,183 @@ export const fetchAccountsList = async (
 	)
 	return parseAccountsListResponse(res.data)
 }
+
+/**
+ * Builds the Base64 protobuf payload required by
+ * notification/modify_channel_preference.
+ *
+ * Wire format breakdown:
+ * - Field 1 (tag 0x0a, length-delimited): channel ID string
+ * - Field 2 (tag 0x12, length 2): 0x08, 0x02
+ * - Field 3 (tag 0x18, varint): enum (0 = all, 1 = personalized, 2 = none)
+ * - Field 4 (tag 0x20, varint): constant 0x04
+ */
+export const buildModifyChannelPreferenceParams = (
+	channelId: string,
+	preference: BellNotificationPreference,
+): string => {
+	const prefValue =
+		preference === 'all' ? 0 : preference === 'personalized' ? 1 : 2
+	const channelBuf = Buffer.from(channelId, 'utf8')
+	const field1 = Buffer.concat([
+		Buffer.from([0x0a, channelBuf.length]),
+		channelBuf,
+	])
+	const field2 = Buffer.from([0x12, 0x02, 0x08, 0x02])
+	const field3 = Buffer.from([0x18, prefValue])
+	const field4 = Buffer.from([0x20, 0x04])
+
+	return Buffer.concat([field1, field2, field3, field4]).toString('base64')
+}
+
+/**
+ * Subscribes to a YouTube channel via InnerTube API.
+ * Supports Brand Account delegation via pageId.
+ */
+export const subscribeToChannel = async (
+	cookieHeader: string,
+	sapisid: string,
+	channelId: string,
+	pageId?: string,
+): Promise<any> => {
+	const authHeader = generateSapisidHash(sapisid)
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json',
+		'Cookie': cookieHeader,
+		'Authorization': authHeader,
+		'X-Origin': 'https://www.youtube.com',
+		'User-Agent':
+			'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+			'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+			'Chrome/120.0.0.0 Safari/537.36',
+	}
+
+	const contextUser: Record<string, string> = {}
+	if (pageId) {
+		headers['X-Goog-PageId'] = pageId
+		headers['X-Goog-AuthUser'] = '0'
+		contextUser.onBehalfOfUser = pageId
+	}
+
+	const res = await axios.post(
+		SUBSCRIBE_URL,
+		{
+			context: {
+				client: {
+					clientName: 'WEB',
+					clientVersion: CLIENT_VERSION,
+				},
+				...(pageId ? { user: contextUser } : {}),
+			},
+			channelIds: [channelId],
+		},
+		{
+			headers,
+			timeout: 10000,
+		},
+	)
+	return res.data
+}
+
+/**
+ * Unsubscribes from a YouTube channel via InnerTube API.
+ * Supports Brand Account delegation via pageId.
+ */
+export const unsubscribeFromChannel = async (
+	cookieHeader: string,
+	sapisid: string,
+	channelId: string,
+	pageId?: string,
+): Promise<any> => {
+	const authHeader = generateSapisidHash(sapisid)
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json',
+		'Cookie': cookieHeader,
+		'Authorization': authHeader,
+		'X-Origin': 'https://www.youtube.com',
+		'User-Agent':
+			'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+			'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+			'Chrome/120.0.0.0 Safari/537.36',
+	}
+
+	const contextUser: Record<string, string> = {}
+	if (pageId) {
+		headers['X-Goog-PageId'] = pageId
+		headers['X-Goog-AuthUser'] = '0'
+		contextUser.onBehalfOfUser = pageId
+	}
+
+	const res = await axios.post(
+		UNSUBSCRIBE_URL,
+		{
+			context: {
+				client: {
+					clientName: 'WEB',
+					clientVersion: CLIENT_VERSION,
+				},
+				...(pageId ? { user: contextUser } : {}),
+			},
+			channelIds: [channelId],
+		},
+		{
+			headers,
+			timeout: 10000,
+		},
+	)
+	return res.data
+}
+
+/**
+ * Updates the notification bell preference for a subscribed YouTube channel
+ * ('all', 'personalized', or 'none') via InnerTube API.
+ */
+export const setChannelNotificationPreference = async (
+	cookieHeader: string,
+	sapisid: string,
+	channelId: string,
+	preference: BellNotificationPreference,
+	pageId?: string,
+): Promise<any> => {
+	const authHeader = generateSapisidHash(sapisid)
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json',
+		'Cookie': cookieHeader,
+		'Authorization': authHeader,
+		'X-Origin': 'https://www.youtube.com',
+		'User-Agent':
+			'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
+			'AppleWebKit/537.36 (KHTML, like Gecko) ' +
+			'Chrome/120.0.0.0 Safari/537.36',
+	}
+
+	const contextUser: Record<string, string> = {}
+	if (pageId) {
+		headers['X-Goog-PageId'] = pageId
+		headers['X-Goog-AuthUser'] = '0'
+		contextUser.onBehalfOfUser = pageId
+	}
+
+	const params = buildModifyChannelPreferenceParams(channelId, preference)
+
+	const res = await axios.post(
+		MODIFY_CHANNEL_PREFERENCE_URL,
+		{
+			context: {
+				client: {
+					clientName: 'WEB',
+					clientVersion: CLIENT_VERSION,
+				},
+				...(pageId ? { user: contextUser } : {}),
+			},
+			params,
+		},
+		{
+			headers,
+			timeout: 10000,
+		},
+	)
+	return res.data
+}
+
 

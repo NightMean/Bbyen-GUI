@@ -1,4 +1,5 @@
-import { describe, test, expect } from 'vitest'
+import { describe, test, expect, vi } from 'vitest'
+import axios from 'axios'
 import {
 	generateSapisidHash,
 	normalizeCookieHeader,
@@ -6,6 +7,10 @@ import {
 	parseChannelRenderer,
 	extractChannelsFromInnerTube,
 	parseAccountsListResponse,
+	buildModifyChannelPreferenceParams,
+	subscribeToChannel,
+	unsubscribeFromChannel,
+	setChannelNotificationPreference,
 } from './innertubeChannels'
 
 describe('generateSapisidHash', () => {
@@ -305,4 +310,148 @@ describe('parseAccountsListResponse', () => {
 		})
 	})
 })
+
+describe('buildModifyChannelPreferenceParams', () => {
+	test('encodes all notifications parameter', () => {
+		const encoded = buildModifyChannelPreferenceParams(
+			'UCheBKArlttOQt_t5zgFUw_Q',
+			'all',
+		)
+		expect(encoded).toBe('ChhVQ2hlQktBcmx0dE9RdF90NXpnRlV3X1ESAggCGAAgBA==')
+	})
+
+	test('encodes personalized notifications parameter', () => {
+		const encoded = buildModifyChannelPreferenceParams(
+			'UCheBKArlttOQt_t5zgFUw_Q',
+			'personalized',
+		)
+		expect(encoded).toBe('ChhVQ2hlQktBcmx0dE9RdF90NXpnRlV3X1ESAggCGAEgBA==')
+	})
+
+	test('encodes none notifications parameter', () => {
+		const encoded = buildModifyChannelPreferenceParams(
+			'UCheBKArlttOQt_t5zgFUw_Q',
+			'none',
+		)
+		expect(encoded).toBe('ChhVQ2hlQktBcmx0dE9RdF90NXpnRlV3X1ESAggCGAIgBA==')
+	})
+})
+
+describe('subscribeToChannel & unsubscribeFromChannel', () => {
+	test('sends subscribe request with auth and channel ID', async () => {
+		const postSpy = vi.spyOn(axios, 'post').mockResolvedValueOnce({
+			data: { actions: [{ openPopupAction: {} }] },
+		})
+
+		const result = await subscribeToChannel(
+			'SAPISID=test_sapisid',
+			'test_sapisid',
+			'UC1234567890123456789012',
+		)
+
+		expect(result).toEqual({ actions: [{ openPopupAction: {} }] })
+		expect(postSpy).toHaveBeenCalledWith(
+			'https://www.youtube.com/youtubei/v1/subscription/subscribe',
+			expect.objectContaining({
+				channelIds: ['UC1234567890123456789012'],
+			}),
+			expect.objectContaining({
+				headers: expect.objectContaining({
+					Cookie: 'SAPISID=test_sapisid',
+					Authorization: expect.stringContaining('SAPISIDHASH'),
+				}),
+			}),
+		)
+		postSpy.mockRestore()
+	})
+
+	test(
+		'sends subscribe with Brand Account pageId headers and body',
+		async () => {
+			const postSpy = vi.spyOn(axios, 'post').mockResolvedValueOnce({
+				data: { actions: [] },
+			})
+
+			await subscribeToChannel(
+				'SAPISID=test_sapisid',
+				'test_sapisid',
+				'UC1234567890123456789012',
+				'999888777666',
+			)
+
+			expect(postSpy).toHaveBeenCalledWith(
+				'https://www.youtube.com/youtubei/v1/subscription/subscribe',
+				expect.objectContaining({
+					context: expect.objectContaining({
+						user: { onBehalfOfUser: '999888777666' },
+					}),
+					channelIds: ['UC1234567890123456789012'],
+				}),
+				expect.objectContaining({
+					headers: expect.objectContaining({
+						'X-Goog-PageId': '999888777666',
+						'X-Goog-AuthUser': '0',
+					}),
+				}),
+			)
+			postSpy.mockRestore()
+		},
+	)
+
+	test('sends unsubscribe request', async () => {
+		const postSpy = vi.spyOn(axios, 'post').mockResolvedValueOnce({
+			data: { actions: [] },
+		})
+
+		await unsubscribeFromChannel(
+			'SAPISID=test_sapisid',
+			'test_sapisid',
+			'UC1234567890123456789012',
+		)
+
+		expect(postSpy).toHaveBeenCalledWith(
+			'https://www.youtube.com/youtubei/v1/subscription/unsubscribe',
+			expect.objectContaining({
+				channelIds: ['UC1234567890123456789012'],
+			}),
+			expect.any(Object),
+		)
+		postSpy.mockRestore()
+	})
+})
+
+describe('setChannelNotificationPreference', () => {
+	test(
+		'sends modify_channel_preference request with encoded params',
+		async () => {
+			const postSpy = vi.spyOn(axios, 'post').mockResolvedValueOnce({
+				data: { actions: [] },
+			})
+
+			await setChannelNotificationPreference(
+				'SAPISID=test_sapisid',
+				'test_sapisid',
+				'UCheBKArlttOQt_t5zgFUw_Q',
+				'all',
+			)
+
+			expect(postSpy).toHaveBeenCalledWith(
+				'https://www.youtube.com/youtubei/v1/notification/' +
+					'modify_channel_preference',
+				expect.objectContaining({
+					params:
+						'ChhVQ2hlQktBcmx0dE9RdF90NXpnRlV3X1ESAggCGAAgBA==',
+				}),
+				expect.objectContaining({
+					headers: expect.objectContaining({
+						Cookie: 'SAPISID=test_sapisid',
+						Authorization: expect.stringContaining('SAPISIDHASH'),
+					}),
+				}),
+			)
+			postSpy.mockRestore()
+		},
+	)
+})
+
 
