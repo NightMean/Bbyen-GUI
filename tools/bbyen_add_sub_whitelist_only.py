@@ -33,7 +33,29 @@ def find_config_file():
             return os.path.abspath(candidate)
     return "/opt/youtubenotify-bbyen/config.json"
 
+def find_channels_file():
+    env_path = os.environ.get("BBYEN_CHANNELS")
+    if env_path and os.path.exists(env_path):
+        return os.path.abspath(env_path)
+    config_env = os.environ.get("BBYEN_CONFIG")
+    if config_env:
+        candidate = os.path.join(os.path.dirname(os.path.abspath(config_env)), "channels.json")
+        if os.path.exists(candidate):
+            return candidate
+    candidates = [
+        "/opt/youtubenotify-bbyen/channels.json",
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "channels.json"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "channels.json"),
+        "channels.json",
+        os.path.expanduser("~/.config/bbyen/channels.json")
+    ]
+    for candidate in candidates:
+        if os.path.exists(candidate):
+            return os.path.abspath(candidate)
+    return find_config_file()
+
 CONFIG_FILE = find_config_file()
+TARGET_CHANNELS_FILE = find_channels_file()
 
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -165,13 +187,13 @@ def restart_service():
         print(f"Notice: Service restart skipped ({e})")
 
 def load_config():
-    if not os.path.exists(CONFIG_FILE):
+    if not os.path.exists(TARGET_CHANNELS_FILE):
         return {"whitelistedChannelIds": []}
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+    with open(TARGET_CHANNELS_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_config(config):
-    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+    with open(TARGET_CHANNELS_FILE, "w", encoding="utf-8") as f:
         json.dump(config, f, indent=4, sort_keys=True)
 
 def add_channel(user_input):
@@ -258,7 +280,7 @@ def list_channels():
         pass
 
 def main():
-    print(f"Using config file: {CONFIG_FILE}")
+    print(f"Using channels file: {TARGET_CHANNELS_FILE}")
     while True:
         print("\nChoose an option (1-4):")
         print("1. Add a YouTube channel (URL, @handle, or Channel ID)")

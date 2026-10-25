@@ -5,6 +5,7 @@ import fs from 'fs/promises'
 import authorize from './google/auth'
 import { CONFIG_FILE } from './config'
 import { isChannelId } from './lib/channelId'
+import { resolveChannelId } from './lib/resolveChannelId'
 
 // A local readline that supports multiple sequential prompts (the shared
 // google/auth/readline helper closes after a single question).
@@ -48,16 +49,20 @@ const main = async () => {
 	if (choice === '2') {
 		await writeMode('whitelist')
 		console.log(
-			'Mode set to "whitelist". Enter channel IDs (UC...), one per line. ' +
-			'Blank line to finish.')
+			'Mode set to "whitelist". Enter channel IDs (UC...), ' +
+			'handles (@name), or URLs, one per line. Blank line to finish.')
 		const ids: string[] = []
 		for (;;) {
-			const line = (await ask('Channel ID (or blank to finish): ')).trim()
+			const prompt = 'Channel ID, handle, or URL (or blank to finish): '
+			const line = (await ask(prompt)).trim()
 			if (!line) break
-			if (isChannelId(line)) {
-				ids.push(line)
-			} else {
-				console.log(`  Ignored '${line}': not a 24-char UC channel ID.`)
+			try {
+				const id = await resolveChannelId(line)
+				ids.push(id)
+				console.log(`  Added: ${id}`)
+			} catch (err) {
+				console.log(
+					`  Could not resolve '${line}': ${(err as Error).message}`)
 			}
 		}
 		rl.close()

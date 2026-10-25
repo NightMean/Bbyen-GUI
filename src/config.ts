@@ -9,6 +9,7 @@ import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
 
 import configSchema from '../config.example.json'
+import { resolveChannelId } from './lib/resolveChannelId'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
@@ -144,36 +145,32 @@ const getChannelIdFromUrlAPI = async (
 	return items[0].id?.channelId
 }
 
-// Get the channel ID from the URL using the data API
+// Get the channel ID from the URL or handle using scraper or YouTube API
 export const normalizeChannelFactory = (
 	logger: winston.Logger,
-	service: youtube_v3.Youtube,
-	auth: OAuth2Client,
+	service?: youtube_v3.Youtube,
+	auth?: OAuth2Client,
 ) => async (channel: string) => {
 	logger.verbose(`Normalizing channel string '${channel}'`)
 
-	// If the string is already just the channel ID
-	if (/^[0-9a-zA-Z_-]{24}$/.test(channel)) {
-		return channel
+	// 1. Try no-API resolution (handles raw IDs, URLs with IDs, @handles)
+	try {
+		return await resolveChannelId(channel)
+	} catch (err) {
+		logger.verbose(
+			`Non-API resolution failed for '${channel}': ${(err as Error).message}`,
+		)
 	}
 
-	// If the string is the channel URL with the ID built in
-	const re = /^https:\/\/www.youtube.com\/channel\/([0-9a-zA-Z_-]{24})\/?$/
-	const match = channel.match(re)
-	if (match) {
-		const id = match[1]
-		logger.verbose(`String matches URL with ID: ${id}`)
-		return id
-	}
-
-	// If it's the custom channel URL, try to get the ID from the API
-	if (/^https:\/\/www.youtube.com\/(?:c\/|channel\/|)[^/]*/.test(channel)) {
-		logger.verbose('String matches URL with channel name')
-		console.log('String matches URL with channel name')
-		return await Promise.any([
-			getChannelIdFromUrlAPI(service, auth, channel),
-			getChannelIdFromUrlScrape(channel),
-		])
+	// 2. If YouTube Data API credentials are provided, try search API as fallback
+	if (service && auth) {
+		try {
+			return await getChannelIdFromUrlAPI(service, auth, channel)
+		} catch (err) {
+			logger.verbose(
+				`API resolution failed for '${channel}': ${(err as Error).message}`,
+			)
+		}
 	}
 
 	throw new Error([
@@ -259,8 +256,8 @@ export const loadConfigRaw = async (): Promise<Config> =>
 	JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
 
 export const loadConfig = async (
-	service: youtube_v3.Youtube,
-	auth: OAuth2Client,
+	service?: youtube_v3.Youtube,
+	auth?: OAuth2Client,
 ): Promise<Config> => {
 	// This has to come here to avoid dependency loop
 	const setupLogger = (await import('./lib/logger')).default

@@ -55,7 +55,7 @@ const main = async () => {
 			}
 		}
 
-		const config = await loadConfig(service, auth as OAuth2Client)
+		const config = await loadConfig(service, auth)
 		const db = await database.init(config.database)
 
 		// Reject over-long intervals up front: Node's timer delay is a 32-bit

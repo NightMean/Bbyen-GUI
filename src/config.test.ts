@@ -31,14 +31,18 @@ describe('normalizeChannel', async () => {
 	const auth = createMagicStub<OAuth2Client>()
 
 	const normalizeChannel = normalizeChannelFactory(logger, service, auth)
+	const normalizeWithoutAuth = normalizeChannelFactory(logger)
 
 	test('already a channel id', async () => {
 		expect(await normalizeChannel('UCzgA9CBrIXPtkB2yNTTiy1w'))
 			.toBe('UCzgA9CBrIXPtkB2yNTTiy1w')
 	})
-	// /c/ and /channel/ always seem to give 404 now
-	test('already a channel id', async () => {
+	test('channel url resolved via scraper', async () => {
 		expect(await normalizeChannel('https://www.youtube.com/@Level2Jeff'))
+			.toBe('UCzgA9CBrIXPtkB2yNTTiy1w')
+	})
+	test('bare handle resolved via scraper without API credentials', async () => {
+		expect(await normalizeWithoutAuth('@Level2Jeff'))
 			.toBe('UCzgA9CBrIXPtkB2yNTTiy1w')
 	})
 })
