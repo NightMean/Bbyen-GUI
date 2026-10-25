@@ -13,6 +13,10 @@ import { Config, ChannelEntry } from './config'
 import findNullishValues from './lib/findNullishValues'
 import { classifyError } from './lib/classifyError'
 import { notifyError, clearErrorState } from './lib/alertState'
+import {
+	isChannelTerminatedOnYouTube,
+	handleTerminatedChannel,
+} from './lib/channelTermination'
 
 const formatDuration = (duration: Duration) => {
 	const hours = duration.hours === 0 ? '' : `${duration.hours}:`
@@ -68,6 +72,7 @@ interface IGetChannelsVideos {
 	sendVideoEmail: SendVideoEmail,
 	db: sqlite.Database,
 	config: Config,
+	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
 }
 const getChannelsVideos = async ({
 	channel,
@@ -78,6 +83,7 @@ const getChannelsVideos = async ({
 	sendVideoEmail,
 	db,
 	config,
+	sendErrorEmail,
 }: IGetChannelsVideos): Promise<boolean> => {
 	const { channelId, channelThumbnail } = channel
 
@@ -90,11 +96,26 @@ const getChannelsVideos = async ({
 	const isFirstScan = videosSent.size === 0
 
 	const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
+	let feedError: Error | null = null
 	const feed = await parser.parseURL(url)
 		.catch((err) => {
+			feedError = err
 			logger.warn(`Error parsing videos from '${url}': ${err.message}`)
 			return { items: [], title: undefined }
 		})
+
+	if (feedError && /404|status code 404/i.test((feedError as Error).message)) {
+		const isTerminated = await isChannelTerminatedOnYouTube(channelId)
+		if (isTerminated) {
+			await handleTerminatedChannel(
+				db,
+				channel,
+				sendErrorEmail,
+				logger,
+			)
+			return true
+		}
+	}
 
 	// In whitelist mode there is no API channel title; the RSS feed title is the
 	// channel name.

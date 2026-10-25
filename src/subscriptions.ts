@@ -113,9 +113,12 @@ const removeDeletedSubscriptions = async (
 	logger: winston.Logger,
 	removedSubscriptions: Iterable<string>,
 ) => {
+	const now = new Date().toISOString()
 	const stmt = await db.prepare(SQL`
 		UPDATE subscriptions
-		SET deleted=1
+		SET deleted=1,
+			deletedReason='unsubscribed',
+			deletedAt=${now}
 		WHERE channelId=?;
 	`)
 

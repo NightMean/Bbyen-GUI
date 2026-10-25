@@ -30,15 +30,29 @@ export const init = async ({ filename }: { filename: string }) => {
 			channelId TEXT NOT NULL UNIQUE,
 			channelThumbnail TEXT NOT NULL,
 			channelTitle TEXT NOT NULL,
-			deleted INTEGER DEFAULT 0
+			deleted INTEGER DEFAULT 0,
+			deletedReason TEXT DEFAULT NULL,
+			deletedAt TEXT DEFAULT NULL
 		);
 	`)
 
-	// Migration if db was created before 'deleted' column.
+	// Migration if db was created before newer columns.
 	const subscriptions = await db.all(SQL`PRAGMA table_info(subscriptions)`)
 	if (!subscriptions.some(col => col.name === 'deleted')) {
 		await db.exec(SQL`
 			ALTER TABLE subscriptions ADD COLUMN deleted INTEGER DEFAULT 0;
+		`)
+	}
+	if (!subscriptions.some(col => col.name === 'deletedReason')) {
+		await db.exec(SQL`
+			ALTER TABLE subscriptions
+			ADD COLUMN deletedReason TEXT DEFAULT NULL;
+		`)
+	}
+	if (!subscriptions.some(col => col.name === 'deletedAt')) {
+		await db.exec(SQL`
+			ALTER TABLE subscriptions
+			ADD COLUMN deletedAt TEXT DEFAULT NULL;
 		`)
 	}
 
