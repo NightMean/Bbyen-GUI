@@ -147,9 +147,11 @@ to `config.json`.
   your subscriptions, and fetches full video metadata (duration, livestream
   filtering). Re-authenticate any time with `npm run login`.
 - **whitelist** — no login. You list the channels yourself in `channels.json`
-  as raw 24-character IDs (`UC...`); URLs and handles are rejected. Emails omit
-  the duration badge and do not filter livestreams (every new upload notifies).
-  Good for a headless setup where you don't want to grant YouTube access.
+  using channel IDs (`UC...`), handles (`@name`), or channel URLs. On startup,
+  any URLs or handles are automatically resolved to canonical 24-character IDs
+  without requiring an API key. Emails omit the duration badge and do not filter
+  livestreams (every new upload notifies). Good for a headless setup where you
+  don't want to grant YouTube access.
 
 ## Authentication
 
@@ -179,8 +181,26 @@ problem clears and recurs). This is gated by `logging.emailOnError` in
 
 In some instances, you may want to stop receiving notifications from a list of channels (blacklist)
 or only receive notifications from a list of channels (whitelist).
-Unfortunately, there is no way to check the notification status (bell icon set to "all", "personalized", or "none") from the API.
-Thus, blacklist and whitelist options were added to the configuration file.
+
+While the official YouTube Data API does not expose notification bell preferences, `bbyen` includes a built-in synchronizer that extracts only the channels where your bell is set to **"All"** (🔔) using session cookies.
+
+#### Auto-Syncing "All" Bell Channels (`sync-channels`)
+
+Export your session cookies from your browser (via Cookie-Editor or Netscape format) to `cookies.txt` in the `bbyen` directory, then run:
+
+```bash
+# Preview channels with "All" notification bell
+npm run sync-channels
+
+# Save to channels.json and track bell history in SQLite
+npm run sync-channels -- --save
+
+# List all account profiles (personal & Brand Accounts)
+npm run sync-channels -- --list-accounts
+
+# Target a specific Brand Account or profile
+npm run sync-channels -- --account "YourChannelName" --save
+```
 
 You can use the keys `blacklistedChannelIds` and `whitelistedChannelIds` in `channels.json`.
 These should be arrays of the channels you want to include/exclude.

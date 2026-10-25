@@ -8,3 +8,5 @@ config.json
 secrets.json
 channels.json
 google-credentials.json
+cookies.txt
+cookies*.txt

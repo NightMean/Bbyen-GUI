@@ -8,6 +8,7 @@
     "start": "ts-node --transpile-only src/index.ts",
     "setup": "ts-node --transpile-only src/setup.ts",
     "login": "ts-node --transpile-only src/login.ts",
+    "sync-channels": "ts-node --transpile-only tools/fetch_all_bell_channels.ts",
     "lint": "eslint src",
     "typecheck": "tsc --noEmit",
     "ncu": "npm-check-updates"

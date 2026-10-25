@@ -32,7 +32,10 @@ export const init = async ({ filename }: { filename: string }) => {
 			channelTitle TEXT NOT NULL,
 			deleted INTEGER DEFAULT 0,
 			deletedReason TEXT DEFAULT NULL,
-			deletedAt TEXT DEFAULT NULL
+			deletedAt TEXT DEFAULT NULL,
+			firstObservedAt TEXT DEFAULT NULL,
+			bellState TEXT DEFAULT NULL,
+			bellUpdatedAt TEXT DEFAULT NULL
 		);
 	`)
 
@@ -55,6 +58,70 @@ export const init = async ({ filename }: { filename: string }) => {
 			ADD COLUMN deletedAt TEXT DEFAULT NULL;
 		`)
 	}
+	if (!subscriptions.some(col => col.name === 'firstObservedAt')) {
+		await db.exec(SQL`
+			ALTER TABLE subscriptions
+			ADD COLUMN firstObservedAt TEXT DEFAULT NULL;
+		`)
+	}
+	if (!subscriptions.some(col => col.name === 'bellState')) {
+		await db.exec(SQL`
+			ALTER TABLE subscriptions
+			ADD COLUMN bellState TEXT DEFAULT NULL;
+		`)
+	}
+	if (!subscriptions.some(col => col.name === 'bellUpdatedAt')) {
+		await db.exec(SQL`
+			ALTER TABLE subscriptions
+			ADD COLUMN bellUpdatedAt TEXT DEFAULT NULL;
+		`)
+	}
 
 	return db
 }
+
+/**
+ * Inserts or updates a channel's subscription and notification bell status.
+ * Preserves initial firstObservedAt timestamp; updates bellUpdatedAt only when
+ * the bell status changes.
+ */
+export const recordSubscriptionBellState = async (
+	db: sqlite.Database,
+	channelId: string,
+	channelTitle: string,
+	bellState: 'all' | 'personalized' | 'none' | 'unknown',
+	thumbnail = '',
+): Promise<void> => {
+	const now = new Date().toISOString()
+	const existing = await db.get(SQL`
+		SELECT id, bellState, firstObservedAt FROM subscriptions
+		WHERE channelId=${channelId};
+	`)
+
+	if (!existing) {
+		await db.run(SQL`
+			INSERT INTO subscriptions (
+				channelId, channelTitle, channelThumbnail,
+				firstObservedAt, bellState, bellUpdatedAt
+			) VALUES (
+				${channelId}, ${channelTitle}, ${thumbnail},
+				${now}, ${bellState}, ${now}
+			);
+		`)
+	} else if (existing.bellState !== bellState) {
+		await db.run(SQL`
+			UPDATE subscriptions
+			SET bellState=${bellState},
+				bellUpdatedAt=${now},
+				channelTitle=${channelTitle}
+			WHERE channelId=${channelId};
+		`)
+	} else if (channelTitle && existing.channelTitle !== channelTitle) {
+		await db.run(SQL`
+			UPDATE subscriptions
+			SET channelTitle=${channelTitle}
+			WHERE channelId=${channelId};
+		`)
+	}
+}
+
