@@ -24,5 +24,5 @@
 		"stackTraceLimit": 10,
 		"emailOnError": true
 	},
-	"notifyOnFirstScan": true
+	"notifyOnFirstScan": false
 }

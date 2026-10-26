@@ -100,10 +100,11 @@ in youtube mode. For Docker, use the files in `data/` described above.
 	  `email.sendingContact`, and `email.destination` (the address where videos
 	  are sent). Optionally change `timers.subscriptions` and `timers.videos` to
 	  configure how often subscriptions are updated and videos are checked.
-	  `notifyOnFirstScan` (default `true`) controls whether a newly added
-	  channel's existing videos are emailed on the first scan; set it to `false`
-	  to record them silently and only be notified about videos published after
-	  that first scan. `mode` selects how channels are discovered — see
+	  `notifyOnFirstScan` controls whether a newly added channel's existing
+	  videos are emailed on the first scan. The example sets it to `false` so
+	  they are recorded silently; set it to `true` to email the initial backlog.
+	  Older configurations that omit the setting retain the previous `true`
+	  default. `mode` selects how channels are discovered — see
 	  [Operating modes](#operating-modes).
 
 	- **`secrets.json`** — email credentials (`email.auth.user` and
