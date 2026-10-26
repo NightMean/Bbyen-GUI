@@ -113,3 +113,34 @@ test('upgrades an existing database at an absolute path', async () => {
 		await fs.rmdir(directory)
 	}
 })
+
+test('migrates processed videos without inventing their email outcome',
+	async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-video-'))
+		const filename = path.join(directory, 'legacy.sqlite')
+		const old = await sqlite.open({ filename, driver: sqlite3.Database })
+		await old.exec(`CREATE TABLE videos (
+			id INTEGER PRIMARY KEY, videoId TEXT NOT NULL UNIQUE,
+			channelId TEXT NOT NULL
+		);
+		INSERT INTO videos VALUES (1, 'v1', 'UC123');`)
+		await old.close()
+		let upgraded: sqlite.Database | undefined
+		try {
+			upgraded = await init({ filename })
+			expect(await upgraded.get(`SELECT videoId, emailOutcome
+				FROM video_observations WHERE videoId='v1'`)).toEqual({
+				videoId: 'v1', emailOutcome: 'unknown',
+			})
+			expect(await upgraded.get(`SELECT channelId FROM video_scan_baselines
+				WHERE channelId='UC123'`)).toEqual({ channelId: 'UC123' })
+			await upgraded.close()
+			upgraded = await init({ filename })
+			expect(await upgraded.get('SELECT COUNT(*) AS count FROM videos'))
+				.toEqual({ count: 1 })
+		} finally {
+			await upgraded?.close()
+			await fs.unlink(filename)
+			await fs.rmdir(directory)
+		}
+	})

@@ -3,6 +3,7 @@ import path from 'path'
 import * as sqlite from 'sqlite'
 import sqlite3 from 'sqlite3'
 import SQL from 'sql-template-strings'
+import { migrateVideoSchema } from './videoSchema'
 
 export const DEFAULT_CHANNEL_THUMBNAIL =
 	'https://www.gstatic.com/youtube/img/creator/no_avatar.png'
@@ -87,6 +88,7 @@ export const init = async ({ filename }: { filename: string }) => {
 		UPDATE subscriptions SET firstObservedAt=${new Date().toISOString()}
 		WHERE firstObservedAt IS NULL;
 	`)
+	await migrateVideoSchema(db)
 	return db
 }
 
