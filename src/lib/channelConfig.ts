@@ -4,6 +4,7 @@ import { parseBacklogPolicy } from '../initialBacklog'
 export interface ChannelLists {
 	whitelistedChannelIds?: RawChannelEntry[],
 	blacklistedChannelIds?: RawChannelEntry[],
+	manualChannelIds?: RawChannelEntry[],
 	[key: string]: unknown,
 }
 
@@ -11,7 +12,9 @@ export const parseChannelLists = (value: unknown): ChannelLists => {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) {
 		throw new Error('Channel configuration must be a JSON object.')
 	}
-	for (const key of ['whitelistedChannelIds', 'blacklistedChannelIds']) {
+	for (const key of [
+		'whitelistedChannelIds', 'blacklistedChannelIds', 'manualChannelIds',
+	]) {
 		const entries = (value as Record<string, unknown>)[key]
 		if (entries === undefined) continue
 		if (!Array.isArray(entries)) throw new Error(`${key} must be an array.`)

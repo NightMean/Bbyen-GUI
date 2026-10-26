@@ -277,6 +277,12 @@ blacklist is also a final exclusion in allowlist mode; channel muting still
 applies. Excluded videos are recorded so they are not emailed later when the
 policy changes. Configurations that omit `emailSelectionPolicy` retain the
 legacy whitelist-based discovery behavior. Restart after changing either file.
+In API mode with an explicit policy, `manualChannelIds` in `channels.json`
+can contain channel IDs or per-channel setting objects to track channels that
+are not account subscriptions. Manual-only channels are eligible for email
+unless muted or blacklisted. If a manually tracked channel is also an account
+subscription, the account email policy applies. The source state is updated
+only after a complete successful account refresh.
 The standalone cookie-sync command still imports All-bell channels into the
 whitelist; it does not yet provide ongoing cookie-authoritative reconciliation.
 

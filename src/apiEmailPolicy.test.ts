@@ -104,6 +104,8 @@ test('a failed reconciliation rolls back additions and removals', async () => {
 		await db.run(`INSERT INTO subscriptions
 			(channelId, channelTitle, channelThumbnail) VALUES (?, ?, 'img')`,
 		allowed, allowed)
+		await db.run(`INSERT INTO channel_sources (channelId, apiSubscribed, manual)
+			VALUES (?, 1, 1)`, allowed)
 		await db.exec(`CREATE TRIGGER reject_removal BEFORE UPDATE ON subscriptions
 			WHEN NEW.deleted = 1 BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;`)
 		const service = { subscriptions: { list: vi.fn().mockResolvedValue({
@@ -116,5 +118,53 @@ test('a failed reconciliation rolls back additions and removals', async () => {
 			auth: {} as never, sendErrorEmail: vi.fn() })).rejects.toThrow()
 		expect(await db.all('SELECT channelId, deleted FROM subscriptions'))
 			.toEqual([{ channelId: allowed, deleted: 0 }])
+		expect(await db.all(`SELECT channelId, apiSubscribed, manual
+			FROM channel_sources`)).toEqual([
+			{ channelId: allowed, apiSubscribed: 1, manual: 1 },
+		])
 	} finally { await db.close() }
 })
+
+test('manual-only channels remain tracked and eligible after API refresh',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		try {
+			const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+				whitelistedChannelIds: [], blacklistedChannelIds: [],
+				manualChannelIds: [{ id: other }], notifyOnFirstScan: true,
+				logging: { emailOnError: false } } as unknown as Config
+			const list = vi.fn().mockResolvedValue({ data: {
+				items: [subscription(allowed)],
+			} })
+			const service = {
+				subscriptions: { list },
+				videos: { list: vi.fn().mockResolvedValue({ data: { items: [{
+					snippet: { title: 'Video', channelTitle: 'Creator',
+						publishedAt: '2026-01-01T00:00:00Z',
+						thumbnails: { high: { url: 'image' } } },
+					contentDetails: { duration: 'PT1M' },
+				}] } }) },
+			} as never
+			const auth = {} as never
+			const sendErrorEmail = vi.fn()
+			const sendVideoEmail = vi.fn().mockResolvedValue(undefined)
+			await updateSubscriptions({ db, config, service, auth, sendErrorEmail })
+			expect(await db.all(`SELECT channelId FROM subscriptions
+				WHERE deleted=0 ORDER BY channelId`)).toEqual([
+				{ channelId: allowed }, { channelId: other },
+			])
+			vi.spyOn(RSSParser.prototype, 'parseURL').mockImplementation(
+				async url => ({ items: [{ videoId: String(url).includes(allowed)
+					? 'account-video' : 'manual-video' }] }) as never)
+			await parseFeedsAndNotify({ db, config, service, auth,
+				sendVideoEmail, sendErrorEmail })
+			expect(sendVideoEmail.mock.calls.map(call => call[0].videoId))
+				.toEqual(['manual-video'])
+			list.mockResolvedValue({ data: { items: [] } })
+			await updateSubscriptions({ db, config, service, auth, sendErrorEmail })
+			expect(await db.all(`SELECT channelId FROM subscriptions
+				WHERE deleted=0`)).toEqual([{ channelId: other }])
+			expect(await db.get(`SELECT apiSubscribed, manual FROM channel_sources
+				WHERE channelId=?`, other)).toEqual({ apiSubscribed: 0, manual: 1 })
+		} finally { await db.close() }
+	})

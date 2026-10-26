@@ -24,10 +24,18 @@ test('deduplicates objects and strings while preserving explicit flags', () => {
 		.toEqual([{ id: 'A', notify: false }])
 })
 
+test('preserves manual channel settings in channel configuration', () => {
+	const config = { manualChannelIds: [{ id: 'A', notify: false,
+		initialBacklog: { mode: 'newest', count: 2 } }] }
+	expect(parseChannelLists(config)).toEqual(config)
+})
+
 test.each([null, [], { whitelistedChannelIds: 'A' }, {
 	whitelistedChannelIds: [{ id: 'A', notify: 'false' }],
 }, {
 	whitelistedChannelIds: [{ id: 'A', initialBacklog: { mode: 'newest' } }],
+}, {
+	manualChannelIds: [{ id: 'A', notify: 'false' }],
 }])('rejects invalid channel structures', value => {
 	expect(() => parseChannelLists(value)).toThrow()
 })

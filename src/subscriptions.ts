@@ -179,6 +179,9 @@ export const updateSubscriptionsFromAPI = async (
 	// Get updated list of subs using Google api
 	const updatedSubscriptions: Set<string> = new Set()
 	const channelDetails: Map<string, ChannelDetails> = new Map()
+	const apiSources = new Map<string, {
+		subscriptionId: string | null, subscribedAt: string | null,
+	}>()
 	for await (let sub of subscriptionIterator(service, auth)) {
 
 		const title = sub.snippet?.title
@@ -193,6 +196,13 @@ export const updateSubscriptionsFromAPI = async (
 			throw new Error('Subscription response contains an invalid channel ID; ' +
 				'the previous snapshot was preserved.')
 		}
+		const publishedAt = sub.snippet?.publishedAt
+		apiSources.set(channelId, {
+			subscriptionId: typeof sub.id === 'string' ? sub.id : null,
+			subscribedAt: typeof publishedAt === 'string' &&
+				Number.isFinite(Date.parse(publishedAt))
+				? new Date(publishedAt).toISOString() : null,
+		})
 
 		if (!config.emailSelectionPolicy &&
 				channelIds(config.blacklistedChannelIds).includes(channelId)) {
@@ -221,6 +231,17 @@ export const updateSubscriptionsFromAPI = async (
 			thumbnail: thumbnail ?? DEFAULT_CHANNEL_THUMBNAIL,
 		})
 	}
+	const manualIds = config.emailSelectionPolicy
+		? new Set(channelIds(config.manualChannelIds).map(assertChannelId))
+		: new Set<string>()
+	for (const channelId of manualIds) {
+		updatedSubscriptions.add(channelId)
+		if (!channelDetails.has(channelId)) {
+			channelDetails.set(channelId, {
+				title: channelId, thumbnail: DEFAULT_CHANNEL_THUMBNAIL,
+			})
+		}
+	}
 
 	// Compute difference of both sets to determine new / removed subs
 	const newSubscriptions = new Set(
@@ -236,6 +257,26 @@ export const updateSubscriptionsFromAPI = async (
 	// Add any new subscriptions to the database
 	await db.exec('BEGIN IMMEDIATE')
 	try {
+		if (config.emailSelectionPolicy) {
+			await db.run('UPDATE channel_sources SET apiSubscribed=0, manual=0')
+			const now = new Date().toISOString()
+			for (const [channelId, source] of apiSources) {
+				await db.run(SQL`INSERT INTO channel_sources
+					(channelId, apiSubscribed, apiSubscriptionId, apiSubscribedAt,
+						apiObservedAt)
+					VALUES (${channelId}, 1, ${source.subscriptionId},
+						${source.subscribedAt}, ${now})
+					ON CONFLICT(channelId) DO UPDATE SET apiSubscribed=1,
+						apiSubscriptionId=excluded.apiSubscriptionId,
+						apiSubscribedAt=excluded.apiSubscribedAt,
+						apiObservedAt=excluded.apiObservedAt;`)
+			}
+			for (const channelId of manualIds) {
+				await db.run(SQL`INSERT INTO channel_sources (channelId, manual)
+					VALUES (${channelId}, 1)
+					ON CONFLICT(channelId) DO UPDATE SET manual=1;`)
+			}
+		}
 		await insertNewSubscriptions(
 			db, logger, Array.from(newSubscriptions), channelDetails, true)
 		await removeDeletedSubscriptions(db, logger, removedSubscriptions.values())

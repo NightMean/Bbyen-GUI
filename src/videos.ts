@@ -398,7 +398,12 @@ export const parseFeedsAndNotify = async (
 				],
 			},
 		})
-		const getEligibility = makeEmailEligibility(rest.config)
+		const manualRows = rest.config.mode === 'youtube' &&
+			rest.config.emailSelectionPolicy ? await db.all(`
+				SELECT channelId FROM channel_sources
+				WHERE manual=1 AND apiSubscribed=0`) : []
+		const manualOnly = new Set<string>(manualRows.map(row => row.channelId))
+		const getEligibility = makeEmailEligibility(rest.config, manualOnly)
 
 		const channels: Channel[] = await db.all(SQL`
 			SELECT channelId, channelTitle, channelThumbnail

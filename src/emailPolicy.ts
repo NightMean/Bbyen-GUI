@@ -13,6 +13,7 @@ export const parseEmailSelectionPolicy = (
 export const makeEmailEligibility = (
 	config: Pick<Config, 'mode' | 'emailSelectionPolicy' |
 		'whitelistedChannelIds' | 'blacklistedChannelIds'>,
+	manualOnly: ReadonlySet<string> = new Set(),
 ): (channelId: string, entry?: ChannelEntry) => EmailEligibility => {
 	const allow = new Set(config.whitelistedChannelIds?.map(item => item.id) ??
 		[])
@@ -24,6 +25,7 @@ export const makeEmailEligibility = (
 			return 'eligible'
 		}
 		if (block.has(channelId)) return 'excluded'
+		if (manualOnly.has(channelId)) return 'eligible'
 		if (config.emailSelectionPolicy === 'allowlist' && !allow.has(channelId)) {
 			return 'excluded'
 		}

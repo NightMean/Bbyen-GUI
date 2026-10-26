@@ -72,6 +72,7 @@ export interface Config {
 	emailSelectionPolicy?: EmailSelectionPolicy,
 	whitelistedChannelIds?: ChannelEntry[],
 	blacklistedChannelIds?: ChannelEntry[],
+	manualChannelIds?: ChannelEntry[],
 	channelSettingsById?: Map<string, ChannelEntry>,
 }
 
@@ -310,6 +311,9 @@ export const loadConfig = async (
 			blacklistedChannelIds: await normalizeChannelEntries(
 				normalizeChannel as (c: string) => Promise<string>,
 				lists.blacklistedChannelIds),
+			manualChannelIds: await normalizeChannelEntries(
+				normalizeChannel as (c: string) => Promise<string>,
+				lists.manualChannelIds),
 		}
 	})
 	return {
@@ -317,7 +321,11 @@ export const loadConfig = async (
 		email,
 		whitelistedChannelIds: channels.whitelistedChannelIds,
 		blacklistedChannelIds: channels.blacklistedChannelIds,
+		manualChannelIds: channels.manualChannelIds,
 		channelSettingsById:
-			buildChannelSettingsMap(channels.whitelistedChannelIds),
+			buildChannelSettingsMap(mergeChannelEntries([
+				...(channels.whitelistedChannelIds ?? []),
+				...(channels.manualChannelIds ?? []),
+			])),
 	}
 }
