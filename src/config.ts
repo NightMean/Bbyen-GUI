@@ -185,9 +185,12 @@ export const normalizeChannelFactory = (
 // Fail loud if neither source provides both values.
 export const resolveEmailCredentials = (
 	secrets: { email?: { auth?: { user?: string, pass?: string } } } | null,
+	legacyAuth?: Partial<EmailConfig['auth']>,
 ): { user: string, pass: string } => {
-	const user = process.env.BBYEN_EMAIL_USER ?? secrets?.email?.auth?.user
-	const pass = process.env.BBYEN_EMAIL_PASS ?? secrets?.email?.auth?.pass
+	const user = process.env.BBYEN_EMAIL_USER ??
+		secrets?.email?.auth?.user ?? legacyAuth?.user
+	const pass = process.env.BBYEN_EMAIL_PASS ??
+		secrets?.email?.auth?.pass ?? legacyAuth?.pass
 	if (!user || !pass) {
 		throw new Error([
 			'Email credentials missing.',
@@ -246,14 +249,17 @@ export const loadEmailConfig = async (): Promise<EmailConfig> => {
 			throw err
 		}
 	}
-	const { user, pass } = resolveEmailCredentials(secrets)
+	const { user, pass } = resolveEmailCredentials(secrets, general.email?.auth)
 	return { ...general.email, auth: { user, pass } }
 }
 
 // Read the raw config file without channel normalization (which may call the
 // API). Used at startup to decide the mode before authenticating.
-export const loadConfigRaw = async (): Promise<Config> =>
-	JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
+export const loadConfigRaw = async (): Promise<Config> => ({
+	mode: 'youtube',
+	notifyOnFirstScan: true,
+	...JSON.parse((await fs.readFile(CONFIG_FILE)).toString()),
+})
 
 export const loadConfig = async (
 	service?: youtube_v3.Youtube,
@@ -287,7 +293,7 @@ export const loadConfig = async (
 	}
 
 	// Read general config and validate against the example schema.
-	const general = JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
+	const general = await loadConfigRaw()
 	validateConfig(general)
 
 	// Read channels file (optional arrays inside).
@@ -302,7 +308,7 @@ export const loadConfig = async (
 			throw err
 		}
 	}
-	const { user, pass } = resolveEmailCredentials(secrets)
+	const { user, pass } = resolveEmailCredentials(secrets, general.email?.auth)
 
 	// Merge, inject credentials, normalize channel entries.
 	const merged = {

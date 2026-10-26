@@ -99,6 +99,8 @@ it is mandatory to configure certain values and to set up Google API credentials
 	  `email.auth.pass`). Alternatively, set the environment variables
 	  `BBYEN_EMAIL_USER` and `BBYEN_EMAIL_PASS`, which take precedence over the
 	  file. If both env vars are set, `secrets.json` is not required.
+	  Existing inline `config.json` credentials remain supported as a fallback;
+	  separate secrets and environment variables take precedence.
 
 	- **`channels.json`** — the channel whitelist / blacklist. See
 	  [Channel Whitelist and Blacklist](#channel-whitelist-and-blacklist).

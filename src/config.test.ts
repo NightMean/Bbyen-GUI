@@ -11,7 +11,9 @@ import  {
 	normalizeChannelEntries,
 	buildChannelSettingsMap,
 	loadEmailConfig,
+	loadConfigRaw,
 	CONFIG_FILE,
+	SECRETS_FILE,
 } from './config'
 
 vi.mock('fs/promises')
@@ -102,6 +104,32 @@ describe('buildChannelSettingsMap', () => {
 })
 
 describe('loadEmailConfig', () => {
+	test('supports inline credentials from existing configurations', async () => {
+		vi.stubEnv('BBYEN_EMAIL_USER', undefined)
+		vi.stubEnv('BBYEN_EMAIL_PASS', undefined)
+		vi.mocked(fs.readFile).mockImplementation(async file => {
+			if (file === CONFIG_FILE) return Buffer.from(JSON.stringify({
+				email: { auth: { user: 'inline@example.com', pass: 'fixture' } },
+			}))
+			throw Object.assign(new Error('Missing fixture'), { code: 'ENOENT' })
+		})
+		expect((await loadEmailConfig()).auth).toEqual({
+			user: 'inline@example.com', pass: 'fixture',
+		})
+	})
+
+	test('prefers separate secrets over legacy inline credentials', async () => {
+		vi.stubEnv('BBYEN_EMAIL_USER', undefined)
+		vi.stubEnv('BBYEN_EMAIL_PASS', undefined)
+		vi.mocked(fs.readFile).mockImplementation(async file => {
+			const user = file === SECRETS_FILE ? 'secret' : 'inline'
+			return Buffer.from(JSON.stringify({
+				email: { auth: { user, pass: 'fixture' } },
+			}))
+		})
+		expect((await loadEmailConfig()).auth.user).toBe('secret')
+	})
+
 	test('reads email block and resolves env credentials', async () => {
 		vi.stubEnv('BBYEN_EMAIL_USER', 'u@example.com')
 		vi.stubEnv('BBYEN_EMAIL_PASS', 'pw')
@@ -121,5 +149,23 @@ describe('loadEmailConfig', () => {
 		expect(email.host).toBe('h')
 		expect(fs.writeFile).not.toHaveBeenCalled()
 		expect(fs.unlink).not.toHaveBeenCalled()
+	})
+})
+
+describe('loadConfigRaw', () => {
+	test('applies documented defaults to existing configurations', async () => {
+		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from('{"port":9020}'))
+		expect(await loadConfigRaw()).toMatchObject({
+			mode: 'youtube', notifyOnFirstScan: true, port: 9020,
+		})
+	})
+
+	test('preserves explicit mode and first-scan settings', async () => {
+		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from(JSON.stringify({
+			mode: 'whitelist', notifyOnFirstScan: false,
+		})))
+		expect(await loadConfigRaw()).toMatchObject({
+			mode: 'whitelist', notifyOnFirstScan: false,
+		})
 	})
 })
