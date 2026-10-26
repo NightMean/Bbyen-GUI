@@ -1,4 +1,5 @@
 import type { ChannelEntry, RawChannelEntry } from '../config'
+import { parseBacklogPolicy } from '../initialBacklog'
 
 export interface ChannelLists {
 	whitelistedChannelIds?: RawChannelEntry[],
@@ -24,6 +25,9 @@ export const parseChannelLists = (value: unknown): ChannelLists => {
 						typeof entry[flag] !== 'boolean') {
 					throw new Error(`${key}.${flag} must be a boolean.`)
 				}
+			}
+			if (typeof entry === 'object' && entry.initialBacklog !== undefined) {
+				parseBacklogPolicy(entry.initialBacklog, `${key}.initialBacklog`)
 			}
 		}
 	}

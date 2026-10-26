@@ -109,6 +109,13 @@ in youtube mode. For Docker, use the files in `data/` described above.
 	  a database: on service startup,
 	  interrupted email attempts are marked delivery-uncertain and are not resent
 	  automatically. An explicit SMTP rejection is recorded as failed.
+	  For a newest-N initial backlog, add
+	  `"initialBacklog": { "mode": "newest", "count": 3 }` to `config.json`.
+	  Modes `all` and `none` use `{ "mode": "all" }` or `{ "mode": "none" }`.
+	  This policy overrides the global `notifyOnFirstScan` value. A channel's
+	  `initialBacklog` overrides both global settings; a channel's legacy
+	  `notifyOnFirstScan` overrides the global policy. The first successful feed
+	  determines the initial set, even if video processing needs a retry.
 
 	- **`secrets.json`** — email credentials (`email.auth.user` and
 	  `email.auth.pass`). Alternatively, set the environment variables

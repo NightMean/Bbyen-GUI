@@ -51,6 +51,19 @@ export const migrateVideoSchema = async (
 				INSERT INTO video_schema_migrations (version) VALUES (1);
 			`)
 		}
+		const backlogMigration = await db.get(
+			'SELECT version FROM video_schema_migrations WHERE version = 2')
+		if (!backlogMigration) {
+			await db.exec(`
+				CREATE TABLE initial_backlog_videos (
+					channelId TEXT NOT NULL,
+					videoId TEXT NOT NULL,
+					notify INTEGER NOT NULL CHECK (notify IN (0, 1)),
+					PRIMARY KEY (channelId, videoId)
+				);
+				INSERT INTO video_schema_migrations (version) VALUES (2);
+			`)
+		}
 		await db.exec('COMMIT')
 	} catch (err) {
 		await db.exec('ROLLBACK')

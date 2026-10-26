@@ -3,6 +3,7 @@ import sqlite3 from 'sqlite3'
 import * as sqlite from 'sqlite'
 import { Config } from './config'
 import { updateSubscriptionsFromWhitelistNoApi } from './subscriptions'
+import { migrateVideoSchema } from './videoSchema'
 
 vi.mock('axios', () => ({ default: vi.fn().mockResolvedValue({
 	data: '<meta property="og:image" content="https://example.com/avatar">',
@@ -23,6 +24,10 @@ describe('whitelist subscription lifecycle', () => {
 			deletedReason TEXT, deletedAt TEXT, firstObservedAt TEXT,
 			bellState TEXT, bellUpdatedAt TEXT
 		)`)
+		await db.exec(`CREATE TABLE videos (
+			videoId TEXT UNIQUE, channelId TEXT NOT NULL
+		)`)
+		await migrateVideoSchema(db)
 	})
 	afterEach(async () => { await db.close() })
 
@@ -64,12 +69,22 @@ describe('whitelist subscription lifecycle', () => {
 		await db.run(`INSERT INTO subscriptions
 			(channelId,channelTitle,deleted,deletedReason,firstObservedAt,bellState)
 			VALUES (?, 'Creator', 1, 'unsubscribed', '2026-01-01', 'all')`, id)
+		await db.run(`INSERT INTO video_scan_baselines VALUES
+			(?, '2026-01-01')`, id)
+		await db.run('INSERT INTO initial_backlog_videos VALUES (?, ?, 1)',
+			id, 'old')
+		await db.run('INSERT INTO videos VALUES (\'processed\', ?)', id)
 		await updateSubscriptionsFromWhitelistNoApi({
 			db, config: { whitelistedChannelIds: [{ id }] } as Config, logger,
 		})
 		expect(await db.get('SELECT * FROM subscriptions')).toMatchObject({
 			id: 1, deleted: 0, deletedReason: null,
 			firstObservedAt: '2026-01-01', bellState: 'all',
+		})
+		expect(await db.get('SELECT * FROM video_scan_baselines')).toBeUndefined()
+		expect(await db.get('SELECT * FROM initial_backlog_videos')).toBeUndefined()
+		expect(await db.get('SELECT videoId FROM videos')).toEqual({
+			videoId: 'processed',
 		})
 	})
 

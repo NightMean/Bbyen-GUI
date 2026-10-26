@@ -11,6 +11,7 @@ import configSchema from '../config.example.json'
 import { resolveChannelId } from './lib/resolveChannelId'
 import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
 import { updateJsonFile } from './lib/jsonFile'
+import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
@@ -33,12 +34,14 @@ export interface ChannelEntry {
 	id: string,
 	notify?: boolean,
 	notifyOnFirstScan?: boolean,
+	initialBacklog?: BacklogPolicy,
 }
 
 export type RawChannelEntry = string | {
 	id: string,
 	notify?: boolean,
 	notifyOnFirstScan?: boolean,
+	initialBacklog?: BacklogPolicy,
 }
 
 export interface Config {
@@ -62,6 +65,7 @@ export interface Config {
 		emailOnError: boolean,
 	},
 	notifyOnFirstScan: boolean,
+	initialBacklog?: BacklogPolicy,
 	whitelistedChannelIds?: ChannelEntry[],
 	blacklistedChannelIds?: ChannelEntry[],
 	channelSettingsById?: Map<string, ChannelEntry>,
@@ -227,7 +231,7 @@ export const buildChannelSettingsMap = (
 ): Map<string, ChannelEntry> => {
 	const map = new Map<string, ChannelEntry>()
 	for (const entry of entries ?? []) {
-		if (entry.notify !== undefined ||
+		if (entry.initialBacklog !== undefined || entry.notify !== undefined ||
 				entry.notifyOnFirstScan !== undefined) {
 			map.set(entry.id, entry)
 		}
@@ -256,11 +260,18 @@ export const loadEmailConfig = async (): Promise<EmailConfig> => {
 
 // Read the raw config file without channel normalization (which may call the
 // API). Used at startup to decide the mode before authenticating.
-export const loadConfigRaw = async (): Promise<Config> => ({
-	mode: 'youtube',
-	notifyOnFirstScan: true,
-	...JSON.parse((await fs.readFile(CONFIG_FILE)).toString()),
-})
+export const loadConfigRaw = async (): Promise<Config> => {
+	const config = {
+		mode: 'youtube',
+		notifyOnFirstScan: true,
+		...JSON.parse((await fs.readFile(CONFIG_FILE)).toString()),
+	}
+	if (config.initialBacklog !== undefined) {
+		config.initialBacklog = parseBacklogPolicy(
+			config.initialBacklog, 'initialBacklog')
+	}
+	return config
+}
 
 export const loadConfig = async (
 	service?: youtube_v3.Youtube,

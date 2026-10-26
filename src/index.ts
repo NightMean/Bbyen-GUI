@@ -10,6 +10,7 @@ import * as mailer from './email'
 import { parseFeedsAndNotify } from './videos'
 import { updateSubscriptions } from './subscriptions'
 import setIntervalInstant from './lib/setIntervalInstant'
+import { serializeJobs } from './lib/serializeJobs'
 import { ISendErrorEmail } from './email'
 import { classifyError } from './lib/classifyError'
 import { notifyError } from './lib/alertState'
@@ -67,18 +68,22 @@ const main = async () => {
 		const videosTimer = assertTimerWithinLimit(
 			'videos', parseDuration(config.timers.videos) as number)
 
+		// Both jobs share one SQLite connection and may open transactions.
+		const jobs = serializeJobs()
 		setIntervalInstant(
-			updateSubscriptions,
+			() => jobs.run('subscriptions', () => updateSubscriptions(
+				{ db, service, auth, config, sendErrorEmail },
+			)).catch(err => logger.error(err)),
 			subscriptionsTimer,
 			config.kickoff.subscriptions,
-			{ db, service, auth, config, sendErrorEmail },
 		)
 
 		setIntervalInstant(
-			parseFeedsAndNotify,
+			() => jobs.run('videos', () => parseFeedsAndNotify(
+				{ db, service, auth, sendVideoEmail, config, sendErrorEmail },
+			)).catch(err => logger.error(err)),
 			videosTimer,
 			config.kickoff.videos,
-			{ db, service, auth, sendVideoEmail, config, sendErrorEmail },
 		)
 
 	} catch (err) {

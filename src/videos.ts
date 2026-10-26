@@ -6,10 +6,13 @@ import SQL from 'sql-template-strings'
 import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
 import { parse as parseDuration, Duration } from 'duration-fns'
+import {
+	BacklogItem, BacklogPolicy, chooseInitialVideos,
+} from './initialBacklog'
 
 import setupLogger from './lib/logger'
 import { SendVideoEmail, ISendErrorEmail } from './email'
-import { Config, ChannelEntry } from './config'
+import { Config } from './config'
 import findNullishValues from './lib/findNullishValues'
 import { classifyError } from './lib/classifyError'
 import { notifyError, clearErrorState } from './lib/alertState'
@@ -25,24 +28,6 @@ const formatDuration = (duration: Duration) => {
 	const seconds = String(duration.seconds).padStart(2, '0')
 
 	return [ hours, minutes, seconds ].join('')
-}
-
-// Decide whether to send an email for a video from a given channel.
-// Muted channels never notify. On a channel's first scan (no videos yet
-// recorded), honor the per-channel override else the global flag. Otherwise
-// always notify. The video is recorded in the DB regardless of this result.
-export const shouldSendEmail = (
-	config: Pick<Config, 'notifyOnFirstScan'>,
-	entry: ChannelEntry | undefined,
-	isFirstScan: boolean,
-): boolean => {
-	if (entry?.notify === false) {
-		return false
-	}
-	if (isFirstScan) {
-		return entry?.notifyOnFirstScan ?? config.notifyOnFirstScan
-	}
-	return true
 }
 
 // Helper to deal with YouTube data API giving back a bunch of options
@@ -66,7 +51,7 @@ interface Channel {
 interface IGetChannelsVideos {
 	channel: Channel,
 	logger: Logger,
-	auth: OAuth2Client,
+	auth?: OAuth2Client,
 	service: youtube_v3.Youtube,
 	parser: RSSParser,
 	sendVideoEmail: SendVideoEmail,
@@ -103,7 +88,6 @@ const getChannelsVideos = async ({
 	const baseline = await db.get(SQL`
 		SELECT channelId FROM video_scan_baselines WHERE channelId=${channelId};
 	`)
-	const isFirstScan = !baseline
 
 	const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
 	let feedError: Error | null = null
@@ -130,6 +114,47 @@ const getChannelsVideos = async ({
 		await alert(feedError)
 		return outcome
 	}
+
+	const entry = config.channelSettingsById?.get(channelId)
+	if (!baseline) {
+		const items = feed.items as BacklogItem[]
+		if (items.some(item => typeof item.videoId !== 'string' || !item.videoId)) {
+			await alert(new Error('Feed contains an item without a video ID.'))
+			return outcome
+		}
+		const candidates = items.filter(item => !videosSent.has(item.videoId))
+		const legacy = entry?.notifyOnFirstScan ?? config.notifyOnFirstScan
+		const policy: BacklogPolicy = entry?.initialBacklog ??
+			(entry?.notifyOnFirstScan !== undefined ?
+				{ mode: legacy ? 'all' : 'none' } : config.initialBacklog) ??
+			{ mode: legacy ? 'all' : 'none' }
+		const selected = chooseInitialVideos(candidates, policy)
+		if (policy.mode === 'newest' && candidates.some(item =>
+			!Number.isFinite(Date.parse(item.isoDate ?? item.pubDate ?? '')))) {
+			logger.warn('Initial feed has missing or invalid publication dates; ' +
+				'newest selection used video IDs to break ties.')
+		}
+		// Commit the entire first-feed decision before processing any item.
+		await db.exec('BEGIN IMMEDIATE')
+		try {
+			await db.run(SQL`INSERT INTO video_scan_baselines (channelId, completedAt)
+				VALUES (${channelId}, ${new Date().toISOString()});`)
+			for (const videoId of new Set(candidates.map(item => item.videoId))) {
+				const notify = selected.has(videoId) ? 1 : 0
+				await db.run(SQL`INSERT INTO initial_backlog_videos
+					(channelId, videoId, notify)
+					VALUES (${channelId}, ${videoId}, ${notify});`)
+			}
+			await db.exec('COMMIT')
+		} catch (err) {
+			await db.exec('ROLLBACK')
+			throw err
+		}
+	}
+	const initialVideos = new Map((await db.all(SQL`
+		SELECT videoId, notify FROM initial_backlog_videos
+		WHERE channelId=${channelId};
+	`)).map(row => [row.videoId as string, row.notify as number]))
 
 	// In whitelist mode there is no API channel title; the RSS feed title is the
 	// channel name.
@@ -224,8 +249,8 @@ const getChannelsVideos = async ({
 				continue
 			}
 
-			const entry = config.channelSettingsById?.get(channelId)
-			const sendEmail = shouldSendEmail(config, entry, isFirstScan)
+			const sendEmail = entry?.notify !== false &&
+				(initialVideos.get(videoId) ?? 1) === 1
 			const emailOutcome = sendEmail ? 'pending' :
 				entry?.notify === false ? 'muted' : 'backlog_skipped'
 			const seconds = videoDuration
@@ -318,18 +343,12 @@ const getChannelsVideos = async ({
 		}
 	}
 
-	if (!outcome.failed) {
-		await db.run(SQL`
-			INSERT OR IGNORE INTO video_scan_baselines (channelId, completedAt)
-			VALUES (${channelId}, ${new Date().toISOString()});
-		`)
-	}
 	return outcome
 }
 
 interface IParseFeedsAndNotify {
 	db: sqlite.Database,
-	auth: OAuth2Client,
+	auth?: OAuth2Client,
 	service: youtube_v3.Youtube,
 	sendVideoEmail: SendVideoEmail,
 	config: Config,
@@ -343,6 +362,9 @@ export const parseFeedsAndNotify = async (
 	try {
 
 		logger.info('Checking for new videos...')
+		if (rest.config.mode !== 'whitelist' && !rest.auth) {
+			throw new Error('YouTube authorization is required for API video checks.')
+		}
 
 		const parser = new RSSParser({
 			customFields: {

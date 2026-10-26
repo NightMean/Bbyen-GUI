@@ -45,7 +45,7 @@ interface ChannelDetails {
 interface IUpdateSubscriptions {
 	db: sqlite.Database,
 	service: youtube_v3.Youtube,
-	auth: OAuth2Client,
+	auth?: OAuth2Client,
 	config: Config,
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
 }
@@ -87,24 +87,40 @@ const insertNewSubscriptions = async (
 	`)
 
 	try {
-		for (const [i, channelId] of newSubscriptions.entries()) {
-			const res = channelDetails.get(channelId)
+		await db.exec('BEGIN IMMEDIATE')
+		try {
+			for (const [i, channelId] of newSubscriptions.entries()) {
+				const res = channelDetails.get(channelId)
 
-			if (!res) {
-				logger.warn([
-					`Could not find channel ID ${channelId} in channelDetails.`,
-					'Skipping.',
-				].join(' '))
-				continue
+				if (!res) {
+					logger.warn([
+						`Could not find channel ID ${channelId} in channelDetails.`,
+						'Skipping.',
+					].join(' '))
+					continue
+				}
+
+				const { title, thumbnail } = res
+
+				logger.info(
+					`${i+1}/${newSubscriptions.length} New subscription: ${title}`)
+
+				const existing = await db.get(SQL`
+				SELECT deleted, deletedReason FROM subscriptions
+				WHERE channelId=${channelId};`)
+				if (existing?.deleted && existing.deletedReason !== 'terminated') {
+					await db.run(SQL`DELETE FROM video_scan_baselines
+					WHERE channelId=${channelId};`)
+					await db.run(SQL`DELETE FROM initial_backlog_videos
+					WHERE channelId=${channelId};`)
+				}
+				await stmtInsert.run(
+					channelId, title, thumbnail, new Date().toISOString())
 			}
-
-			const { title, thumbnail } = res
-
-			logger.info(
-				`${i+1}/${newSubscriptions.length} New subscription: ${title}`)
-
-			await stmtInsert.run(
-				channelId, title, thumbnail, new Date().toISOString())
+			await db.exec('COMMIT')
+		} catch (err) {
+			await db.exec('ROLLBACK')
+			throw err
 		}
 	} finally {
 		await stmtInsert.finalize()
@@ -149,6 +165,7 @@ function* chunks<T>(arr: T[], n: number) {
 export const updateSubscriptionsFromAPI = async (
 	{ db, service, auth, config }: IUpdateSubscriptions
 ) => {
+	if (!auth) throw new Error('YouTube authorization is required for API sync.')
 	const logger = await setupLogger({ label: 'subscriptions' })
 
 	logger.info('Checking subscriptions...')
@@ -228,6 +245,7 @@ export const updateSubscriptionsFromAPI = async (
 export const updateSubscriptionsFromWhitelist = async (
 	{ db, auth, service, config }: IUpdateSubscriptions
 ) => {
+	if (!auth) throw new Error('YouTube authorization is required for API sync.')
 	const logger = await setupLogger({ label: 'subscriptions' })
 
 	// Read all known subs from the database

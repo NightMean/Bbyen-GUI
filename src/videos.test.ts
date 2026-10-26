@@ -2,49 +2,14 @@ import { expect, describe, test, vi, beforeEach, afterEach } from 'vitest'
 import RSSParser from 'rss-parser'
 import * as sqlite from 'sqlite'
 
-import { shouldSendEmail, parseFeedsAndNotify } from './videos'
-import { ChannelEntry, Config } from './config'
+import { parseFeedsAndNotify } from './videos'
+import { Config } from './config'
 import { init } from './database'
 import { _resetAlertState, notifyError } from './lib/alertState'
 
 vi.mock('./lib/logger', () => ({ default: async () => ({
 	info: vi.fn(), verbose: vi.fn(), warn: vi.fn(), error: vi.fn(),
 }) }))
-
-describe('shouldSendEmail', () => {
-	const on = { notifyOnFirstScan: true }
-	const off = { notifyOnFirstScan: false }
-
-	test('no entry, not first scan, global on → send', () => {
-		expect(shouldSendEmail(on, undefined, false)).toBe(true)
-	})
-	test('no entry, first scan, global on → send', () => {
-		expect(shouldSendEmail(on, undefined, true)).toBe(true)
-	})
-	test('no entry, first scan, global off → skip', () => {
-		expect(shouldSendEmail(off, undefined, true)).toBe(false)
-	})
-	test('muted, not first scan → skip', () => {
-		const e: ChannelEntry = { id: 'A', notify: false }
-		expect(shouldSendEmail(on, e, false)).toBe(false)
-	})
-	test('muted, first scan → skip', () => {
-		const e: ChannelEntry = { id: 'A', notify: false }
-		expect(shouldSendEmail(on, e, true)).toBe(false)
-	})
-	test('per-channel notifyOnFirstScan false overrides global on', () => {
-		const e: ChannelEntry = { id: 'A', notifyOnFirstScan: false }
-		expect(shouldSendEmail(on, e, true)).toBe(false)
-	})
-	test('per-channel notifyOnFirstScan true overrides global off', () => {
-		const e: ChannelEntry = { id: 'A', notifyOnFirstScan: true }
-		expect(shouldSendEmail(off, e, true)).toBe(true)
-	})
-	test('per-channel notifyOnFirstScan false, not first scan → send', () => {
-		const e: ChannelEntry = { id: 'A', notifyOnFirstScan: false }
-		expect(shouldSendEmail(on, e, false)).toBe(true)
-	})
-})
 
 describe('video failure recovery', () => {
 	let db: sqlite.Database
@@ -147,6 +112,37 @@ describe('video failure recovery', () => {
 		expect(sendVideoEmail).not.toHaveBeenCalled()
 	})
 
+	test('persists newest selection through metadata failures and feed changes',
+		async () => {
+			const newest = { ...config, initialBacklog: { mode: 'newest', count: 1 } }
+			const item = (id: string, date: string) => ({
+				videoId: id, title: id, isoDate: date,
+			})
+			vi.mocked(RSSParser.prototype.parseURL)
+				.mockResolvedValueOnce({ items: [
+					item('old', '2026-01-01T00:00:00Z'),
+					item('new', '2026-01-02T00:00:00Z'),
+				] } as never)
+				.mockResolvedValueOnce({ items: [
+					item('later', '2026-01-03T00:00:00Z'),
+					item('new', '2026-01-02T00:00:00Z'),
+				] } as never)
+			list.mockResolvedValueOnce({ data: { items: [] } })
+			const details = { data: { items: [{
+				snippet: { publishedAt: '2026-01-02T00:00:00Z', title: 'Video',
+					channelTitle: 'Creator', thumbnails: { high: { url: 'thumb' } } },
+				contentDetails: { duration: 'PT1M' },
+			}] } }
+			list.mockRejectedValueOnce(new Error('invalid_grant'))
+			list.mockResolvedValue(details)
+			await parseFeedsAndNotify({ ...args(), config: newest } as never)
+			await parseFeedsAndNotify({ ...args(), config: newest } as never)
+			expect(sendVideoEmail.mock.calls.map(call => call[0].videoId))
+				.toEqual(['later', 'new'])
+			expect(await db.get(`SELECT notify FROM initial_backlog_videos
+				WHERE videoId='old'`)).toEqual({ notify: 0 })
+		})
+
 	test('records metadata and skipped backlog outcome', async () => {
 		const manual = { ...config, mode: 'whitelist', notifyOnFirstScan: false }
 		await parseFeedsAndNotify({ ...args(), config: manual } as never)
@@ -154,6 +150,49 @@ describe('video failure recovery', () => {
 			WHERE videoId='new-video'`)).toEqual({
 			title: 'Video', emailOutcome: 'backlog_skipped',
 		})
+	})
+
+	test('channel policy overrides the global backlog policy', async () => {
+		const manual = {
+			...config, mode: 'whitelist', initialBacklog: { mode: 'none' },
+			channelSettingsById: new Map([['UCfixture', {
+				id: 'UCfixture', initialBacklog: { mode: 'all' },
+			}]]),
+		}
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+	})
+
+	test('emails only the newest N items from the initial feed', async () => {
+		const manual = { ...config, mode: 'whitelist',
+			initialBacklog: { mode: 'newest', count: 1 } }
+		vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({ items: [
+			{ videoId: 'older', title: 'Old', isoDate: '2026-01-01T00:00:00Z' },
+			{ videoId: 'newer', title: 'New', isoDate: '2026-01-02T00:00:00Z' },
+		] } as never)
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		expect(sendVideoEmail.mock.calls.map(call => call[0].videoId))
+			.toEqual(['newer'])
+		expect(await db.get(`SELECT emailOutcome FROM video_observations
+			WHERE videoId='older'`)).toEqual({ emailOutcome: 'backlog_skipped' })
+	})
+
+	test('unmuting does not replay muted videos', async () => {
+		const muted = { ...config, mode: 'whitelist', channelSettingsById:
+			new Map([['UCfixture', { id: 'UCfixture', notify: false }]]) }
+		await parseFeedsAndNotify({ ...args(), config: muted } as never)
+		vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({ items: [
+			{ videoId: 'new-video', title: 'Video',
+				isoDate: '2026-01-01T00:00:00Z' },
+			{ videoId: 'later', title: 'Later',
+				isoDate: '2026-01-02T00:00:00Z' },
+		] } as never)
+		await parseFeedsAndNotify({ ...args(), config:
+			{ ...muted, channelSettingsById: new Map() } } as never)
+		expect(sendVideoEmail.mock.calls.map(call => call[0].videoId))
+			.toEqual(['later'])
+		expect(await db.get(`SELECT emailOutcome FROM video_observations
+			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'muted' })
 	})
 
 	test('does not resend a video when email delivery is uncertain', async () => {

@@ -107,6 +107,11 @@ describe('buildChannelSettingsMap', () => {
 	test('undefined yields empty map', () => {
 		expect(buildChannelSettingsMap(undefined).size).toBe(0)
 	})
+	test('includes a channel with a backlog policy', () => {
+		const policy = { mode: 'newest' as const, count: 2 }
+		expect(buildChannelSettingsMap([{ id: 'A', initialBacklog: policy }])
+			.get('A')).toEqual({ id: 'A', initialBacklog: policy })
+	})
 })
 
 describe('loadEmailConfig', () => {
@@ -159,6 +164,12 @@ describe('loadEmailConfig', () => {
 })
 
 describe('loadConfigRaw', () => {
+	test('rejects invalid global backlog policy', async () => {
+		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from(JSON.stringify({
+			initialBacklog: { mode: 'newest', count: 0 },
+		})))
+		await expect(loadConfigRaw()).rejects.toThrow('initialBacklog')
+	})
 	test('applies documented defaults to existing configurations', async () => {
 		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from('{"port":9020}'))
 		expect(await loadConfigRaw()).toMatchObject({

@@ -26,6 +26,8 @@ test('deduplicates objects and strings while preserving explicit flags', () => {
 
 test.each([null, [], { whitelistedChannelIds: 'A' }, {
 	whitelistedChannelIds: [{ id: 'A', notify: 'false' }],
+}, {
+	whitelistedChannelIds: [{ id: 'A', initialBacklog: { mode: 'newest' } }],
 }])('rejects invalid channel structures', value => {
 	expect(() => parseChannelLists(value)).toThrow()
 })
