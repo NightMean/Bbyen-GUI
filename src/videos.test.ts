@@ -52,8 +52,38 @@ describe('video failure recovery', () => {
 	test('alerts on RSS failures instead of clearing the outage', async () => {
 		vi.mocked(RSSParser.prototype.parseURL)
 			.mockRejectedValue(new Error('RSS timeout'))
-		await parseFeedsAndNotify(args())
+		const result = await parseFeedsAndNotify(args())
 		expect(sendErrorEmail).toHaveBeenCalledTimes(1)
+		expect(result).toMatchObject({ status: 'failed', failed: 1, total: 1 })
+	})
+
+	test('reports partial success when a channel feed fails', async () => {
+		await db.run(`INSERT INTO subscriptions
+			(channelId,channelTitle,channelThumbnail)
+			VALUES ('UCsecond', 'Second', 'avatar')`)
+		vi.mocked(RSSParser.prototype.parseURL).mockImplementation(async url => {
+			if (String(url).includes('UCsecond')) throw new Error('RSS timeout')
+			return { title: 'Creator', items: [] } as never
+		})
+		const result = await parseFeedsAndNotify({ ...args(), config: {
+			...config, mode: 'whitelist',
+		} } as never)
+		expect(result).toMatchObject({ status: 'partial', total: 2,
+			succeeded: 1, failed: 1, skipped: 0 })
+	})
+
+	test('reports skipped channels after SMTP failure', async () => {
+		await db.run(`INSERT INTO subscriptions
+			(channelId,channelTitle,channelThumbnail)
+			VALUES ('UCsecond', 'Second', 'avatar')`)
+		sendVideoEmail.mockRejectedValueOnce(Object.assign(new Error('rejected'), {
+			responseCode: 550,
+		}))
+		const result = await parseFeedsAndNotify({ ...args(), config: {
+			...config, mode: 'whitelist',
+		} } as never)
+		expect(result).toMatchObject({ status: 'failed', total: 2,
+			succeeded: 0, failed: 1, skipped: 1, failedChannels: ['UCfixture'] })
 	})
 
 	test('alerts again after API recovery and recurrence', async () => {

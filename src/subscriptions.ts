@@ -14,6 +14,7 @@ import { notifyError, clearErrorState } from './lib/alertState'
 import { assertChannelId, isChannelId } from './lib/channelId'
 import { ISendErrorEmail } from './email'
 import { DEFAULT_CHANNEL_THUMBNAIL } from './database'
+import { RefreshResult } from './refreshResult'
 
 // Extract canonical channel ids from a list of normalized channel entries.
 const channelIds = (entries?: ChannelEntry[]): string[] =>
@@ -386,7 +387,9 @@ export const updateSubscriptionsFromWhitelistNoApi = async (
 	await removeDeletedSubscriptions(db, logger, removedSubscriptions.values())
 }
 
-export const updateSubscriptions = async (args: IUpdateSubscriptions) => {
+export const updateSubscriptions = async (
+	args: IUpdateSubscriptions,
+): Promise<RefreshResult> => {
 	const logger = await setupLogger({ label: 'subscriptions' })
 
 	try {
@@ -405,14 +408,17 @@ export const updateSubscriptions = async (args: IUpdateSubscriptions) => {
 		if (args.config.mode !== 'whitelist') {
 			clearErrorState([ 'auth', 'quota' ], 'subscriptions')
 		}
+		return { status: 'success', total: 1, succeeded: 1, failed: 0,
+			skipped: 0, failedChannels: [] }
 
 	} catch (err) {
-		logger.debug(JSON.stringify(err, null, '\t'))
 		await notifyError(classifyError(err), err, {
 			source: 'subscriptions',
 			sendErrorEmail: args.sendErrorEmail,
 			emailOnError: args.config.logging.emailOnError,
 			logger,
 		})
+		return { status: 'failed', total: 1, succeeded: 0, failed: 1,
+			skipped: 0, failedChannels: [], errorCategory: classifyError(err) }
 	}
 }

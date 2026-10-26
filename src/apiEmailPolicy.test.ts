@@ -79,6 +79,19 @@ test('incomplete API snapshots do not remove existing channels', async () => {
 	} finally { await db.close() }
 })
 
+test('subscription refresh reports API failures to its caller', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		const service = { subscriptions: { list: vi.fn()
+			.mockRejectedValue(new Error('invalid_grant')) } } as never
+		const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+			logging: { emailOnError: false } } as unknown as Config
+		const result = await updateSubscriptions({ db, config, service,
+			auth: {} as never, sendErrorEmail: vi.fn() })
+		expect(result).toMatchObject({ status: 'failed', errorCategory: 'auth' })
+	} finally { await db.close() }
+})
+
 test('repeated API page tokens preserve the previous snapshot', async () => {
 	const db = await init({ filename: ':memory:' })
 	try {

@@ -16,7 +16,8 @@ import setupLogger from './lib/logger'
 import { SendVideoEmail, ISendErrorEmail } from './email'
 import { ChannelEntry, Config } from './config'
 import findNullishValues from './lib/findNullishValues'
-import { classifyError } from './lib/classifyError'
+import { classifyError, ErrorCategory } from './lib/classifyError'
+import { RefreshResult } from './refreshResult'
 import { notifyError, clearErrorState } from './lib/alertState'
 import {
 	isChannelTerminatedOnYouTube,
@@ -81,9 +82,13 @@ const getChannelsVideos = async ({
 	getEligibility,
 }: IGetChannelsVideos) => {
 	const { channelId, channelThumbnail } = channel
-	const outcome = { failed: false, stop: false, checkedYouTube: false }
+	const outcome: { failed: boolean; stop: boolean; checkedYouTube: boolean;
+		category?: ErrorCategory } = {
+			failed: false, stop: false, checkedYouTube: false,
+		}
 	const alert = async (err: unknown) => {
 		outcome.failed = true
+		outcome.category ??= classifyError(err)
 		await notifyError(classifyError(err), err, {
 			source: 'videos', sendErrorEmail,
 			emailOnError: config.logging.emailOnError, logger,
@@ -205,6 +210,7 @@ const getChannelsVideos = async ({
 
 				if (details === undefined) {
 					logger.warn(`Video list is unedfined for video '${videoId}'`)
+					await alert(new Error('Video metadata is unavailable.'))
 					continue
 				}
 
@@ -249,6 +255,7 @@ const getChannelsVideos = async ({
 					`Could not find all required fields for video '${videoId}'`,
 					{ missingKeys },
 				)
+				await alert(new Error('Video metadata is incomplete.'))
 				continue
 			}
 
@@ -380,8 +387,20 @@ interface IParseFeedsAndNotify {
 }
 export const parseFeedsAndNotify = async (
 	{ db, ...rest }: IParseFeedsAndNotify,
-) => {
+): Promise<RefreshResult> => {
 	const logger = await setupLogger({ label: 'videos' })
+	let total: number | null = null
+	let succeeded = 0
+	let failed = 0
+	let activeChannel: string | undefined
+	let category: ErrorCategory | undefined
+	const failedChannels: string[] = []
+	const result = (): RefreshResult => ({
+		status: failed ? succeeded ? 'partial' : 'failed' : 'success',
+		total, succeeded, failed,
+		skipped: total === null ? 0 : total - succeeded - failed,
+		failedChannels, ...(category ? { errorCategory: category } : {}),
+	})
 
 	try {
 
@@ -410,16 +429,17 @@ export const parseFeedsAndNotify = async (
 			FROM subscriptions
 			WHERE deleted=0;
 		`)
+		total = channels.length
 
-		let failed = false
 		let checkedYouTube = false
 		for (const [i, channel] of channels.entries()) {
+			activeChannel = channel.channelId
 			logger.verbose([
 				`${i + 1}/${channels.length}`,
 				`Checking channel ${channel.channelTitle} (${channel.channelId})`,
 			].join(' '))
 
-			const result = await getChannelsVideos({
+			const channelResult = await getChannelsVideos({
 				channel,
 				parser,
 				logger,
@@ -428,10 +448,17 @@ export const parseFeedsAndNotify = async (
 				...rest
 			})
 
-			failed ||= result.failed
-			checkedYouTube ||= result.checkedYouTube
-			if (result.stop) {
-				return
+			if (channelResult.failed) {
+				failed++
+				failedChannels.push(channel.channelId)
+				category ??= channelResult.category
+			} else {
+				succeeded++
+			}
+			activeChannel = undefined
+			checkedYouTube ||= channelResult.checkedYouTube
+			if (channelResult.stop) {
+				return result()
 			}
 		}
 
@@ -441,12 +468,19 @@ export const parseFeedsAndNotify = async (
 		}
 
 		logger.info('Finished checking for new videos')
+		return result()
 	} catch (err) {
+		category ??= classifyError(err)
+		if (activeChannel) {
+			failed++
+			failedChannels.push(activeChannel)
+		}
 		await notifyError(classifyError(err), err, {
 			source: 'videos',
 			sendErrorEmail: rest.sendErrorEmail,
 			emailOnError: rest.config.logging.emailOnError,
 			logger,
 		})
+		return { ...result(), status: succeeded ? 'partial' : 'failed' }
 	}
 }
