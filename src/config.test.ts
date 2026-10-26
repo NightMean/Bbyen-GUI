@@ -1,4 +1,5 @@
-import { vi, expect, describe, test } from 'vitest'
+import { vi, expect, describe, test, afterEach, beforeEach } from 'vitest'
+import axios from 'axios'
 import winston from 'winston'
 import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
@@ -12,6 +13,21 @@ import  {
 	loadEmailConfig,
 	CONFIG_FILE,
 } from './config'
+
+vi.mock('fs/promises')
+vi.mock('axios')
+
+beforeEach(() => {
+	vi.mocked(axios.get).mockResolvedValue({
+		data: '<meta itemprop="identifier" ' +
+			'content="UCzgA9CBrIXPtkB2yNTTiy1w">',
+	})
+})
+
+afterEach(() => {
+	vi.unstubAllEnvs()
+	vi.clearAllMocks()
+})
 
 function createMagicStub<T extends object>(): T {
 	return new Proxy({} as T, {
@@ -87,23 +103,23 @@ describe('buildChannelSettingsMap', () => {
 
 describe('loadEmailConfig', () => {
 	test('reads email block and resolves env credentials', async () => {
-		process.env.BBYEN_EMAIL_USER = 'u@example.com'
-		process.env.BBYEN_EMAIL_PASS = 'pw'
-		await fs.writeFile(CONFIG_FILE, JSON.stringify({
+		vi.stubEnv('BBYEN_EMAIL_USER', 'u@example.com')
+		vi.stubEnv('BBYEN_EMAIL_PASS', 'pw')
+		const general = {
 			email: {
 				host: 'h', port: 465, secure: true,
 				sendingContact: 's', destination: 'd',
 			},
 			mode: 'youtube',
-		}))
-		try {
-			const email = await loadEmailConfig()
-			expect(email.auth).toEqual({ user: 'u@example.com', pass: 'pw' })
-			expect(email.host).toBe('h')
-		} finally {
-			await fs.unlink(CONFIG_FILE)
-			delete process.env.BBYEN_EMAIL_USER
-			delete process.env.BBYEN_EMAIL_PASS
 		}
+		vi.mocked(fs.readFile).mockImplementation(async file => {
+			if (file === CONFIG_FILE) return Buffer.from(JSON.stringify(general))
+			throw Object.assign(new Error('Missing fixture'), { code: 'ENOENT' })
+		})
+		const email = await loadEmailConfig()
+		expect(email.auth).toEqual({ user: 'u@example.com', pass: 'pw' })
+		expect(email.host).toBe('h')
+		expect(fs.writeFile).not.toHaveBeenCalled()
+		expect(fs.unlink).not.toHaveBeenCalled()
 	})
 })
