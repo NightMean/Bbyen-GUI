@@ -218,6 +218,8 @@ the upgrade time; previously recorded timestamps are preserved.
 
 Saving merges channels by ID and preserves per-channel preferences and the
 blacklist. Malformed files stop the operation without being overwritten.
+Normal service startup requires `channels.json`; a missing file never silently
+removes channel restrictions. Setup and sync may explicitly create this file.
 The service, setup, sync, and Python companion use an adjacent `.lock` file
 to prevent competing edits and replace JSON files atomically. A busy editor
 fails clearly; retry after it finishes. If a process crashes, the lock contains

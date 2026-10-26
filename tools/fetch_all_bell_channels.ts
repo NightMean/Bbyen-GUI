@@ -315,7 +315,7 @@ export const fetchAllBellChannels = async (
 				...(lists.whitelistedChannelIds ?? []),
 				...allBellChannels.map(channel => channel.channelId),
 			]) }
-		})
+		}, { createIfMissing: true })
 		console.log(`Saved ${saved.whitelistedChannelIds.length} total channels.`)
 
 		// The whitelist imports All channels, while history records every state.

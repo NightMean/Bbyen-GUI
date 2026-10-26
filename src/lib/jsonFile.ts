@@ -6,6 +6,7 @@ import { isDeepStrictEqual } from 'util'
 export const updateJsonFile = async <T>(
 	filename: string,
 	update: (value: unknown) => T | Promise<T>,
+	options: { createIfMissing?: boolean } = {},
 ): Promise<T> => {
 	const lockPath = `${filename}.lock`
 	const lock = await fs.open(lockPath, 'wx', 0o600).catch(err => {
@@ -31,7 +32,8 @@ export const updateJsonFile = async <T>(
 				throw new Error(`Invalid JSON in ${filename}; file was preserved.`)
 			}
 		} catch (err) {
-			if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err
+			if ((err as NodeJS.ErrnoException).code !== 'ENOENT' ||
+					!options.createIfMissing) throw err
 		}
 		updated = await update(current)
 		if (!isDeepStrictEqual(current, updated)) {

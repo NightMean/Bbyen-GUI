@@ -38,6 +38,13 @@ test('preserves malformed input and releases the lock', async () => {
 	expect(await fs.readdir(directory)).toEqual(['channels.json'])
 })
 
+test('requires an existing file unless creation is explicitly enabled',
+	async () => {
+		await expect(updateJsonFile(filename, () => ({ unrestricted: true })))
+			.rejects.toMatchObject({ code: 'ENOENT' })
+		expect(await fs.readdir(directory)).toEqual([])
+	})
+
 test('preserves original content if replacement fails', async () => {
 	await fs.writeFile(filename, '{"existing":true}')
 	vi.spyOn(fs, 'rename').mockRejectedValueOnce(new Error('Disk failure'))
@@ -56,7 +63,7 @@ test('refuses a competing writer without losing the first update', async () => {
 		started()
 		await pending
 		return { first: true }
-	})
+	}, { createIfMissing: true })
 	await ready
 	await expect(updateJsonFile(filename, () => ({ second: true })))
 		.rejects.toThrow('locked')

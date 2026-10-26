@@ -23,7 +23,7 @@ const writeMode = async (mode: 'youtube' | 'whitelist') => {
 			throw new Error('config.json must contain a JSON object.')
 		}
 		return { ...value, mode }
-	})
+	}, { createIfMissing: true })
 }
 
 const main = async () => {
@@ -69,7 +69,7 @@ const main = async () => {
 				return { ...channels, whitelistedChannelIds: mergeChannelEntries([
 					...(channels.whitelistedChannelIds ?? []), ...ids,
 				]) }
-			})
+			}, { createIfMissing: true })
 			console.log(`Wrote ${ids.length} channel(s) to channels.json.`)
 		}
 		console.log('Setup complete. Configure email, then run `npm start`.')
