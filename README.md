@@ -284,6 +284,18 @@ I also accept donations, but please consider other, more worthy causes.
 
 ## Development
 
+Run the Node regression suite with `npm test -- --run`, then `npm run typecheck`
+and `npm run lint`. The Python companion tests use temporary files and require
+Python 3 with `requests` installed:
+
+```sh
+python -B -m unittest discover -s tools -p 'test_*.py'
+```
+
+The companion accepts string and object channel entries, preserving settings
+when adding or removing other channels. Set `BBYEN_CHANNELS` to choose its
+`channels.json` path, including a file that does not exist yet.
+
 ### Docker
 
 Building the docker image:

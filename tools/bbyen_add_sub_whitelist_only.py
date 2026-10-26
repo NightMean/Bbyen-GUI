@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 bbyen_add_sub_whitelist_only.py
-Manage whitelisted YouTube channels in bbyen's config.json.
+Manage whitelisted YouTube channels in bbyen's channels.json.
 Supports adding, removing, and listing channels by URL, handle, or channel ID.
 """
 
@@ -35,13 +35,12 @@ def find_config_file():
 
 def find_channels_file():
     env_path = os.environ.get("BBYEN_CHANNELS")
-    if env_path and os.path.exists(env_path):
+    if env_path:
         return os.path.abspath(env_path)
     config_env = os.environ.get("BBYEN_CONFIG")
     if config_env:
         candidate = os.path.join(os.path.dirname(os.path.abspath(config_env)), "channels.json")
-        if os.path.exists(candidate):
-            return candidate
+        return candidate
     candidates = [
         "/opt/youtubenotify-bbyen/channels.json",
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "channels.json"),
@@ -52,7 +51,7 @@ def find_channels_file():
     for candidate in candidates:
         if os.path.exists(candidate):
             return os.path.abspath(candidate)
-    return find_config_file()
+    return os.path.join(os.path.dirname(find_config_file()), "channels.json")
 
 CONFIG_FILE = find_config_file()
 TARGET_CHANNELS_FILE = find_channels_file()
@@ -190,7 +189,23 @@ def load_config():
     if not os.path.exists(TARGET_CHANNELS_FILE):
         return {"whitelistedChannelIds": []}
     with open(TARGET_CHANNELS_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+        config = json.load(f)
+    if not isinstance(config, dict):
+        raise ValueError("channels.json must contain a JSON object")
+    entries = config.get("whitelistedChannelIds", [])
+    if not isinstance(entries, list):
+        raise ValueError("whitelistedChannelIds must be an array")
+    for entry in entries:
+        channel_entry_id(entry)
+    return config
+
+
+def channel_entry_id(entry):
+    if isinstance(entry, str) and entry:
+        return entry
+    if isinstance(entry, dict) and isinstance(entry.get("id"), str) and entry["id"]:
+        return entry["id"]
+    raise ValueError("Channel entries must be strings or objects with a nonempty id")
 
 def save_config(config):
     with open(TARGET_CHANNELS_FILE, "w", encoding="utf-8") as f:
@@ -214,7 +229,7 @@ def add_channel(user_input):
     config = load_config()
     whitelist = config.get("whitelistedChannelIds", [])
 
-    if channel_id in whitelist:
+    if channel_id in {channel_entry_id(entry) for entry in whitelist}:
         print(f"YouTube channel already exists in whitelist! (ID: {channel_id})")
         return
 
@@ -229,6 +244,7 @@ def remove_channel(user_input):
     user_input = user_input.strip()
     config = load_config()
     whitelist = config.get("whitelistedChannelIds", [])
+    whitelist_ids = {channel_entry_id(entry) for entry in whitelist}
 
     channel_id = None
 
@@ -247,20 +263,20 @@ def remove_channel(user_input):
             channel_id = fetch_channel_id(user_input)
         except ValueError as e:
             # If network resolution failed (e.g. channel deleted / 404), check if input is in whitelist anyway
-            if user_input in whitelist:
+            if user_input in whitelist_ids:
                 channel_id = user_input
             else:
                 print(f"Error resolving channel: {e}")
                 print("Tip: If the channel was deleted or suspended, you can remove it directly using its channel ID (UC...).")
                 return
 
-    if not channel_id or channel_id not in whitelist:
+    if not channel_id or channel_id not in whitelist_ids:
         print(f"YouTube channel not found in whitelist! (ID: {channel_id or user_input})")
         return
 
     # Remove all instances of this channel_id
     original_len = len(whitelist)
-    whitelist = [cid for cid in whitelist if cid != channel_id]
+    whitelist = [entry for entry in whitelist if channel_entry_id(entry) != channel_id]
     removed_count = original_len - len(whitelist)
 
     config["whitelistedChannelIds"] = whitelist
@@ -274,7 +290,8 @@ def list_channels():
     whitelist = config.get("whitelistedChannelIds", [])
     print(f"\nTotal whitelisted channels: {len(whitelist)}\n")
     try:
-        for channel_id in whitelist:
+        for entry in whitelist:
+            channel_id = channel_entry_id(entry)
             print(f"https://www.youtube.com/channel/{channel_id}")
     except BrokenPipeError:
         pass
