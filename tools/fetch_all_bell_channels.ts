@@ -17,6 +17,10 @@ import * as mailer from '../src/email'
 import { classifyError } from '../src/lib/classifyError'
 import { notifyError } from '../src/lib/alertState'
 import * as database from '../src/database'
+import {
+	mergeChannelEntries, parseChannelLists,
+} from '../src/lib/channelConfig'
+import { updateJsonFile } from '../src/lib/jsonFile'
 
 const INNERTUBE_API_URL = 'https://www.youtube.com/youtubei/v1/browse'
 const ACCOUNT_MENU_URL =
@@ -88,7 +92,7 @@ export const trySendAuthAlertEmail = async (err: Error): Promise<void> => {
 			logger: {
 				info: (msg: string) => console.log(`[Alert] ${msg}`),
 				warn: (msg: string) => console.warn(`[Alert] ${msg}`),
-				error: (e: unknown) => console.error(`[Alert]`, e),
+				error: (e: unknown) => console.error('[Alert]', e),
 			},
 		})
 	} catch {
@@ -112,7 +116,7 @@ export const resolveTargetProfile = async (
 	let configPageId: string | undefined
 	try {
 		const raw = await loadConfigRaw()
-		const anyRaw = raw as Record<string, unknown>
+		const anyRaw = raw as unknown as Record<string, unknown>
 		if (typeof anyRaw.youtubeAccount === 'string') {
 			configAccount = anyRaw.youtubeAccount
 		}
@@ -296,26 +300,14 @@ export const fetchAllBellChannels = async (
 	)
 
 	if (options.saveToChannelsJson) {
-		let channelsData: { whitelistedChannelIds?: string[] } = {}
-		try {
-			channelsData = JSON.parse(
-				(await fs.readFile(CHANNELS_FILE)).toString(),
-			)
-		} catch {
-			channelsData = {}
-		}
-
-		const existing = new Set(channelsData.whitelistedChannelIds ?? [])
-		for (const ch of allBellChannels) {
-			existing.add(ch.channelId)
-		}
-		channelsData.whitelistedChannelIds = Array.from(existing)
-
-		await fs.writeFile(
-			CHANNELS_FILE,
-			JSON.stringify(channelsData, null, '\t'),
-		)
-		console.log(`Saved ${existing.size} total channels to ${CHANNELS_FILE}`)
+		const saved = await updateJsonFile(CHANNELS_FILE, value => {
+			const lists = parseChannelLists(value)
+			return { ...lists, whitelistedChannelIds: mergeChannelEntries([
+				...(lists.whitelistedChannelIds ?? []),
+				...allBellChannels.map(channel => channel.channelId),
+			]) }
+		})
+		console.log(`Saved ${saved.whitelistedChannelIds.length} total channels.`)
 
 		// Also record bell state history in SQLite if database is configured
 		try {

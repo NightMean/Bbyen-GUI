@@ -85,6 +85,12 @@ describe('normalizeChannelEntries', () => {
 		expect(await normalizeChannelEntries(normalize, undefined))
 			.toBeUndefined()
 	})
+
+	test('consolidates resolved duplicates and preserves flags', async () => {
+		expect(await normalizeChannelEntries(normalize, [
+			{ id: 'UCX', notify: false }, 'https://www.youtube.com/@X',
+		])).toEqual([{ id: 'UCX', notify: false }])
+	})
 })
 
 describe('buildChannelSettingsMap', () => {

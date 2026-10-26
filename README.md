@@ -213,6 +213,14 @@ Restart the service after saving channel changes so it reloads the whitelist.
 subscribed on YouTube. Existing databases with no observation timestamp use
 the upgrade time; previously recorded timestamps are preserved.
 
+Saving merges channels by ID and preserves per-channel preferences and the
+blacklist. Malformed files stop the operation without being overwritten.
+The service, setup, sync, and Python companion use an adjacent `.lock` file
+to prevent competing edits and replace JSON files atomically. A busy editor
+fails clearly; retry after it finishes. If a process crashes, the lock contains
+its process ID. Verify that process has stopped before deleting the lock and
+retrying. The original JSON remains usable if a write fails before replacement.
+
 You can use the keys `blacklistedChannelIds` and `whitelistedChannelIds` in `channels.json`.
 These should be arrays of the channels you want to include/exclude.
 For example:

@@ -10,6 +10,8 @@ import os
 import re
 import json
 import subprocess
+import tempfile
+from functools import wraps
 import requests
 
 try:
@@ -208,9 +210,43 @@ def channel_entry_id(entry):
     raise ValueError("Channel entries must be strings or objects with a nonempty id")
 
 def save_config(config):
-    with open(TARGET_CHANNELS_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=4, sort_keys=True)
+    directory = os.path.dirname(os.path.abspath(TARGET_CHANNELS_FILE))
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=directory,
+                                         prefix=os.path.basename(TARGET_CHANNELS_FILE) + ".",
+                                         suffix=".tmp", delete=False) as target:
+            temporary = target.name
+            json.dump(config, target, indent=4, sort_keys=True)
+        os.replace(temporary, TARGET_CHANNELS_FILE)
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
 
+
+def locked_edit(operation):
+    @wraps(operation)
+    def edit(*args, **kwargs):
+        lock_path = TARGET_CHANNELS_FILE + ".lock"
+        try:
+            descriptor = os.open(lock_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        except FileExistsError:
+            raise ValueError(f"File is locked: {TARGET_CHANNELS_FILE}. Retry after the other "
+                             "editor finishes. After a crash, verify the owning process "
+                             f"has stopped before removing {lock_path}.") from None
+        try:
+            with os.fdopen(descriptor, "w", encoding="ascii") as lock:
+                lock.write(str(os.getpid()))
+            changed = operation(*args, **kwargs)
+        finally:
+            os.unlink(lock_path)
+        if changed:
+            # The service reload also acquires this lock; release it first.
+            restart_service()
+        return changed
+    return edit
+
+@locked_edit
 def add_channel(user_input):
     if not is_valid_input(user_input):
         print("Invalid input! Please provide a YouTube channel URL, handle (@name), video URL, or channel ID.")
@@ -238,8 +274,9 @@ def add_channel(user_input):
     save_config(config)
 
     print(f"Added YouTube channel! (https://www.youtube.com/channel/{channel_id})")
-    restart_service()
+    return True
 
+@locked_edit
 def remove_channel(user_input):
     user_input = user_input.strip()
     config = load_config()
@@ -283,7 +320,7 @@ def remove_channel(user_input):
     save_config(config)
 
     print(f"Removed YouTube channel! (https://www.youtube.com/channel/{channel_id}) [Removed {removed_count} entry]")
-    restart_service()
+    return True
 
 def list_channels():
     config = load_config()

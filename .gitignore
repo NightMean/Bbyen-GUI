@@ -10,3 +10,5 @@ channels.json
 google-credentials.json
 cookies.txt
 cookies*.txt
+*.json.lock
+*.json.*.tmp

@@ -55,6 +55,30 @@ class ChannelManagementTests(unittest.TestCase):
         with patch.dict(os.environ, {"BBYEN_CHANNELS": self.filename}):
             self.assertEqual(manager.find_channels_file(), self.filename)
 
+    def test_refuses_a_lock_held_by_another_editor(self):
+        self.write([CHANNEL])
+        with open(self.filename + ".lock", "w", encoding="ascii") as lock:
+            lock.write(str(os.getpid()))
+        with self.assertRaisesRegex(ValueError, "locked"):
+            manager.remove_channel(CHANNEL)
+        self.assertEqual(self.read()["whitelistedChannelIds"], [CHANNEL])
+
+    def test_failed_replace_preserves_previous_file_and_releases_lock(self):
+        self.write([CHANNEL])
+        with patch.object(manager.os, "replace", side_effect=OSError("Disk failure")):
+            with self.assertRaisesRegex(OSError, "Disk failure"):
+                manager.remove_channel(CHANNEL)
+        self.assertEqual(self.read()["whitelistedChannelIds"], [CHANNEL])
+        self.assertEqual(os.listdir(self.directory.name), ["channels.json"])
+        self.restart.assert_not_called()
+
+    def test_restart_runs_after_the_edit_lock_is_released(self):
+        self.write([])
+        self.restart.side_effect = lambda: self.assertFalse(
+            os.path.exists(self.filename + ".lock"))
+        manager.add_channel(CHANNEL)
+        self.restart.assert_called_once()
+
 
 if __name__ == "__main__":
     unittest.main()

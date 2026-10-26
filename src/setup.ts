@@ -1,11 +1,12 @@
 import process from 'process'
 import readline from 'readline'
-import fs from 'fs/promises'
 
 import authorize from './google/auth'
-import { CONFIG_FILE } from './config'
+import { CONFIG_FILE, CHANNELS_FILE } from './config'
 import { isChannelId } from './lib/channelId'
 import { resolveChannelId } from './lib/resolveChannelId'
+import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
+import { updateJsonFile } from './lib/jsonFile'
 
 // A local readline that supports multiple sequential prompts (the shared
 // google/auth/readline helper closes after a single question).
@@ -16,18 +17,13 @@ const rl = readline.createInterface({
 const ask = (question: string): Promise<string> =>
 	new Promise(resolve => rl.question(question, resolve))
 
-const readConfig = async (): Promise<Record<string, unknown>> => {
-	try {
-		return JSON.parse((await fs.readFile(CONFIG_FILE)).toString())
-	} catch {
-		return {}
-	}
-}
-
 const writeMode = async (mode: 'youtube' | 'whitelist') => {
-	const config = await readConfig()
-	config.mode = mode
-	await fs.writeFile(CONFIG_FILE, JSON.stringify(config, null, '\t'))
+	await updateJsonFile(CONFIG_FILE, value => {
+		if (!value || typeof value !== 'object' || Array.isArray(value)) {
+			throw new Error('config.json must contain a JSON object.')
+		}
+		return { ...value, mode }
+	})
 }
 
 const main = async () => {
@@ -68,20 +64,12 @@ const main = async () => {
 		rl.close()
 		if (ids.length) {
 			// Write to channels.json (create or merge).
-			const channelsFile = CONFIG_FILE.replace(
-				/config\.json$/, 'channels.json')
-			let channels: { whitelistedChannelIds?: string[] } = {}
-			try {
-				channels = JSON.parse(
-					(await fs.readFile(channelsFile)).toString())
-			} catch {
-				channels = {}
-			}
-			channels.whitelistedChannelIds = [
-				...(channels.whitelistedChannelIds ?? []), ...ids,
-			]
-			await fs.writeFile(
-				channelsFile, JSON.stringify(channels, null, '\t'))
+			await updateJsonFile(CHANNELS_FILE, value => {
+				const channels = parseChannelLists(value)
+				return { ...channels, whitelistedChannelIds: mergeChannelEntries([
+					...(channels.whitelistedChannelIds ?? []), ...ids,
+				]) }
+			})
 			console.log(`Wrote ${ids.length} channel(s) to channels.json.`)
 		}
 		console.log('Setup complete. Configure email, then run `npm start`.')

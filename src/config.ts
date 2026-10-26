@@ -2,7 +2,6 @@ import process from 'process'
 import axios from 'axios'
 import path from 'path'
 import fs from 'fs/promises'
-import { isDeepStrictEqual } from 'util'
 import JSSoup from 'jssoup'
 import winston from 'winston'
 import { youtube_v3 } from 'googleapis'
@@ -10,6 +9,8 @@ import { OAuth2Client } from 'google-auth-library'
 
 import configSchema from '../config.example.json'
 import { resolveChannelId } from './lib/resolveChannelId'
+import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
+import { updateJsonFile } from './lib/jsonFile'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
@@ -210,12 +211,12 @@ export const normalizeChannelEntries = async (
 	if (!entries) {
 		return undefined
 	}
-	return Promise.all(entries.map(async (entry) => {
+	return mergeChannelEntries(await Promise.all(entries.map(async (entry) => {
 		if (typeof entry === 'string') {
 			return { id: await normalizeChannel(entry) }
 		}
 		return { ...entry, id: await normalizeChannel(entry.id) }
-	}))
+	})))
 }
 
 // Build an O(1) lookup keyed by channel id, containing only entries that carry
@@ -271,64 +272,28 @@ export const loadConfig = async (
 
 	const normalizeChannel = normalizeChannelFactory(logger, service, auth)
 
-	// Allow channel entries to be the URL or an object; normalize to
-	// canonical ids and attach the lookup map.
-	const normalizeConfig = async ({
-		whitelistedChannelIds,
-		blacklistedChannelIds,
-		...config
-	}: any): Promise<Config> => {
-		const whitelist = await normalizeChannelEntries(
-			normalizeChannel as (c: string) => Promise<string>,
-			whitelistedChannelIds)
-		const blacklist = await normalizeChannelEntries(
-			normalizeChannel as (c: string) => Promise<string>,
-			blacklistedChannelIds)
-		return {
-			...config,
-			whitelistedChannelIds: whitelist,
-			blacklistedChannelIds: blacklist,
-			channelSettingsById: buildChannelSettingsMap(whitelist),
-		}
-	}
-
 	// Read general config and validate against the example schema.
 	const general = await loadConfigRaw()
 	validateConfig(general)
-
-	// Read channels file (optional arrays inside).
-	const channels = JSON.parse((await fs.readFile(CHANNELS_FILE)).toString())
-
-	// Read secrets file if present; env vars may supply creds instead.
-	let secrets: any = null
-	try {
-		secrets = JSON.parse((await fs.readFile(SECRETS_FILE)).toString())
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
-			throw err
+	const email = await loadEmailConfig()
+	const channels = await updateJsonFile(CHANNELS_FILE, async value => {
+		const lists = parseChannelLists(value)
+		return {
+			...lists,
+			whitelistedChannelIds: await normalizeChannelEntries(
+				normalizeChannel as (c: string) => Promise<string>,
+				lists.whitelistedChannelIds),
+			blacklistedChannelIds: await normalizeChannelEntries(
+				normalizeChannel as (c: string) => Promise<string>,
+				lists.blacklistedChannelIds),
 		}
-	}
-	const { user, pass } = resolveEmailCredentials(secrets, general.email?.auth)
-
-	// Merge, inject credentials, normalize channel entries.
-	const merged = {
+	})
+	return {
 		...general,
-		email: { ...general.email, auth: { user, pass } },
+		email,
 		whitelistedChannelIds: channels.whitelistedChannelIds,
 		blacklistedChannelIds: channels.blacklistedChannelIds,
+		channelSettingsById:
+			buildChannelSettingsMap(channels.whitelistedChannelIds),
 	}
-	const normalizedConfig = await normalizeConfig(merged)
-
-	// Persist channel-id normalization back to channels.json if it changed
-	// (e.g. URL entries rewritten to canonical ids).
-	const normalizedChannels = {
-		whitelistedChannelIds: normalizedConfig.whitelistedChannelIds,
-		blacklistedChannelIds: normalizedConfig.blacklistedChannelIds,
-	}
-	if (!isDeepStrictEqual(channels, normalizedChannels)) {
-		await fs.writeFile(
-			CHANNELS_FILE, JSON.stringify(normalizedChannels, null, '\t'))
-	}
-
-	return normalizedConfig
 }
