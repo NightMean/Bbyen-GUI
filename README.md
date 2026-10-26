@@ -193,9 +193,14 @@ account (the subscriptions will come from whatever account you use):
 1. After authenticating in the website, Google should automatically redirect you to your server, which will transfer the authentication code. In this case you will see a message "Authorization successful. You may now close this tab.".
 If this does not work (if you see "Unable to connect"), please copy/paste the URL from the browser address bar into the console.
 
-Normal runs (`npm start`) never launch the browser: in youtube mode, if the
-stored token is missing or expired, the app sends an alert email and exits
-rather than blocking. Run `npm run login` to re-authenticate.
+Normal runs (`npm start`) never launch the browser. If YouTube credentials are
+missing or rejected, the service stays running, reports the failed refresh, and
+retries authorization on a later scheduled run. Use `npm run login` to
+re-authenticate; a service restart is not required. If SMTP credentials are
+missing, video checks pause rather than recording unsent videos as delivered;
+subscription checks may continue. The service rereads SMTP credentials on
+subsequent scheduled runs, so adding or replacing them also needs no restart.
+Changes to other configuration and channel lists still require a restart.
 
 ## Failure alerts
 

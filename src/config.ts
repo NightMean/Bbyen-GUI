@@ -47,7 +47,7 @@ export type RawChannelEntry = string | {
 }
 
 export interface Config {
-	email: EmailConfig,
+	email: Omit<EmailConfig, 'auth'> & { auth?: Partial<EmailConfig['auth']> },
 	mode: 'youtube' | 'whitelist',
 	port: number,
 	database: {
@@ -290,6 +290,7 @@ export const loadConfigRaw = async (): Promise<Config> => {
 export const loadConfig = async (
 	service?: youtube_v3.Youtube,
 	auth?: OAuth2Client,
+	options: { resolveEmail?: boolean } = {},
 ): Promise<Config> => {
 	// This has to come here to avoid dependency loop
 	const setupLogger = (await import('./lib/logger')).default
@@ -300,7 +301,8 @@ export const loadConfig = async (
 	// Read general config and validate against the example schema.
 	const general = await loadConfigRaw()
 	validateConfig(general)
-	const email = await loadEmailConfig()
+	const email = options.resolveEmail === false
+		? general.email : await loadEmailConfig()
 	const channels = await updateJsonFile(CHANNELS_FILE, async value => {
 		const lists = parseChannelLists(value)
 		return {
