@@ -14,6 +14,7 @@ import { classifyError } from './lib/classifyError'
 import { notifyError, clearErrorState } from './lib/alertState'
 import { assertChannelId } from './lib/channelId'
 import { ISendErrorEmail } from './email'
+import { DEFAULT_CHANNEL_THUMBNAIL } from './database'
 
 // Extract canonical channel ids from a list of normalized channel entries.
 const channelIds = (entries?: ChannelEntry[]): string[] =>
@@ -22,9 +23,6 @@ const channelIds = (entries?: ChannelEntry[]): string[] =>
 // Scrape a channel's avatar URL from its public page (no API). Best-effort:
 // returns a placeholder on any failure so a missing avatar never blocks
 // notifications.
-const AVATAR_PLACEHOLDER =
-	'https://www.gstatic.com/youtube/img/creator/no_avatar.png'
-
 const scrapeChannelAvatar = async (channelId: string): Promise<string> => {
 	try {
 		const url = `https://www.youtube.com/channel/${channelId}`
@@ -33,9 +31,9 @@ const scrapeChannelAvatar = async (channelId: string): Promise<string> => {
 		const meta = soup.findAll('meta')
 			.find((m: { attrs?: { property?: string, content?: string } }) =>
 				m.attrs?.property === 'og:image')
-		return meta?.attrs?.content ?? AVATAR_PLACEHOLDER
+		return meta?.attrs?.content ?? DEFAULT_CHANNEL_THUMBNAIL
 	} catch {
-		return AVATAR_PLACEHOLDER
+		return DEFAULT_CHANNEL_THUMBNAIL
 	}
 }
 
@@ -70,44 +68,47 @@ const insertNewSubscriptions = async (
 	channelDetails: Map<string, ChannelDetails>,
 ) => {
 
-	// Prevent double insertion
-	const stmtClean = await db.prepare(SQL`
-		DELETE FROM subscriptions WHERE channelId=?;`)
-
-	for (const channelId of newSubscriptions) {
-		await stmtClean.run(channelId)
-	}
-
-	await stmtClean.finalize()
-
 	const stmtInsert = await db.prepare(SQL`
 		INSERT INTO subscriptions (
 			channelId,
 			channelTitle,
-			channelThumbnail
+			channelThumbnail,
+			firstObservedAt
 		)
-		VALUES (?, ?, ?);
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(channelId) DO UPDATE SET
+			channelTitle=CASE WHEN excluded.channelTitle=excluded.channelId
+				THEN subscriptions.channelTitle ELSE excluded.channelTitle END,
+			channelThumbnail=excluded.channelThumbnail,
+			firstObservedAt=COALESCE(
+				subscriptions.firstObservedAt, excluded.firstObservedAt),
+			deleted=0, deletedReason=NULL, deletedAt=NULL
+		WHERE COALESCE(subscriptions.deletedReason, '') <> 'terminated';
 	`)
 
-	for (const [i, channelId] of newSubscriptions.entries()) {
-		const res = channelDetails.get(channelId)
+	try {
+		for (const [i, channelId] of newSubscriptions.entries()) {
+			const res = channelDetails.get(channelId)
 
-		if (!res) {
-			logger.warn([
-				`Could not find channel ID ${channelId} in channelDetails.`,
-				'Skipping.',
-			].join(' '))
-			continue
+			if (!res) {
+				logger.warn([
+					`Could not find channel ID ${channelId} in channelDetails.`,
+					'Skipping.',
+				].join(' '))
+				continue
+			}
+
+			const { title, thumbnail } = res
+
+			logger.info(
+				`${i+1}/${newSubscriptions.length} New subscription: ${title}`)
+
+			await stmtInsert.run(
+				channelId, title, thumbnail, new Date().toISOString())
 		}
-
-		const { title, thumbnail } = res
-
-		logger.info(`${i+1}/${newSubscriptions.length} New subscription: ${title}`)
-
-		await stmtInsert.run(channelId, title, thumbnail)
+	} finally {
+		await stmtInsert.finalize()
 	}
-
-	await stmtInsert.finalize()
 }
 
 // Delete any removed subscriptions (unsubscriptions) from the database

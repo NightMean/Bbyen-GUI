@@ -59,4 +59,26 @@ describe('whitelist subscription lifecycle', () => {
 			deletedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
 		})
 	})
+
+	test('preserves observation and bell history when re-added', async () => {
+		await db.run(`INSERT INTO subscriptions
+			(channelId,channelTitle,deleted,deletedReason,firstObservedAt,bellState)
+			VALUES (?, 'Creator', 1, 'unsubscribed', '2026-01-01', 'all')`, id)
+		await updateSubscriptionsFromWhitelistNoApi({
+			db, config: { whitelistedChannelIds: [{ id }] } as Config, logger,
+		})
+		expect(await db.get('SELECT * FROM subscriptions')).toMatchObject({
+			id: 1, deleted: 0, deletedReason: null,
+			firstObservedAt: '2026-01-01', bellState: 'all',
+		})
+	})
+
+	test('timestamps new channels and tolerates duplicates', async () => {
+		await updateSubscriptionsFromWhitelistNoApi({
+			db, config: { whitelistedChannelIds: [{ id }, { id }] } as Config, logger,
+		})
+		const rows = await db.all('SELECT * FROM subscriptions')
+		expect(rows).toHaveLength(1)
+		expect(rows[0].firstObservedAt).toEqual(expect.any(String))
+	})
 })

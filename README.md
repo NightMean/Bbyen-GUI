@@ -204,6 +204,12 @@ npm run sync-channels -- --list-accounts
 npm run sync-channels -- --account "YourChannelName" --save
 ```
 
+Bell observation records do not activate email monitoring by themselves.
+Restart the service after saving channel changes so it reloads the whitelist.
+`firstObservedAt` records the first local observation, not the date you
+subscribed on YouTube. Existing databases with no observation timestamp use
+the upgrade time; previously recorded timestamps are preserved.
+
 You can use the keys `blacklistedChannelIds` and `whitelistedChannelIds` in `channels.json`.
 These should be arrays of the channels you want to include/exclude.
 For example:

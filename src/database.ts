@@ -4,6 +4,9 @@ import * as sqlite from 'sqlite'
 import sqlite3 from 'sqlite3'
 import SQL from 'sql-template-strings'
 
+export const DEFAULT_CHANNEL_THUMBNAIL =
+	'https://www.gstatic.com/youtube/img/creator/no_avatar.png'
+
 
 /**
  * Set up database
@@ -11,7 +14,8 @@ import SQL from 'sql-template-strings'
 
 export const init = async ({ filename }: { filename: string }) => {
 	const db = await sqlite.open({
-		filename: path.join(__dirname, '../', filename),
+		filename: filename === ':memory:'
+			? filename : path.resolve(__dirname, '../', filename),
 		driver: sqlite3.Database,
 	})
 
@@ -77,6 +81,12 @@ export const init = async ({ filename }: { filename: string }) => {
 		`)
 	}
 
+	// Older versions never recorded observation times. This upgrade is our
+	// earliest verifiable observation, not the historical YouTube subscribe date.
+	await db.run(SQL`
+		UPDATE subscriptions SET firstObservedAt=${new Date().toISOString()}
+		WHERE firstObservedAt IS NULL;
+	`)
 	return db
 }
 
@@ -93,35 +103,27 @@ export const recordSubscriptionBellState = async (
 	thumbnail = '',
 ): Promise<void> => {
 	const now = new Date().toISOString()
-	const existing = await db.get(SQL`
-		SELECT id, bellState, firstObservedAt FROM subscriptions
-		WHERE channelId=${channelId};
+	// Bell discovery alone must not activate email monitoring. Subscription
+	// reconciliation activates eligible rows and fetches their channel metadata.
+	await db.run(SQL`
+		INSERT INTO subscriptions (
+			channelId, channelTitle, channelThumbnail,
+			firstObservedAt, bellState, bellUpdatedAt, deleted, deletedReason
+		) VALUES (
+			${channelId}, ${channelTitle}, ${thumbnail || DEFAULT_CHANNEL_THUMBNAIL},
+			${now}, ${bellState}, ${now}, 1, 'unsubscribed'
+		)
+		ON CONFLICT(channelId) DO UPDATE SET
+			firstObservedAt=COALESCE(
+				subscriptions.firstObservedAt, excluded.firstObservedAt),
+			bellUpdatedAt=CASE
+				WHEN subscriptions.bellState IS NOT excluded.bellState
+				THEN excluded.bellUpdatedAt ELSE subscriptions.bellUpdatedAt END,
+			bellState=excluded.bellState,
+			channelTitle=COALESCE(
+				NULLIF(excluded.channelTitle, ''), subscriptions.channelTitle),
+			channelThumbnail=CASE WHEN ${thumbnail} <> '' THEN ${thumbnail}
+				ELSE subscriptions.channelThumbnail END;
 	`)
-
-	if (!existing) {
-		await db.run(SQL`
-			INSERT INTO subscriptions (
-				channelId, channelTitle, channelThumbnail,
-				firstObservedAt, bellState, bellUpdatedAt
-			) VALUES (
-				${channelId}, ${channelTitle}, ${thumbnail},
-				${now}, ${bellState}, ${now}
-			);
-		`)
-	} else if (existing.bellState !== bellState) {
-		await db.run(SQL`
-			UPDATE subscriptions
-			SET bellState=${bellState},
-				bellUpdatedAt=${now},
-				channelTitle=${channelTitle}
-			WHERE channelId=${channelId};
-		`)
-	} else if (channelTitle && existing.channelTitle !== channelTitle) {
-		await db.run(SQL`
-			UPDATE subscriptions
-			SET channelTitle=${channelTitle}
-			WHERE channelId=${channelId};
-		`)
-	}
 }
 

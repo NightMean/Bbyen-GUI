@@ -4,31 +4,37 @@ import sqlite3 from 'sqlite3'
 import SQL from 'sql-template-strings'
 import fs from 'fs/promises'
 import path from 'path'
+import os from 'os'
 
 import { init, recordSubscriptionBellState } from './database'
-
-const TEST_DB_FILE = 'test_database_bell.sqlite'
-const TEST_DB_PATH = path.join(__dirname, '../', TEST_DB_FILE)
 
 describe('recordSubscriptionBellState', () => {
 	let db: sqlite.Database
 
 	beforeEach(async () => {
-		try {
-			await fs.unlink(TEST_DB_PATH)
-		} catch {
-			// File does not exist yet
-		}
-		db = await init({ filename: TEST_DB_FILE })
+		db = await init({ filename: ':memory:' })
 	})
 
 	afterEach(async () => {
 		await db.close()
-		try {
-			await fs.unlink(TEST_DB_PATH)
-		} catch {
-			// Clean up
-		}
+	})
+
+	test('fills missing first observation without replacing existing rows',
+		async () => {
+			await db.run(`INSERT INTO subscriptions
+				(channelId, channelTitle, channelThumbnail, deleted, deletedReason)
+				VALUES ('UC123', 'Old title', 'old-avatar', 1, 'terminated')`)
+			await recordSubscriptionBellState(db, 'UC123', 'New title', 'all')
+			expect(await db.get('SELECT * FROM subscriptions')).toMatchObject({
+				id: 1, firstObservedAt: expect.any(String), deleted: 1,
+				deletedReason: 'terminated', channelThumbnail: 'old-avatar',
+			})
+		})
+
+	test('serializes concurrent observations through SQLite upsert', async () => {
+		await Promise.all(Array.from({ length: 5 }, () =>
+			recordSubscriptionBellState(db, 'UC123', 'Creator', 'all')))
+		expect((await db.all('SELECT * FROM subscriptions')).length).toBe(1)
 	})
 
 	test('inserts new channel with firstObservedAt and bellState', async () => {
@@ -50,6 +56,8 @@ describe('recordSubscriptionBellState', () => {
 		expect(row.firstObservedAt).toBeDefined()
 		expect(row.bellUpdatedAt).toBeDefined()
 		expect(row.firstObservedAt).toBe(row.bellUpdatedAt)
+		expect(row.deleted).toBe(1)
+		expect(row.channelThumbnail).toBe('https://example.com/thumb.jpg')
 	})
 
 	test('updates bellUpdatedAt only when bellState changes', async () => {
@@ -81,4 +89,27 @@ describe('recordSubscriptionBellState', () => {
 		expect(thirdRow.bellUpdatedAt).not.toBe(firstRow.bellUpdatedAt)
 		expect(thirdRow.firstObservedAt).toBe(firstRow.firstObservedAt)
 	})
+})
+
+test('upgrades an existing database at an absolute path', async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-db-test-'))
+	const filename = path.join(directory, 'legacy.sqlite')
+	const old = await sqlite.open({ filename, driver: sqlite3.Database })
+	await old.exec(`CREATE TABLE subscriptions (
+		id INTEGER PRIMARY KEY, channelId TEXT UNIQUE, channelTitle TEXT,
+		channelThumbnail TEXT, deleted INTEGER DEFAULT 0
+	);
+	INSERT INTO subscriptions VALUES (1, 'UC123', 'Creator', 'avatar', 0);`)
+	await old.close()
+	let upgraded: sqlite.Database | undefined
+	try {
+		upgraded = await init({ filename })
+		expect(await upgraded.get('SELECT * FROM subscriptions')).toMatchObject({
+			id: 1, channelTitle: 'Creator', firstObservedAt: expect.any(String),
+		})
+	} finally {
+		await upgraded?.close()
+		await fs.unlink(filename)
+		await fs.rmdir(directory)
+	}
 })
