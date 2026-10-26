@@ -12,6 +12,7 @@ import { resolveChannelId } from './lib/resolveChannelId'
 import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
 import { updateJsonFile } from './lib/jsonFile'
 import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
+import { parseVideoRetentionDays } from './videoRetention'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
@@ -66,6 +67,7 @@ export interface Config {
 	},
 	notifyOnFirstScan: boolean,
 	initialBacklog?: BacklogPolicy,
+	videoRetentionDays?: number | null,
 	whitelistedChannelIds?: ChannelEntry[],
 	blacklistedChannelIds?: ChannelEntry[],
 	channelSettingsById?: Map<string, ChannelEntry>,
@@ -269,6 +271,10 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.initialBacklog !== undefined) {
 		config.initialBacklog = parseBacklogPolicy(
 			config.initialBacklog, 'initialBacklog')
+	}
+	if (config.videoRetentionDays !== undefined) {
+		config.videoRetentionDays = parseVideoRetentionDays(
+			config.videoRetentionDays)
 	}
 	return config
 }

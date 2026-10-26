@@ -15,7 +15,7 @@ This project aims to provide a replacement to YouTube's email notifications. Run
 
 ## How it works
 
-It uses the [YouTube Data API](https://developers.google.com/youtube/v3/) to get a list of your subscribers and uses [RSS feeds](https://support.google.com/youtube/answer/6224202?hl=en) to get each channel's recent uploads. A database of videos for which an email has already been sent is kept in order to not notify about the same video twice. To send emails, the program connects to an email account through SMTP.
+It uses the [YouTube Data API](https://developers.google.com/youtube/v3/) to get a list of your subscriptions and uses [RSS feeds](https://support.google.com/youtube/answer/6224202?hl=en) to get each channel's recent uploads. A database tracks processed videos and email outcomes to avoid duplicate notifications. To send emails, the program connects to an email account through SMTP.
 
 ## Requirements
 
@@ -116,6 +116,11 @@ in youtube mode. For Docker, use the files in `data/` described above.
 	  `initialBacklog` overrides both global settings; a channel's legacy
 	  `notifyOnFirstScan` overrides the global policy. The first successful feed
 	  determines the initial set, even if video processing needs a retry.
+	  Video details and outcomes are retained indefinitely unless
+	  `"videoRetentionDays"` is set to a positive integer in `config.json`.
+	  Each video check removes details observed before that many days ago;
+	  `null` also means unlimited. Processed video IDs remain for deduplication,
+	  and in-flight email attempts are not removed by retention.
 
 	- **`secrets.json`** — email credentials (`email.auth.user` and
 	  `email.auth.pass`). Alternatively, set the environment variables

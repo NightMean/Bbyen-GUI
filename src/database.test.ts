@@ -132,6 +132,28 @@ test('upgrades an existing database at an absolute path', async () => {
 	}
 })
 
+test('repairs IDs between schema upgrades only once', async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-repair-'))
+	const filename = path.join(directory, 'data.sqlite')
+	let db = await init({ filename })
+	try {
+		await db.exec(`DELETE FROM video_schema_migrations WHERE version=3;
+			INSERT INTO videos (videoId, channelId) VALUES ('v1', 'channel');`)
+		await db.close()
+		db = await init({ filename })
+		expect(await db.get('SELECT emailOutcome FROM video_observations'))
+			.toEqual({ emailOutcome: 'unknown' })
+		await db.run('DELETE FROM video_observations')
+		await db.close()
+		db = await init({ filename })
+		expect(await db.get('SELECT * FROM video_observations')).toBeUndefined()
+	} finally {
+		await db.close()
+		await fs.unlink(filename)
+		await fs.rmdir(directory)
+	}
+})
+
 test('migrates processed videos without inventing their email outcome',
 	async () => {
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-video-'))

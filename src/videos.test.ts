@@ -177,6 +177,55 @@ describe('video failure recovery', () => {
 			WHERE videoId='older'`)).toEqual({ emailOutcome: 'backlog_skipped' })
 	})
 
+	test('records and emails a video with an unknown publication date',
+		async () => {
+			const manual = { ...config, mode: 'whitelist' }
+			vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({ items: [
+				{ videoId: 'no-date', title: 'Video', isoDate: 'invalid' },
+			] } as never)
+			await parseFeedsAndNotify({ ...args(), config: manual } as never)
+			expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+			expect(await db.get(`SELECT publishedAt, emailOutcome
+				FROM video_observations WHERE videoId='no-date'`))
+				.toEqual({ publishedAt: null, emailOutcome: 'sent' })
+		})
+
+	test('stores API videos even when duration is unavailable', async () => {
+		list.mockResolvedValue({ data: { items: [{
+			snippet: { publishedAt: '2026-01-01T00:00:00Z', title: 'Video',
+				channelTitle: 'Creator', thumbnails: { high: { url: 'thumb' } } },
+			contentDetails: {},
+		}] } })
+		await parseFeedsAndNotify(args())
+		expect(await db.get(`SELECT durationSeconds, emailOutcome
+			FROM video_observations WHERE videoId='new-video'`))
+			.toEqual({ durationSeconds: null, emailOutcome: 'sent' })
+	})
+
+	test('observes an active livestream and emails the VOD', async () => {
+		const base = { snippet: {
+			publishedAt: '2026-01-01T00:00:00Z', title: 'Live',
+			channelTitle: 'Creator', thumbnails: { high: { url: 'thumb' } },
+		}, contentDetails: { duration: 'PT1M' } }
+		list.mockResolvedValueOnce({ data: { items: [{
+			...base, liveStreamingDetails: {
+				actualStartTime: '2026-01-01T00:00:00Z',
+			},
+		}] } }).mockResolvedValueOnce({ data: { items: [{
+			...base, liveStreamingDetails: { actualEndTime: '2026-01-01T01:00:00Z' },
+		}] } })
+		await parseFeedsAndNotify(args())
+		expect(sendVideoEmail).not.toHaveBeenCalled()
+		expect(await db.get(`SELECT contentType, emailOutcome
+			FROM video_observations WHERE videoId='new-video'`)).toEqual({
+			contentType: 'livestream', emailOutcome: 'unknown',
+		})
+		await parseFeedsAndNotify(args())
+		expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+		expect(await db.get(`SELECT emailOutcome FROM video_observations
+			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'sent' })
+	})
+
 	test('unmuting does not replay muted videos', async () => {
 		const muted = { ...config, mode: 'whitelist', channelSettingsById:
 			new Map([['UCfixture', { id: 'UCfixture', notify: false }]]) }
@@ -193,6 +242,19 @@ describe('video failure recovery', () => {
 			.toEqual(['later'])
 		expect(await db.get(`SELECT emailOutcome FROM video_observations
 			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'muted' })
+	})
+
+	test('retention does not cause video emails to be resent', async () => {
+		const manual = { ...config, mode: 'whitelist', videoRetentionDays: 1 }
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		await db.run(`UPDATE video_observations
+			SET observedAt='2000-01-01T00:00:00.000Z'`)
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+		expect(await db.get('SELECT * FROM video_observations')).toBeUndefined()
+		expect(await db.get('SELECT videoId FROM videos')).toEqual({
+			videoId: 'new-video',
+		})
 	})
 
 	test('does not resend a video when email delivery is uncertain', async () => {

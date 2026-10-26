@@ -9,6 +9,7 @@ import { parse as parseDuration, Duration } from 'duration-fns'
 import {
 	BacklogItem, BacklogPolicy, chooseInitialVideos,
 } from './initialBacklog'
+import { pruneVideoObservations } from './videoRetention'
 
 import setupLogger from './lib/logger'
 import { SendVideoEmail, ISendErrorEmail } from './email'
@@ -40,6 +41,11 @@ const mapOption = <Type>(
 		return null
 	}
 	return fn(value)
+}
+
+const parseDate = (value: string): Date | null => {
+	const date = new Date(value)
+	return Number.isFinite(date.getTime()) ? date : null
 }
 
 interface Channel {
@@ -171,14 +177,14 @@ const getChannelsVideos = async ({
 			let videoThumbnail: string | null
 			let videoDuration: Duration | null
 			let isLiveStreamOrPremere: boolean
+			let isLiveActive = false
 
 			if (config.mode === 'whitelist') {
 				// RSS-only: no duration, no livestream status. Notify all.
 				const item = feed.items.find(it => it.videoId === videoId) as
 					{ title?: string, isoDate?: string, pubDate?: string }
 					| undefined
-				videoDate = mapOption(
-					s => new Date(s), item?.isoDate ?? item?.pubDate)
+				videoDate = mapOption(parseDate, item?.isoDate ?? item?.pubDate)
 				videoTitle = mapOption(s => s, item?.title)
 				channelTitle = rssChannelTitle ?? channel.channelTitle
 				videoThumbnail =
@@ -198,8 +204,7 @@ const getChannelsVideos = async ({
 					continue
 				}
 
-				videoDate =
-					mapOption(s => new Date(s), details.snippet?.publishedAt)
+				videoDate = mapOption(parseDate, details.snippet?.publishedAt)
 				videoTitle = mapOption(s => s, details.snippet?.title)
 				channelTitle = details.snippet?.channelTitle ?? null
 				videoThumbnail = (
@@ -212,12 +217,8 @@ const getChannelsVideos = async ({
 				isLiveStreamOrPremere =
 					details && 'liveStreamingDetails' in details
 
-				// Only send the notification once the livestream ended
-				// I prefer to watch the VOD later
-				if (isLiveStreamOrPremere &&
-						!details.liveStreamingDetails?.actualEndTime) {
-					continue
-				}
+				isLiveActive = isLiveStreamOrPremere &&
+					!details.liveStreamingDetails?.actualEndTime
 			}
 
 			logger.verbose(
@@ -227,12 +228,10 @@ const getChannelsVideos = async ({
 
 			// Not really a better way to do this in TypeScript
 			// https://stackoverflow.com/questions/57928920/typescript-narrowing-of-keys-in-objects-when-passed-to-function
-			// Duration is only required in youtube mode (RSS has no duration).
-			if (videoDate === null ||
-					videoTitle === null ||
+			// Publication date and duration can be unknown without blocking a video.
+			if (videoTitle === null ||
 					channelTitle === null ||
-					videoThumbnail === null ||
-					(config.mode !== 'whitelist' && videoDuration === null)) {
+					videoThumbnail === null) {
 
 				const missingKeys = findNullishValues({
 					videoDate,
@@ -257,6 +256,21 @@ const getChannelsVideos = async ({
 				? videoDuration.weeks * 604800 + videoDuration.days * 86400 +
 					videoDuration.hours * 3600 + videoDuration.minutes * 60 +
 					videoDuration.seconds : null
+			if (isLiveActive) {
+				// Preserve the video for the dashboard while waiting for its VOD.
+				await db.run(SQL`INSERT INTO video_observations (
+					videoId, channelId, title, publishedAt, thumbnailUrl,
+					durationSeconds, contentType, observedAt, emailOutcome
+				) VALUES (
+					${videoId}, ${channelId}, ${videoTitle},
+					${videoDate?.toISOString() ?? null}, ${videoThumbnail}, ${seconds},
+					'livestream', ${new Date().toISOString()}, 'unknown'
+				) ON CONFLICT(videoId) DO UPDATE SET
+					title=excluded.title, publishedAt=excluded.publishedAt,
+					thumbnailUrl=excluded.thumbnailUrl,
+					durationSeconds=excluded.durationSeconds;`)
+				continue
+			}
 			// Record the attempt before SMTP: after a crash it must not be replayed.
 			await db.exec('BEGIN IMMEDIATE')
 			try {
@@ -270,10 +284,15 @@ const getChannelsVideos = async ({
 						durationSeconds, contentType, observedAt, emailOutcome
 					) VALUES (
 						${videoId}, ${channelId}, ${videoTitle},
-						${videoDate.toISOString()}, ${videoThumbnail}, ${seconds},
+						${videoDate?.toISOString() ?? null}, ${videoThumbnail}, ${seconds},
 						${isLiveStreamOrPremere ? 'livestream' : null},
 						${new Date().toISOString()}, ${emailOutcome}
-					);
+					) ON CONFLICT(videoId) DO UPDATE SET
+						title=excluded.title, publishedAt=excluded.publishedAt,
+						thumbnailUrl=excluded.thumbnailUrl,
+						durationSeconds=excluded.durationSeconds,
+						contentType=excluded.contentType,
+						emailOutcome=excluded.emailOutcome;
 				`)
 				await db.exec('COMMIT')
 			} catch (err) {
@@ -284,7 +303,7 @@ const getChannelsVideos = async ({
 			if (sendEmail) {
 				try {
 					await sendVideoEmail({
-						date: videoDate,
+						date: videoDate ?? new Date(),
 						channelId,
 						channelTitle,
 						channelThumbnail,
@@ -330,8 +349,8 @@ const getChannelsVideos = async ({
 				421, 454,
 			].includes((err as { responseCode: number }).responseCode)) {
 				logger.warn(
-					'Email quota has run out.',
-					'Abandoning, will retry on next timer trigger.',
+					'SMTP rejected the message; stopping this scan.',
+					'The recorded video will not be retried automatically.',
 				)
 				outcome.stop = true
 				return outcome
@@ -365,6 +384,7 @@ export const parseFeedsAndNotify = async (
 		if (rest.config.mode !== 'whitelist' && !rest.auth) {
 			throw new Error('YouTube authorization is required for API video checks.')
 		}
+		await pruneVideoObservations(db, rest.config.videoRetentionDays ?? null)
 
 		const parser = new RSSParser({
 			customFields: {

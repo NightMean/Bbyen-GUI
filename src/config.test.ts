@@ -164,6 +164,12 @@ describe('loadEmailConfig', () => {
 })
 
 describe('loadConfigRaw', () => {
+	test('rejects invalid video retention', async () => {
+		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from(JSON.stringify({
+			videoRetentionDays: -1,
+		})))
+		await expect(loadConfigRaw()).rejects.toThrow('videoRetentionDays')
+	})
 	test('rejects invalid global backlog policy', async () => {
 		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from(JSON.stringify({
 			initialBacklog: { mode: 'newest', count: 0 },

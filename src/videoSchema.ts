@@ -64,6 +64,17 @@ export const migrateVideoSchema = async (
 				INSERT INTO video_schema_migrations (version) VALUES (2);
 			`)
 		}
+		const repair = await db.get(
+			'SELECT version FROM video_schema_migrations WHERE version = 3')
+		if (!repair) {
+			await db.exec(`
+				INSERT INTO video_observations (videoId, channelId, emailOutcome)
+					SELECT videos.videoId, videos.channelId, 'unknown' FROM videos
+					WHERE NOT EXISTS (SELECT 1 FROM video_observations
+						WHERE video_observations.videoId = videos.videoId);
+				INSERT INTO video_schema_migrations (version) VALUES (3);
+			`)
+		}
 		await db.exec('COMMIT')
 	} catch (err) {
 		await db.exec('ROLLBACK')
