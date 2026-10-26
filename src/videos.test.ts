@@ -146,4 +146,37 @@ describe('video failure recovery', () => {
 		await parseFeedsAndNotify({ ...args(), config: manual } as never)
 		expect(sendVideoEmail).not.toHaveBeenCalled()
 	})
+
+	test('records metadata and skipped backlog outcome', async () => {
+		const manual = { ...config, mode: 'whitelist', notifyOnFirstScan: false }
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		expect(await db.get(`SELECT title, emailOutcome FROM video_observations
+			WHERE videoId='new-video'`)).toEqual({
+			title: 'Video', emailOutcome: 'backlog_skipped',
+		})
+	})
+
+	test('does not resend a video when email delivery is uncertain', async () => {
+		const manual = { ...config, mode: 'whitelist' }
+		sendVideoEmail.mockRejectedValueOnce(new Error('connection lost'))
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+		expect(await db.get(`SELECT emailOutcome FROM video_observations
+			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'uncertain' })
+	})
+
+	test('records the attempt before sending and saves the sent time',
+		async () => {
+			const manual = { ...config, mode: 'whitelist' }
+			sendVideoEmail.mockImplementationOnce(async () => {
+				expect(await db.get(`SELECT emailOutcome FROM video_observations
+				WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'pending' })
+			})
+			await parseFeedsAndNotify({ ...args(), config: manual } as never)
+			expect(await db.get(`SELECT emailOutcome, sentAt FROM video_observations
+			WHERE videoId='new-video'`)).toEqual({
+				emailOutcome: 'sent', sentAt: expect.any(String),
+			})
+		})
 })

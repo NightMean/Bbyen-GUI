@@ -154,7 +154,7 @@ const getChannelsVideos = async ({
 					| undefined
 				videoDate = mapOption(
 					s => new Date(s), item?.isoDate ?? item?.pubDate)
-				videoTitle = mapOption(s => truncate(s, 70), item?.title)
+				videoTitle = mapOption(s => s, item?.title)
 				channelTitle = rssChannelTitle ?? channel.channelTitle
 				videoThumbnail =
 					`https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
@@ -175,8 +175,7 @@ const getChannelsVideos = async ({
 
 				videoDate =
 					mapOption(s => new Date(s), details.snippet?.publishedAt)
-				videoTitle =
-					mapOption(s => truncate(s, 70), details.snippet?.title)
+				videoTitle = mapOption(s => s, details.snippet?.title)
 				channelTitle = details.snippet?.channelTitle ?? null
 				videoThumbnail = (
 					details.snippet?.thumbnails?.maxres?.url ??
@@ -227,21 +226,59 @@ const getChannelsVideos = async ({
 
 			const entry = config.channelSettingsById?.get(channelId)
 			const sendEmail = shouldSendEmail(config, entry, isFirstScan)
+			const emailOutcome = sendEmail ? 'pending' :
+				entry?.notify === false ? 'muted' : 'backlog_skipped'
+			const seconds = videoDuration
+				? videoDuration.weeks * 604800 + videoDuration.days * 86400 +
+					videoDuration.hours * 3600 + videoDuration.minutes * 60 +
+					videoDuration.seconds : null
+			// Record the attempt before SMTP: after a crash it must not be replayed.
+			await db.exec('BEGIN IMMEDIATE')
+			try {
+				await db.run(SQL`
+					INSERT INTO videos (videoId, channelId)
+					VALUES (${videoId}, ${channelId});
+				`)
+				await db.run(SQL`
+					INSERT INTO video_observations (
+						videoId, channelId, title, publishedAt, thumbnailUrl,
+						durationSeconds, contentType, observedAt, emailOutcome
+					) VALUES (
+						${videoId}, ${channelId}, ${videoTitle},
+						${videoDate.toISOString()}, ${videoThumbnail}, ${seconds},
+						${isLiveStreamOrPremere ? 'livestream' : null},
+						${new Date().toISOString()}, ${emailOutcome}
+					);
+				`)
+				await db.exec('COMMIT')
+			} catch (err) {
+				await db.exec('ROLLBACK')
+				throw err
+			}
 
 			if (sendEmail) {
-				await sendVideoEmail({
-					date: videoDate,
-					channelId,
-					channelTitle,
-					channelThumbnail,
-					videoId,
-					videoThumbnail,
-					videoTitle,
-					isLiveStreamOrPremere,
-					videoDuration: videoDuration
-						? formatDuration(videoDuration) : '',
-					videoURL: `https://www.youtube.com/watch?v=${videoId}`,
-				})
+				try {
+					await sendVideoEmail({
+						date: videoDate,
+						channelId,
+						channelTitle,
+						channelThumbnail,
+						videoId,
+						videoThumbnail,
+						videoTitle: truncate(videoTitle, 70),
+						isLiveStreamOrPremere,
+						videoDuration: videoDuration
+							? formatDuration(videoDuration) : '',
+						videoURL: `https://www.youtube.com/watch?v=${videoId}`,
+					})
+				} catch (err) {
+					await db.run(SQL`UPDATE video_observations
+						SET emailOutcome='uncertain' WHERE videoId=${videoId};`)
+					throw err
+				}
+				await db.run(SQL`UPDATE video_observations
+					SET emailOutcome='sent', sentAt=${new Date().toISOString()}
+					WHERE videoId=${videoId};`)
 			} else {
 				logger.verbose([
 					`Skipping email for ${channelTitle} (${channelId}):`,
@@ -250,13 +287,6 @@ const getChannelsVideos = async ({
 						: 'first-scan backlog suppressed',
 				].join(' '))
 			}
-
-			// Always record the video so muted / suppressed videos are not
-			// re-notified on a later run.
-			await db.run(SQL`
-				INSERT INTO videos (videoId, channelId)
-				VALUES (${videoId}, ${channelId});
-			`)
 
 		} catch (err) {
 			await alert(err)
