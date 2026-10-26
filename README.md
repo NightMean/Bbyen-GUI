@@ -208,6 +208,9 @@ npm run sync-channels -- --account "YourChannelName" --save
 ```
 
 Bell observation records do not activate email monitoring by themselves.
+History records every observed bell state, including changes from All to
+Personalized or None. Saving imports All channels into the whitelist and keeps
+existing entries; it does not remove manually configured channels.
 Restart the service after saving channel changes so it reloads the whitelist.
 `firstObservedAt` records the first local observation, not the date you
 subscribed on YouTube. Existing databases with no observation timestamp use
@@ -220,6 +223,9 @@ to prevent competing edits and replace JSON files atomically. A busy editor
 fails clearly; retry after it finishes. If a process crashes, the lock contains
 its process ID. Verify that process has stopped before deleting the lock and
 retrying. The original JSON remains usable if a write fails before replacement.
+If SQLite recording fails after the whitelist was saved, sync reports that
+partial result and exits unsuccessfully. Retry after correcting the database
+error; whitelist merging and database upserts are safe to repeat.
 
 You can use the keys `blacklistedChannelIds` and `whitelistedChannelIds` in `channels.json`.
 These should be arrays of the channels you want to include/exclude.

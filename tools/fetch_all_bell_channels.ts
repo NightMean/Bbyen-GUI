@@ -26,6 +26,7 @@ const INNERTUBE_API_URL = 'https://www.youtube.com/youtubei/v1/browse'
 const ACCOUNT_MENU_URL =
 	'https://www.youtube.com/youtubei/v1/account/account_menu'
 const CLIENT_VERSION = '2.20240101.00.00'
+const MAX_SUBSCRIPTION_PAGES = 1000
 
 interface FetchOptions {
 	cookie: string
@@ -208,13 +209,17 @@ export const fetchAllBellChannels = async (
 	const pageIdTag = pageId ? ` [Brand PageId: ${pageId}]` : ''
 	console.log(`Connected to YouTube account: ${accountName}${pageIdTag}`)
 
-	const allBellMap = new Map<string, ChannelBellState>()
+	const observed = new Map<string, ChannelBellState>()
+	const seenContinuations = new Set<string>()
 	let continuationToken: string | null = null
 	let page = 1
 
 	console.log('Fetching subscriptions from YouTube InnerTube API...')
 
 	while (true) {
+		if (page > MAX_SUBSCRIPTION_PAGES) {
+			throw new Error('Subscription pagination limit reached; nothing saved.')
+		}
 		const authHeader = generateSapisidHash(sapisid)
 		const payload: Record<string, unknown> = {
 			context: {
@@ -273,10 +278,14 @@ export const fetchAllBellChannels = async (
 			throw err
 		}
 
+		if (response.data?.error || response.data?.responseContext
+			?.mainAppWebResponseContext?.loggedOut === true) {
+			throw new Error('YouTube rejected the session; update cookies.txt.')
+		}
 		const extracted = extractChannelsFromInnerTube(response.data)
 		const bellChannels = extracted.channels.filter(c => c.isAllNotifications)
-		for (const ch of bellChannels) {
-			allBellMap.set(ch.channelId, ch)
+		for (const ch of extracted.channels) {
+			observed.set(ch.channelId, ch)
 		}
 
 		console.log(
@@ -284,17 +293,17 @@ export const fetchAllBellChannels = async (
 				`(${bellChannels.length} with All notifications).`,
 		)
 
-		if (
-			!extracted.continuationToken ||
-			extracted.continuationToken === continuationToken
-		) {
-			break
+		if (!extracted.continuationToken) break
+		if (seenContinuations.has(extracted.continuationToken)) {
+			throw new Error('Repeated continuation token; incomplete sync not saved.')
 		}
+		seenContinuations.add(extracted.continuationToken)
 		continuationToken = extracted.continuationToken
 		page++
 	}
 
-	const allBellChannels = Array.from(allBellMap.values())
+	const allBellChannels = [...observed.values()]
+		.filter(channel => channel.isAllNotifications)
 	console.log(
 		`\nTotal channels with "All" notifications: ${allBellChannels.length}`,
 	)
@@ -309,22 +318,37 @@ export const fetchAllBellChannels = async (
 		})
 		console.log(`Saved ${saved.whitelistedChannelIds.length} total channels.`)
 
-		// Also record bell state history in SQLite if database is configured
+		// The whitelist imports All channels, while history records every state.
+		// File and database writes cannot be one atomic operation: failures after
+		// the file save report that partial outcome and can safely be retried.
 		try {
 			const raw = await loadConfigRaw()
 			const db = await database.init(raw.database)
-			for (const ch of allBellChannels) {
-				await database.recordSubscriptionBellState(
-					db,
-					ch.channelId,
-					ch.title,
-					ch.notificationState,
-				)
+			let transactionStarted = false
+			try {
+				await db.exec('BEGIN IMMEDIATE')
+				transactionStarted = true
+				for (const ch of observed.values()) {
+					await database.recordSubscriptionBellState(
+						db, ch.channelId, ch.title, ch.notificationState,
+					)
+				}
+				await db.exec('COMMIT')
+				transactionStarted = false
+			} catch (err) {
+				if (transactionStarted) {
+					await db.exec('ROLLBACK').catch(() => {
+						console.warn('Could not roll back bell history transaction.')
+					})
+				}
+				throw err
+			} finally {
+				await db.close()
 			}
-			await db.close()
 			console.log('Recorded bell history in SQLite database.')
-		} catch {
-			// Database not set up or configured yet; ignore
+		} catch (err) {
+			throw new Error('channels.json was saved, but recording bell history ' +
+				`in the database failed: ${(err as Error).message}. Retry the sync.`)
 		}
 	}
 
