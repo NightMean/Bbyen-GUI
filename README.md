@@ -29,7 +29,7 @@ or
 ## Installation and setup
 
 There are two methods to run this software.
-You may run it on bare metal, or take advantage of the Docker image published to Docker Hub.
+You may run it on bare metal or build and run the included Docker configuration.
 
 ### Bare metal
 
@@ -56,30 +56,41 @@ You may run it on bare metal, or take advantage of the Docker image published to
 
 ### Docker
 
-1. Create an empty folder on your computer
-	```
-	mkdir -p ~/docker/bbyen
-	cd ~/docker/bbyen
-	```
-1. Copy the `docker-compose.yml` from this repository to that folder
-	```
-	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/docker-compose.yml
-	```
-1. Copy the configuration file templates
-	```
-	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/config.example.json \
-	  -O config.json
-	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/channels.example.json \
-	  -O channels.json
-	wget https://raw.githubusercontent.com/MarcelRobitaille/bbyen/master/secrets.example.json \
-	  -O secrets.json
-	```
-1. [Perform the initial configuration](#initial-configuration)
+Run these commands from this source checkout, alongside `Dockerfile` and
+`docker-compose.yml`. Compose builds the current source into `bbyen:local`.
+
+```sh
+mkdir -p data
+cp config.example.json data/config.json
+cp channels.example.json data/channels.json
+cp secrets.example.json data/secrets.json
+```
+
+[Configure email and channels](#initial-configuration) in `data/`. Set
+`database.filename` to `/var/lib/bbyen/database.sqlite` in `data/config.json`
+so SQLite and its journal stay in persistent storage. The template port is
+3030, matching Compose. For whitelist mode, set `mode` to `whitelist`.
+
+For youtube mode, also put `google-credentials.json` in `data/`, then run:
+
+```sh
+docker compose build
+docker compose run --rm --service-ports bbyen npm run login
+```
+
+Compose mounts the whole `data/` directory at `CONFIG_DIR=/var/lib/bbyen`.
+Individual JSON file mounts cannot support atomic replacement and must be
+removed when migrating an older deployment. Stop the old container, copy its
+configuration, secrets, token, channels, and existing SQLite database into
+`data/`, update `database.filename` as above, and recreate it with this Compose
+file. Keep the old files until the new container is verified. Runtime data is
+excluded from Git and the Docker build context.
 
 ## Initial Configuration
 
 After installing the software using either the bare metal or Docker method,
-it is mandatory to configure certain values and to set up Google API credentials.
+configure email and channel settings. Google API credentials are required only
+in youtube mode. For Docker, use the files in `data/` described above.
 
 1. Populate the configuration files
 
@@ -137,7 +148,7 @@ npm start
 
 ### Docker
 ```
-sudo docker-compose up
+docker compose up -d --build
 ```
 
 ## Operating modes

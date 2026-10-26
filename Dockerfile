@@ -8,12 +8,10 @@ WORKDIR /usr/src/app
 # where available (npm@5+)
 ADD package*.json ./
 
-RUN npm install
-# If you are building your code for production
-# RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy app source
 COPY . .
 
-EXPOSE 3050
+EXPOSE 3030
 CMD [ "npm", "run", "start" ]

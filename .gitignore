@@ -12,3 +12,4 @@ cookies.txt
 cookies*.txt
 *.json.lock
 *.json.*.tmp
+data/
