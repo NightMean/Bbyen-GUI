@@ -24,16 +24,24 @@ async function* _genericIterator(
 	options?: MethodOptions,
 ): AsyncIterable<Awaited<SubscriptionsItem>> {
 	let nextPageToken = undefined
+	const seenTokens = new Set<string>()
+	let pages = 0
 
 	const logger = await setupLogger({ label: 'iterator' })
 	let itemsSeen = 0
 
 	do {
+		if (++pages > 1000) {
+			throw new Error('Subscription page limit reached; snapshot not saved.')
+		}
 
 		// Call given method with given params
 		const res: GaxiosResponse<SubscriptionsResult> =
 			await method({ ...params, pageToken: nextPageToken }, options)
 
+		if (!res.data || !Array.isArray(res.data.items)) {
+			throw new Error('Invalid subscription page; snapshot not saved.')
+		}
 		itemsSeen += res.data.items?.length ?? 0
 
 		logger.verbose('Got page of data', {
@@ -44,9 +52,13 @@ async function* _genericIterator(
 			nextPageToken: res.data.nextPageToken,
 		})
 
-		logger.debug(JSON.stringify({ options, res, nextPageToken }))
-
 		nextPageToken = res.data.nextPageToken
+		if (nextPageToken) {
+			if (seenTokens.has(nextPageToken)) {
+				throw new Error('Repeated subscription page token; snapshot not saved.')
+			}
+			seenTokens.add(nextPageToken)
+		}
 
 		// Yield all data entries
 		yield* res.data.items ?? []

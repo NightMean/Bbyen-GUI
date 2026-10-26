@@ -10,10 +10,11 @@ import {
 	BacklogItem, BacklogPolicy, chooseInitialVideos,
 } from './initialBacklog'
 import { pruneVideoObservations } from './videoRetention'
+import { EmailEligibility, makeEmailEligibility } from './emailPolicy'
 
 import setupLogger from './lib/logger'
 import { SendVideoEmail, ISendErrorEmail } from './email'
-import { Config } from './config'
+import { ChannelEntry, Config } from './config'
 import findNullishValues from './lib/findNullishValues'
 import { classifyError } from './lib/classifyError'
 import { notifyError, clearErrorState } from './lib/alertState'
@@ -64,6 +65,8 @@ interface IGetChannelsVideos {
 	db: sqlite.Database,
 	config: Config,
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
+	getEligibility: (id: string, entry?: ChannelEntry) =>
+		EmailEligibility,
 }
 const getChannelsVideos = async ({
 	channel,
@@ -75,6 +78,7 @@ const getChannelsVideos = async ({
 	db,
 	config,
 	sendErrorEmail,
+	getEligibility,
 }: IGetChannelsVideos) => {
 	const { channelId, channelThumbnail } = channel
 	const outcome = { failed: false, stop: false, checkedYouTube: false }
@@ -248,10 +252,11 @@ const getChannelsVideos = async ({
 				continue
 			}
 
-			const sendEmail = entry?.notify !== false &&
+			const eligibility = getEligibility(channelId, entry)
+			const sendEmail = eligibility === 'eligible' &&
 				(initialVideos.get(videoId) ?? 1) === 1
 			const emailOutcome = sendEmail ? 'pending' :
-				entry?.notify === false ? 'muted' : 'backlog_skipped'
+				eligibility !== 'eligible' ? eligibility : 'backlog_skipped'
 			const seconds = videoDuration
 				? videoDuration.weeks * 604800 + videoDuration.days * 86400 +
 					videoDuration.hours * 3600 + videoDuration.minutes * 60 +
@@ -333,9 +338,9 @@ const getChannelsVideos = async ({
 			} else {
 				logger.verbose([
 					`Skipping email for ${channelTitle} (${channelId}):`,
-					entry?.notify === false
-						? 'channel muted'
-						: 'first-scan backlog suppressed',
+					eligibility === 'muted' ? 'channel muted' :
+						eligibility === 'excluded' ? 'excluded by email policy' :
+							'first-scan backlog suppressed',
 				].join(' '))
 			}
 
@@ -393,6 +398,7 @@ export const parseFeedsAndNotify = async (
 				],
 			},
 		})
+		const getEligibility = makeEmailEligibility(rest.config)
 
 		const channels: Channel[] = await db.all(SQL`
 			SELECT channelId, channelTitle, channelThumbnail
@@ -413,6 +419,7 @@ export const parseFeedsAndNotify = async (
 				parser,
 				logger,
 				db,
+				getEligibility,
 				...rest
 			})
 

@@ -164,6 +164,12 @@ describe('loadEmailConfig', () => {
 })
 
 describe('loadConfigRaw', () => {
+	test('validates the optional API email selection policy', async () => {
+		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from(JSON.stringify({
+			emailSelectionPolicy: 'unexpected',
+		})))
+		await expect(loadConfigRaw()).rejects.toThrow('emailSelectionPolicy')
+	})
 	test('rejects invalid video retention', async () => {
 		vi.mocked(fs.readFile).mockResolvedValue(Buffer.from(JSON.stringify({
 			videoRetentionDays: -1,

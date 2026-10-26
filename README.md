@@ -265,8 +265,20 @@ For example:
 	"whitelistedChannelIds": [ "zzz" ]
 }
 ```
-If the key `whitelistedChannelIds` is present, notifications will only be sent for those channels.
-If `blacklistedChannelIds` is present, any notifications that would be sent for channels are skipped.
+In legacy API configuration, a present `whitelistedChannelIds` restricts
+discovery to those channels, and `blacklistedChannelIds` excludes channels.
+In manual mode, the whitelist is the channel list.
+
+In YouTube API mode, the example `config.json` sets `emailSelectionPolicy` to
+`allowlist`. The service discovers and tracks all account subscriptions, but
+emails only allowlisted channels. The example allowlist is empty. Set the policy
+to `blocklist` to email all subscriptions except those in the blacklist. The
+blacklist is also a final exclusion in allowlist mode; channel muting still
+applies. Excluded videos are recorded so they are not emailed later when the
+policy changes. Configurations that omit `emailSelectionPolicy` retain the
+legacy whitelist-based discovery behavior. Restart after changing either file.
+The standalone cookie-sync command still imports All-bell channels into the
+whitelist; it does not yet provide ongoing cookie-authoritative reconciliation.
 
 #### Per-channel settings
 

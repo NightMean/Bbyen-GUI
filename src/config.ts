@@ -13,6 +13,7 @@ import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
 import { updateJsonFile } from './lib/jsonFile'
 import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 import { parseVideoRetentionDays } from './videoRetention'
+import { EmailSelectionPolicy, parseEmailSelectionPolicy } from './emailPolicy'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
 export const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json')
@@ -68,6 +69,7 @@ export interface Config {
 	notifyOnFirstScan: boolean,
 	initialBacklog?: BacklogPolicy,
 	videoRetentionDays?: number | null,
+	emailSelectionPolicy?: EmailSelectionPolicy,
 	whitelistedChannelIds?: ChannelEntry[],
 	blacklistedChannelIds?: ChannelEntry[],
 	channelSettingsById?: Map<string, ChannelEntry>,
@@ -88,6 +90,7 @@ const validateConfig = (
 
 	for (const [key, val] of Object.entries(expected)) {
 		if (!(key in received)) {
+			if (path.length === 0 && key === 'emailSelectionPolicy') continue
 			console.error([
 				`Your config file is missing the key '${[...path, key].join('.')}'.`,
 				'Please check your config file and the README.md.'
@@ -275,6 +278,10 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.videoRetentionDays !== undefined) {
 		config.videoRetentionDays = parseVideoRetentionDays(
 			config.videoRetentionDays)
+	}
+	if (config.emailSelectionPolicy !== undefined) {
+		config.emailSelectionPolicy = parseEmailSelectionPolicy(
+			config.emailSelectionPolicy)
 	}
 	return config
 }

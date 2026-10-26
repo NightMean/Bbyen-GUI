@@ -9,10 +9,9 @@ import winston from 'winston'
 import { Config, ChannelEntry } from './config'
 import setupLogger from './lib/logger'
 import { subscriptionIterator } from './google/iterators'
-import findNullishValues from './lib/findNullishValues'
 import { classifyError } from './lib/classifyError'
 import { notifyError, clearErrorState } from './lib/alertState'
-import { assertChannelId } from './lib/channelId'
+import { assertChannelId, isChannelId } from './lib/channelId'
 import { ISendErrorEmail } from './email'
 import { DEFAULT_CHANNEL_THUMBNAIL } from './database'
 
@@ -66,6 +65,7 @@ const insertNewSubscriptions = async (
 	logger: winston.Logger,
 	newSubscriptions: string[],
 	channelDetails: Map<string, ChannelDetails>,
+	insideTransaction = false,
 ) => {
 
 	const stmtInsert = await db.prepare(SQL`
@@ -87,7 +87,7 @@ const insertNewSubscriptions = async (
 	`)
 
 	try {
-		await db.exec('BEGIN IMMEDIATE')
+		if (!insideTransaction) await db.exec('BEGIN IMMEDIATE')
 		try {
 			for (const [i, channelId] of newSubscriptions.entries()) {
 				const res = channelDetails.get(channelId)
@@ -117,9 +117,9 @@ const insertNewSubscriptions = async (
 				await stmtInsert.run(
 					channelId, title, thumbnail, new Date().toISOString())
 			}
-			await db.exec('COMMIT')
+			if (!insideTransaction) await db.exec('COMMIT')
 		} catch (err) {
-			await db.exec('ROLLBACK')
+			if (!insideTransaction) await db.exec('ROLLBACK')
 			throw err
 		}
 	} finally {
@@ -142,18 +142,21 @@ const removeDeletedSubscriptions = async (
 		WHERE channelId=? AND COALESCE(deletedReason, '') <> 'terminated';
 	`)
 
-	for (let channelId of removedSubscriptions) {
-		const { channelTitle } = await db.get(SQL`
+	try {
+		for (let channelId of removedSubscriptions) {
+			const { channelTitle } = await db.get(SQL`
 			SELECT channelTitle
 			FROM subscriptions
 			WHERE channelId=${channelId};
 		`)
-		const result = await stmt.run(now, channelId)
-		if (result.changes) {
-			logger.info(`Removed subscription: ${channelTitle}`)
+			const result = await stmt.run(now, channelId)
+			if (result.changes) {
+				logger.info(`Removed subscription: ${channelTitle}`)
+			}
 		}
+	} finally {
+		await stmt.finalize()
 	}
-	await stmt.finalize()
 }
 
 function* chunks<T>(arr: T[], n: number) {
@@ -182,15 +185,17 @@ export const updateSubscriptionsFromAPI = async (
 		const channelId = sub.snippet?.resourceId?.channelId
 		const thumbnail = sub.snippet?.thumbnails?.high?.url
 
-		if (!title || !channelId || !thumbnail) {
-			const missingKeys = findNullishValues({ title, channelId, thumbnail })
-			logger.warn(
-				'Could not find all required fields in subscription',
-				{ sub, missingKeys })
-			continue
+		if (!channelId) {
+			throw new Error('Subscription response is missing a channel ID; ' +
+				'the previous snapshot was preserved.')
+		}
+		if (!isChannelId(channelId)) {
+			throw new Error('Subscription response contains an invalid channel ID; ' +
+				'the previous snapshot was preserved.')
 		}
 
-		if (channelIds(config.blacklistedChannelIds).includes(channelId)) {
+		if (!config.emailSelectionPolicy &&
+				channelIds(config.blacklistedChannelIds).includes(channelId)) {
 			logger.debug([
 				'Ignoring channel in blacklist: ',
 				`${title} (${channelId})`,
@@ -198,7 +203,7 @@ export const updateSubscriptionsFromAPI = async (
 			continue
 		}
 
-		if (config.whitelistedChannelIds &&
+		if (!config.emailSelectionPolicy && config.whitelistedChannelIds &&
 				!channelIds(config.whitelistedChannelIds).includes(channelId)) {
 			logger.debug([
 				'Ignoring channel not in whitelist: ',
@@ -212,8 +217,8 @@ export const updateSubscriptionsFromAPI = async (
 
 		updatedSubscriptions.add(channelId)
 		channelDetails.set(channelId, {
-			title,
-			thumbnail,
+			title: title ?? channelId,
+			thumbnail: thumbnail ?? DEFAULT_CHANNEL_THUMBNAIL,
 		})
 	}
 
@@ -229,10 +234,16 @@ export const updateSubscriptionsFromAPI = async (
 	)
 
 	// Add any new subscriptions to the database
-	await insertNewSubscriptions(
-		db, logger, Array.from(newSubscriptions), channelDetails)
-
-	await removeDeletedSubscriptions(db, logger, removedSubscriptions.values())
+	await db.exec('BEGIN IMMEDIATE')
+	try {
+		await insertNewSubscriptions(
+			db, logger, Array.from(newSubscriptions), channelDetails, true)
+		await removeDeletedSubscriptions(db, logger, removedSubscriptions.values())
+		await db.exec('COMMIT')
+	} catch (err) {
+		await db.exec('ROLLBACK')
+		throw err
+	}
 
 	logger.info('Done checking subscriptions...')
 }
@@ -342,7 +353,8 @@ export const updateSubscriptions = async (args: IUpdateSubscriptions) => {
 			await updateSubscriptionsFromWhitelistNoApi({
 				db: args.db, config: args.config, logger,
 			})
-		} else if (Array.isArray(args.config.whitelistedChannelIds)) {
+		} else if (!args.config.emailSelectionPolicy &&
+				Array.isArray(args.config.whitelistedChannelIds)) {
 			await updateSubscriptionsFromWhitelist(args)
 		} else {
 			await updateSubscriptionsFromAPI(args)
