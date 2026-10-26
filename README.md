@@ -238,6 +238,10 @@ Bell observation records do not activate email monitoring by themselves.
 History records every observed bell state, including changes from All to
 Personalized or None. Saving imports All channels into the whitelist and keeps
 existing entries; it does not remove manually configured channels.
+An unrecognized or empty response is rejected because the current InnerTube
+parser cannot distinguish an empty subscription list from a changed response.
+Existing channel settings are preserved; this also means a genuinely empty
+account cannot yet be confirmed by cookie sync.
 Restart the service after saving channel changes so it reloads the whitelist.
 `firstObservedAt` records the first local observation, not the date you
 subscribed on YouTube. Existing databases with no observation timestamp use

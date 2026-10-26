@@ -158,3 +158,16 @@ test('does not save a logged-out HTTP 200 response', async () => {
 	})).rejects.toThrow('rejected the session')
 	await expect(fs.stat(channelsFile)).rejects.toMatchObject({ code: 'ENOENT' })
 })
+
+test.each([
+	['empty', {}],
+	['malformed', { channelRenderer: { title: { simpleText: 'Missing ID' } } }],
+])('does not save an unverifiable %s response', async (_, data) => {
+	vi.mocked(axios.post).mockImplementation(async url => ({
+		data: String(url).endsWith('/browse') ? data : {},
+	}))
+	await expect(sync({
+		cookie: 'SAPISID=synthetic-fixture', saveToChannelsJson: true,
+	})).rejects.toThrow(/nothing was saved/i)
+	await expect(fs.stat(channelsFile)).rejects.toMatchObject({ code: 'ENOENT' })
+})

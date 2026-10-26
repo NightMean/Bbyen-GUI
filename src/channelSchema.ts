@@ -9,5 +9,27 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		apiSubscriptionId TEXT,
 		apiSubscribedAt TEXT,
 		apiObservedAt TEXT
+	);
+	CREATE TABLE IF NOT EXISTS cookie_active_profile (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		profileKey TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS cookie_channel_state (
+		profileKey TEXT NOT NULL,
+		channelId TEXT NOT NULL,
+		subscribed INTEGER NOT NULL CHECK (subscribed IN (0, 1)),
+		latestBell TEXT,
+		lastConfirmedBell TEXT,
+		observedAt TEXT NOT NULL,
+		PRIMARY KEY (profileKey, channelId)
+	);
+	CREATE TABLE IF NOT EXISTS cookie_channel_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		profileKey TEXT NOT NULL,
+		channelId TEXT NOT NULL,
+		previousState TEXT,
+		currentState TEXT NOT NULL,
+		notifyEligible INTEGER NOT NULL CHECK (notifyEligible IN (0, 1)),
+		observedAt TEXT NOT NULL
 	);`)
 }

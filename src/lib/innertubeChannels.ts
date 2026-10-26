@@ -1,6 +1,6 @@
 import crypto from 'crypto'
 import axios from 'axios'
-import { assertChannelId } from './channelId'
+import { assertChannelId, isChannelId } from './channelId'
 
 export interface ChannelBellState {
 	channelId: string
@@ -195,16 +195,19 @@ export const extractChannelsFromInnerTube = (
 ): {
 	channels: ChannelBellState[]
 	continuationToken: string | null
+	invalidChannels: number
 } => {
 	const channels: ChannelBellState[] = []
 	const seenIds = new Set<string>()
 	let continuationToken: string | null = null
+	let invalidChannels = 0
 
 	const walk = (node: any) => {
 		if (!node || typeof node !== 'object') return
 
 		if (node.channelRenderer) {
 			const parsed = parseChannelRenderer(node.channelRenderer)
+			if (!parsed || !isChannelId(parsed.channelId)) invalidChannels++
 			if (parsed && !seenIds.has(parsed.channelId)) {
 				seenIds.add(parsed.channelId)
 				channels.push(parsed)
@@ -224,7 +227,7 @@ export const extractChannelsFromInnerTube = (
 	}
 
 	walk(data)
-	return { channels, continuationToken }
+	return { channels, continuationToken, invalidChannels }
 }
 
 /**
