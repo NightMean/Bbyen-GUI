@@ -19,7 +19,7 @@ export interface TerminatedChannelInfo {
 
 /**
  * Verifies if a channel is terminated or deleted on YouTube.
- * Returns true if the public channel page returns 404 or lacks canonical tags.
+ * Requires HTTP 404 or an explicit termination error in channel page data.
  */
 export const isChannelTerminatedOnYouTube = async (
 	channelId: string,
@@ -36,16 +36,21 @@ export const isChannelTerminatedOnYouTube = async (
 			return true
 		}
 
-		const data = typeof res.data === 'string' ? res.data : ''
-		const hasCanonical = data.includes('rel="canonical"')
-		const hasOgTitle = data.includes('property="og:title"')
-
-		// Dead or non-existent channels lack both canonical link and og:title
-		if (!hasCanonical && !hasOgTitle) {
-			return true
-		}
-
-		return false
+		// Rate limits, server failures and consent pages prove no termination.
+		if (res.status !== 200 || typeof res.data !== 'string') return false
+		const initial = res.data.match(
+			/ytInitialData\s*=\s*(\{.*?\})\s*;/s,
+		)?.[1]
+		if (!initial) return false
+		const alerts = JSON.parse(initial).alerts
+		if (!Array.isArray(alerts)) return false
+		return alerts.some(({ alertRenderer: alert }) => {
+			if (alert?.type !== 'ERROR') return false
+			const text = alert.text?.simpleText ??
+				alert.text?.runs?.map((run: { text: string }) => run.text).join('')
+			return /(?:account|channel) has been (?:terminated|removed|deleted)/i
+				.test(text ?? '')
+		})
 	} catch {
 		// Network errors should not be treated as termination
 		return false

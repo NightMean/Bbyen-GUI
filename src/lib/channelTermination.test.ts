@@ -24,7 +24,7 @@ describe('isChannelTerminatedOnYouTube', () => {
 		expect(result).toBe(true)
 	})
 
-	test('returns true when HTML lacks canonical and og:title', async () => {
+	test('does not infer deletion from missing page metadata', async () => {
 		vi.mocked(axios.get).mockResolvedValueOnce({
 			status: 200,
 			data: '<html><head></head><body>Empty page</body></html>',
@@ -32,7 +32,27 @@ describe('isChannelTerminatedOnYouTube', () => {
 
 		const result =
 			await isChannelTerminatedOnYouTube('UC0000000000000000000000')
-		expect(result).toBe(true)
+		expect(result).toBe(false)
+	})
+
+	test.each([403, 429, 500, 503])('ignores HTTP %i failures', async status => {
+		vi.mocked(axios.get).mockResolvedValueOnce({
+			status, data: 'Temporary failure',
+		})
+		expect(await isChannelTerminatedOnYouTube('UC1')).toBe(false)
+	})
+
+	test('recognizes an explicit termination error in channel data', async () => {
+		const initial = { alerts: [{ alertRenderer: {
+			type: 'ERROR', text: { runs: [{
+				text: 'This account has been terminated for policy violations.',
+			}] },
+		} }] }
+		vi.mocked(axios.get).mockResolvedValueOnce({
+			status: 200,
+			data: `<script>var ytInitialData = ${JSON.stringify(initial)};</script>`,
+		})
+		expect(await isChannelTerminatedOnYouTube('UC1')).toBe(true)
 	})
 
 	test('returns false when channel page is valid', async () => {
