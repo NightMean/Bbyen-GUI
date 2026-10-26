@@ -176,6 +176,9 @@ When a backend run fails — YouTube authentication, API quota, or any other
 error — the app emails you once per issue (repeats are suppressed until the
 problem clears and recurs). This is gated by `logging.emailOnError` in
 `config.json`.
+Video API, RSS, and email delivery failures participate in this reporting.
+A successful unrelated task does not reset suppression: affected tasks must
+recover before a recurrence triggers another alert.
 
 ## Advanced Configuration
 

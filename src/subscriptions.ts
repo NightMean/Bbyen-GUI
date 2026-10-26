@@ -330,12 +330,15 @@ export const updateSubscriptions = async (args: IUpdateSubscriptions) => {
 			await updateSubscriptionsFromAPI(args)
 		}
 
-		// A successful run means auth and quota are healthy account-wide.
-		clearErrorState([ 'auth', 'quota', 'other' ])
+		clearErrorState([ 'other' ], 'subscriptions')
+		if (args.config.mode !== 'whitelist') {
+			clearErrorState([ 'auth', 'quota' ], 'subscriptions')
+		}
 
 	} catch (err) {
 		logger.debug(JSON.stringify(err, null, '\t'))
 		await notifyError(classifyError(err), err, {
+			source: 'subscriptions',
 			sendErrorEmail: args.sendErrorEmail,
 			emailOnError: args.config.logging.emailOnError,
 			logger,

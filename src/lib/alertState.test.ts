@@ -51,4 +51,37 @@ describe('alertState', () => {
 		await expect(notifyError('other', new Error('x'), deps))
 			.resolves.toBeUndefined()
 	})
+
+	test('coalesces concurrent notifications for the same outage', async () => {
+		const deps = makeDeps()
+		await Promise.all([
+			notifyError('auth', new Error('x'), deps),
+			notifyError('auth', new Error('x'), deps),
+		])
+		expect(deps.sendErrorEmail).toHaveBeenCalledTimes(1)
+	})
+
+	test('retries an email failure on the next failure report', async () => {
+		const deps = makeDeps()
+		deps.sendErrorEmail.mockRejectedValueOnce(new Error('SMTP unavailable'))
+		await notifyError('other', new Error('x'), deps)
+		await notifyError('other', new Error('x'), deps)
+		expect(deps.sendErrorEmail).toHaveBeenCalledTimes(2)
+	})
+
+	test('waits for every affected source to recover', async () => {
+		const deps = makeDeps()
+		await notifyError('auth', new Error('x'), { ...deps, source: 'videos' })
+		await notifyError('auth', new Error('x'), {
+			...deps, source: 'subscriptions',
+		})
+		clearErrorState(['auth'], 'videos')
+		await notifyError('auth', new Error('x'), {
+			...deps, source: 'subscriptions',
+		})
+		expect(deps.sendErrorEmail).toHaveBeenCalledTimes(1)
+		clearErrorState(['auth'], 'subscriptions')
+		await notifyError('auth', new Error('x'), { ...deps, source: 'videos' })
+		expect(deps.sendErrorEmail).toHaveBeenCalledTimes(2)
+	})
 })

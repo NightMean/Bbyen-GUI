@@ -84,8 +84,16 @@ const getChannelsVideos = async ({
 	db,
 	config,
 	sendErrorEmail,
-}: IGetChannelsVideos): Promise<boolean> => {
+}: IGetChannelsVideos) => {
 	const { channelId, channelThumbnail } = channel
+	const outcome = { failed: false, stop: false, checkedYouTube: false }
+	const alert = async (err: unknown) => {
+		outcome.failed = true
+		await notifyError(classifyError(err), err, {
+			source: 'videos', sendErrorEmail,
+			emailOnError: config.logging.emailOnError, logger,
+		})
+	}
 
 	const videosSent = new Set((await db.all(SQL`
 		SELECT videoId FROM videos WHERE channelId=${channelId};
@@ -113,8 +121,12 @@ const getChannelsVideos = async ({
 				sendErrorEmail,
 				logger,
 			)
-			return true
+			return outcome
 		}
+	}
+	if (feedError) {
+		await alert(feedError)
+		return outcome
 	}
 
 	// In whitelist mode there is no API channel title; the RSS feed title is the
@@ -152,6 +164,7 @@ const getChannelsVideos = async ({
 					part: ['contentDetails,snippet,liveStreamingDetails'],
 					id: videoId,
 				}))?.data?.items?.[0]
+				outcome.checkedYouTube = true
 
 				if (details === undefined) {
 					logger.warn(`Video list is unedfined for video '${videoId}'`)
@@ -244,6 +257,7 @@ const getChannelsVideos = async ({
 			`)
 
 		} catch (err) {
+			await alert(err)
 
 			if ([
 				// EMESSAGE
@@ -255,14 +269,17 @@ const getChannelsVideos = async ({
 					'Email quota has run out.',
 					'Abandoning, will retry on next timer trigger.',
 				)
-				return false
+				outcome.stop = true
+				return outcome
 			}
-
-			logger.error(err)
+			if (classifyError(err) !== 'other') {
+				outcome.stop = true
+				return outcome
+			}
 		}
 	}
 
-	return true
+	return outcome
 }
 
 interface IParseFeedsAndNotify {
@@ -296,6 +313,8 @@ export const parseFeedsAndNotify = async (
 			WHERE deleted=0;
 		`)
 
+		let failed = false
+		let checkedYouTube = false
 		for (const [i, channel] of channels.entries()) {
 			logger.verbose([
 				`${i + 1}/${channels.length}`,
@@ -310,17 +329,22 @@ export const parseFeedsAndNotify = async (
 				...rest
 			})
 
-			if (!result) {
+			failed ||= result.failed
+			checkedYouTube ||= result.checkedYouTube
+			if (result.stop) {
 				return
 			}
 		}
 
-		// A successful run means auth and quota are healthy account-wide.
-		clearErrorState([ 'auth', 'quota', 'other' ])
+		if (!failed) {
+			clearErrorState([ 'other' ], 'videos')
+			if (checkedYouTube) clearErrorState([ 'auth', 'quota' ], 'videos')
+		}
 
 		logger.info('Finished checking for new videos')
 	} catch (err) {
 		await notifyError(classifyError(err), err, {
+			source: 'videos',
 			sendErrorEmail: rest.sendErrorEmail,
 			emailOnError: rest.config.logging.emailOnError,
 			logger,
