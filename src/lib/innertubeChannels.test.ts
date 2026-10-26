@@ -335,7 +335,8 @@ describe('buildModifyChannelPreferenceParams', () => {
 			'UCheBKArlttOQt_t5zgFUw_Q',
 			'personalized',
 		)
-		expect(encoded).toBe('ChhVQ2hlQktBcmx0dE9RdF90NXpnRlV3X1ESAggCGAEgBA==')
+		expect(Buffer.from(encoded, 'base64').subarray(26))
+			.toEqual(Buffer.from([0x12, 2, 8, 1, 0x18, 0, 0x20, 4]))
 	})
 
 	test('encodes none notifications parameter', () => {
@@ -343,7 +344,16 @@ describe('buildModifyChannelPreferenceParams', () => {
 			'UCheBKArlttOQt_t5zgFUw_Q',
 			'none',
 		)
-		expect(encoded).toBe('ChhVQ2hlQktBcmx0dE9RdF90NXpnRlV3X1ESAggCGAIgBA==')
+		expect(Buffer.from(encoded, 'base64').subarray(26))
+			.toEqual(Buffer.from([0x12, 2, 8, 3, 0x18, 0, 0x20, 4]))
+	})
+
+	test('rejects invalid channel IDs and preference values', () => {
+		expect(() => buildModifyChannelPreferenceParams('bad-id', 'all'))
+			.toThrow()
+		expect(() => buildModifyChannelPreferenceParams(
+			'UCheBKArlttOQt_t5zgFUw_Q', 'invalid' as never,
+		)).toThrow()
 	})
 })
 

@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import axios from 'axios'
+import { assertChannelId } from './channelId'
 
 export interface ChannelBellState {
 	channelId: string
@@ -26,6 +27,9 @@ const MODIFY_CHANNEL_PREFERENCE_URL =
 const CLIENT_VERSION = '2.20240101.00.00'
 
 export type BellNotificationPreference = 'all' | 'personalized' | 'none'
+const BELL_PREFERENCES: Record<BellNotificationPreference, number> = {
+	personalized: 1, all: 2, none: 3,
+}
 
 /**
  * Normalizes cookies from any format (JSON array from browser extensions,
@@ -312,23 +316,26 @@ export const fetchAccountsList = async (
  *
  * Wire format breakdown:
  * - Field 1 (tag 0x0a, length-delimited): channel ID string
- * - Field 2 (tag 0x12, length 2): 0x08, 0x02
- * - Field 3 (tag 0x18, varint): enum (0 = all, 1 = personalized, 2 = none)
+ * - Field 2: nested Preference.index (1 personalized, 2 all, 3 none)
+ * - Field 3 (tag 0x18, varint): constant 0
  * - Field 4 (tag 0x20, varint): constant 0x04
+ * Layout: YouTube.js protos/misc/params.proto, NotificationPreferences.
  */
 export const buildModifyChannelPreferenceParams = (
 	channelId: string,
 	preference: BellNotificationPreference,
 ): string => {
-	const prefValue =
-		preference === 'all' ? 0 : preference === 'personalized' ? 1 : 2
-	const channelBuf = Buffer.from(channelId, 'utf8')
+	const prefValue = BELL_PREFERENCES[preference]
+	if (!Number.isInteger(prefValue)) {
+		throw new Error(`Invalid bell preference: ${preference}`)
+	}
+	const channelBuf = Buffer.from(assertChannelId(channelId), 'utf8')
 	const field1 = Buffer.concat([
 		Buffer.from([0x0a, channelBuf.length]),
 		channelBuf,
 	])
-	const field2 = Buffer.from([0x12, 0x02, 0x08, 0x02])
-	const field3 = Buffer.from([0x18, prefValue])
+	const field2 = Buffer.from([0x12, 0x02, 0x08, prefValue])
+	const field3 = Buffer.from([0x18, 0])
 	const field4 = Buffer.from([0x20, 0x04])
 
 	return Buffer.concat([field1, field2, field3, field4]).toString('base64')
