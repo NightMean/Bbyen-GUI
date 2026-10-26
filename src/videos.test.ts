@@ -166,6 +166,20 @@ describe('video failure recovery', () => {
 			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'uncertain' })
 	})
 
+	test('records an explicit SMTP rejection as failed without resending',
+		async () => {
+			const manual = { ...config, mode: 'whitelist' }
+			const rejection = Object.assign(new Error('rejected'), {
+				responseCode: 550,
+			})
+			sendVideoEmail.mockRejectedValueOnce(rejection)
+			await parseFeedsAndNotify({ ...args(), config: manual } as never)
+			await parseFeedsAndNotify({ ...args(), config: manual } as never)
+			expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+			expect(await db.get(`SELECT emailOutcome FROM video_observations
+				WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'failed' })
+		})
+
 	test('records the attempt before sending and saves the sent time',
 		async () => {
 			const manual = { ...config, mode: 'whitelist' }

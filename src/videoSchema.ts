@@ -1,5 +1,13 @@
 import * as sqlite from 'sqlite'
 
+/** Run once at service startup before any video jobs are started. */
+export const recoverPendingVideoEmails = async (
+	db: sqlite.Database,
+): Promise<void> => {
+	await db.run(`UPDATE video_observations SET emailOutcome='uncertain'
+		WHERE emailOutcome='pending'`)
+}
+
 /** Install video history storage without changing the processed-ID ledger. */
 export const migrateVideoSchema = async (
 	db: sqlite.Database,

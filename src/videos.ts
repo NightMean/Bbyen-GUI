@@ -272,8 +272,15 @@ const getChannelsVideos = async ({
 						videoURL: `https://www.youtube.com/watch?v=${videoId}`,
 					})
 				} catch (err) {
-					await db.run(SQL`UPDATE video_observations
-						SET emailOutcome='uncertain' WHERE videoId=${videoId};`)
+					const code = (err as { responseCode?: unknown })?.responseCode
+					const result = typeof code === 'number' && code >= 400 &&
+						code < 600 ? 'failed' : 'uncertain'
+					try {
+						await db.run(SQL`UPDATE video_observations
+							SET emailOutcome=${result} WHERE videoId=${videoId};`)
+					} catch (recordError) {
+						logger.error('Could not record video email outcome.', recordError)
+					}
 					throw err
 				}
 				await db.run(SQL`UPDATE video_observations

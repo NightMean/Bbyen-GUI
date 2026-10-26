@@ -105,7 +105,10 @@ in youtube mode. For Docker, use the files in `data/` described above.
 	  they are recorded silently; set it to `true` to email the initial backlog.
 	  Older configurations that omit the setting retain the previous `true`
 	  default. `mode` selects how channels are discovered — see
-	  [Operating modes](#operating-modes).
+	  [Operating modes](#operating-modes). Run only one service instance against
+	  a database: on service startup,
+	  interrupted email attempts are marked delivery-uncertain and are not resent
+	  automatically. An explicit SMTP rejection is recorded as failed.
 
 	- **`secrets.json`** — email credentials (`email.auth.user` and
 	  `email.auth.pass`). Alternatively, set the environment variables

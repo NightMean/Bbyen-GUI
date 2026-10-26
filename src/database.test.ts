@@ -7,12 +7,30 @@ import path from 'path'
 import os from 'os'
 
 import { init, recordSubscriptionBellState } from './database'
+import { recoverPendingVideoEmails } from './videoSchema'
 
 describe('recordSubscriptionBellState', () => {
 	let db: sqlite.Database
 
 	beforeEach(async () => {
 		db = await init({ filename: ':memory:' })
+	})
+
+	test('recovers pending sends', async () => {
+		const db = await init({ filename: ':memory:' })
+		try {
+			await db.exec(`INSERT INTO video_observations
+			(videoId, channelId, emailOutcome) VALUES
+			('v1', 'UC123', 'pending'), ('v2', 'UC123', 'sent');`)
+			await recoverPendingVideoEmails(db)
+			expect(await db.all(`SELECT videoId, emailOutcome FROM video_observations
+			ORDER BY videoId`)).toEqual([
+				{ videoId: 'v1', emailOutcome: 'uncertain' },
+				{ videoId: 'v2', emailOutcome: 'sent' },
+			])
+		} finally {
+			await db.close()
+		}
 	})
 
 	afterEach(async () => {

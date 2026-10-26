@@ -4,6 +4,7 @@ import { OAuth2Client } from 'google-auth-library'
 
 import { loadConfig, loadConfigRaw, loadEmailConfig } from './config'
 import * as database from './database'
+import { recoverPendingVideoEmails } from './videoSchema'
 import authorize from './google/auth'
 import * as mailer from './email'
 import { parseFeedsAndNotify } from './videos'
@@ -57,6 +58,7 @@ const main = async () => {
 
 		const config = await loadConfig(service, auth)
 		const db = await database.init(config.database)
+		await recoverPendingVideoEmails(db)
 
 		// Reject over-long intervals up front: Node's timer delay is a 32-bit
 		// int, so anything larger silently fires every 1 ms.
