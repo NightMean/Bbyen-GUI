@@ -14,6 +14,16 @@ import {
 } from './innertubeChannels'
 
 describe('generateSapisidHash', () => {
+	test('uses Unix seconds for automatically generated timestamps', () => {
+		const now = vi.spyOn(Date, 'now').mockReturnValue(1700000000000)
+		try {
+			const hash = generateSapisidHash('synthetic-fixture')
+			expect(hash.split(' ')[1].split('_')[0]).toBe('1700000000')
+		} finally {
+			now.mockRestore()
+		}
+	})
+
 	test('generates expected hash format with sha1', () => {
 		const ts = 1700000000000
 		const sapisid = 'test_sapisid_value'

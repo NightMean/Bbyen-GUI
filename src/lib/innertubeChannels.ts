@@ -87,7 +87,7 @@ export const extractSapisidFromCookie = (
 export const generateSapisidHash = (
 	sapisid: string,
 	origin = 'https://www.youtube.com',
-	timestamp = Date.now(),
+	timestamp = Math.floor(Date.now() / 1000),
 ): string => {
 	const message = `${timestamp} ${sapisid} ${origin}`
 	const digest = crypto.createHash('sha1').update(message).digest('hex')
