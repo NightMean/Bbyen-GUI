@@ -120,4 +120,30 @@ describe('video failure recovery', () => {
 		await notifyError('auth', new Error('invalid_grant'), deps)
 		expect(sendErrorEmail).toHaveBeenCalledTimes(1)
 	})
+
+	test('an empty successful feed establishes the first-scan baseline',
+		async () => {
+			const manual = { ...config, mode: 'whitelist', notifyOnFirstScan: false }
+			vi.mocked(RSSParser.prototype.parseURL)
+				.mockResolvedValueOnce({ items: [] } as never)
+				.mockResolvedValueOnce({ title: 'Creator', items: [{
+					videoId: 'later', title: 'Video',
+					isoDate: '2026-01-01T00:00:00Z',
+				}] } as never)
+			await parseFeedsAndNotify({ ...args(), config: manual } as never)
+			await parseFeedsAndNotify({ ...args(), config: manual } as never)
+			expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+		})
+
+	test('a failed feed does not establish a first-scan baseline', async () => {
+		const manual = { ...config, mode: 'whitelist', notifyOnFirstScan: false }
+		vi.mocked(RSSParser.prototype.parseURL)
+			.mockRejectedValueOnce(new Error('offline'))
+			.mockResolvedValueOnce({ title: 'Creator', items: [{
+				videoId: 'old', title: 'Video', isoDate: '2026-01-01T00:00:00Z',
+			}] } as never)
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		expect(sendVideoEmail).not.toHaveBeenCalled()
+	})
 })

@@ -99,9 +99,11 @@ const getChannelsVideos = async ({
 		SELECT videoId FROM videos WHERE channelId=${channelId};
 	`)).map(v => v.videoId))
 
-	// A channel with no recorded videos is being scanned for the first time.
-	// Computed once so every video in this run shares the same value.
-	const isFirstScan = videosSent.size === 0
+	// An empty successful feed is still a completed first scan.
+	const baseline = await db.get(SQL`
+		SELECT channelId FROM video_scan_baselines WHERE channelId=${channelId};
+	`)
+	const isFirstScan = !baseline
 
 	const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
 	let feedError: Error | null = null
@@ -279,6 +281,12 @@ const getChannelsVideos = async ({
 		}
 	}
 
+	if (!outcome.failed) {
+		await db.run(SQL`
+			INSERT OR IGNORE INTO video_scan_baselines (channelId, completedAt)
+			VALUES (${channelId}, ${new Date().toISOString()});
+		`)
+	}
 	return outcome
 }
 
