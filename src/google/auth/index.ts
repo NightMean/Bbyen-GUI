@@ -26,9 +26,11 @@ export class AuthError extends Error {
 // rather than at module import time. A top-level `import(...)` starts an
 // unawaited promise that produces a floating unhandled rejection if the file
 // is missing (e.g. during tests or before setup).
-const loadConfig = () => import(CONFIG_FILE)
+const readJson = async (filename: string) =>
+	JSON.parse((await fs.readFile(filename)).toString())
+const loadConfig = () => readJson(CONFIG_FILE)
 const loadCredentials = () =>
-	import(path.join(CONFIG_DIR, 'google-credentials.json'))
+	readJson(path.join(CONFIG_DIR, 'google-credentials.json'))
 
 /**
  * Store given token to `TOKEN_FILE`
@@ -55,6 +57,7 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 
 	const authUrl = oauth2Client.generateAuthUrl({
 		access_type: 'offline',
+		prompt: 'consent',
 		scope: SCOPES,
 	})
 
@@ -62,32 +65,32 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 	console.log(
 		'Authenticating. If a browser window is not automatically opened, ' +
 		`please open the following link: ${authUrl}`)
-	open(authUrl)
+	void open(authUrl).catch(() => {
+		logger.warn('Could not open browser; use the printed login URL.')
+	})
 
 	// Set up a webserver to automatically get the code after Google redirects to
 	// localhost. Resolve the port before constructing the Promise so the
 	// executor itself stays synchronous (an async executor would swallow
 	// rejections thrown before the first await).
 	const port = (await loadConfig()).port
+	let server: http.Server
+	const manualAbort = new AbortController()
 	const automatedMethod: Promise<Credentials> =
 		new Promise((resolve, reject) => {
-			const server = http.createServer(async (req, res) => {
-				logger.debug(`[${req.method}] ${req.url}`)
+			server = http.createServer(async (req, res) => {
 				if (!req.url?.startsWith('/authorization_code')) {
-					logger.info(`Ignoring request to ${req.url}`)
-					res.writeHead(404)
+					res.writeHead(404).end()
 					return
 				}
 				if (req.method != 'GET') {
 					logger.info(`Ignoring request with unsupported method ${req.method}`)
-					res.writeHead(404)
+					res.writeHead(404).end()
 					return
 				}
 
 				const queryParams = parseURL(req.url, true)
-				logger.debug(`Request query params: ${queryParams}`)
 				const code = queryParams.query.code as string
-				logger.info(`Got code: ${code}`)
 
 				try {
 					logger.info('Creating tokens from code')
@@ -102,6 +105,7 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 				}
 				server.close()
 			})
+			server.on('error', reject)
 			server.listen(port)
 		})
 
@@ -109,22 +113,28 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 	// or the system is headless
 	const manualMethod = readline(
 		'Paste the entire URL of the page you are redirected to ' +
-		'(even if you receive 404): '
+		'(even if you receive 404): ', manualAbort.signal,
 	)
 		// Support pasting the full URL, which is more convenient than manually
 		// extracting the code
-		.then(url => url.includes('&')
+		.then(url => /^https?:\/\//i.test(url)
 			? parseURL(url, true).query.code as string
 			: url)
 		.then(code => oauth2Client.getToken(code))
 		.then(({ tokens }) => tokens)
 
-	const tokens = await Promise.race([automatedMethod, manualMethod])
-
-	logger.info('Storing tokens')
-	await storeToken(tokens)
-
-	return tokens
+	try {
+		const tokens = await Promise.race([automatedMethod, manualMethod])
+		if (!tokens.refresh_token) {
+			throw new AuthError('Login returned no refresh token; retry consent.')
+		}
+		logger.info('Storing tokens')
+		await storeToken(tokens)
+		return tokens
+	} finally {
+		manualAbort.abort()
+		server!.close()
+	}
 }
 
 
@@ -138,6 +148,9 @@ const getToken = async (
 	interactive: boolean,
 ) => {
 	const logger = await setupLogger({ label: 'google-auth' })
+
+	// An explicit login replaces the grant, including revoked stored tokens.
+	if (interactive) return genAuthToken(oauth2Client)
 
 	try {
 		const contents = await fs.readFile(TOKEN_FILE)
@@ -157,11 +170,8 @@ const getToken = async (
 		// Normal service runs must never launch the interactive browser flow
 		// (it would hang on a headless server). Only the setup/login commands
 		// pass interactive: true.
-		if (!interactive) {
-			throw new AuthError(
-				'No valid YouTube token. Run `npm run login` to authenticate.')
-		}
-		return await genAuthToken(oauth2Client)
+		throw new AuthError(
+			'No valid YouTube token. Run `npm run login` to authenticate.')
 	}
 }
 
