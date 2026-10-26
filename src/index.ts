@@ -10,7 +10,7 @@ import * as mailer from './email'
 import { parseFeedsAndNotify } from './videos'
 import { updateSubscriptions } from './subscriptions'
 import setIntervalInstant from './lib/setIntervalInstant'
-import { serializeJobs } from './lib/serializeJobs'
+import { RefreshCoordinator } from './refreshCoordinator'
 import { ISendErrorEmail } from './email'
 import { classifyError } from './lib/classifyError'
 import { notifyError } from './lib/alertState'
@@ -69,7 +69,8 @@ const main = async () => {
 			'videos', parseDuration(config.timers.videos) as number)
 
 		// Both jobs share one SQLite connection and may open transactions.
-		const jobs = serializeJobs()
+		const jobs = new RefreshCoordinator(db, logger)
+		await jobs.recoverInterrupted()
 		setIntervalInstant(
 			() => jobs.run('subscriptions', () => updateSubscriptions(
 				{ db, service, auth, config, sendErrorEmail },

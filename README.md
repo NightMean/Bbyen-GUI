@@ -207,6 +207,11 @@ Video API, RSS, and email delivery failures participate in this reporting.
 A successful unrelated task does not reset suppression: affected tasks must
 recover before a recurrence triggers another alert.
 
+The service stores refresh run times, outcomes, and bounded channel IDs in
+SQLite. Runs still marked in progress when the service starts are recorded as
+interrupted. Refresh history records error categories rather than raw error
+messages. A dashboard view of this history is planned and is not available yet.
+
 ## Advanced Configuration
 
 ### Channel Whitelist and Blacklist

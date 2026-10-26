@@ -7,5 +7,6 @@ export interface RefreshResult {
 	failed: number,
 	skipped: number,
 	failedChannels: string[],
+	failedChannelsTruncated?: boolean,
 	errorCategory?: ErrorCategory,
 }

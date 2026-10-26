@@ -7,13 +7,13 @@ import sqlite3 from 'sqlite3'
 import { expect, test } from 'vitest'
 import { init } from './database'
 
-test('service startup recovers interrupted email attempts', async () => {
+test('service startup recovers attempts and records jobs', async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-service-'))
 	const filename = path.join(directory, 'database.sqlite')
 	const config = JSON.parse(await fs.readFile('config.example.json', 'utf8'))
 	config.mode = 'whitelist'
 	config.database.filename = filename
-	config.kickoff = { videos: false, subscriptions: false }
+	config.kickoff = { videos: true, subscriptions: true }
 	await fs.writeFile(path.join(directory, 'config.json'),
 		JSON.stringify(config))
 	await fs.writeFile(path.join(directory, 'channels.json'),
@@ -39,19 +39,23 @@ test('service startup recovers interrupted email attempts', async () => {
 	try {
 		const deadline = Date.now() + 8000
 		let outcome: string | undefined
+		let completed = 0
 		while (Date.now() < deadline && child.exitCode === null) {
 			const check = await sqlite.open({ filename, driver: sqlite3.Database })
 			try {
 				outcome = (await check.get(`SELECT emailOutcome
 					FROM video_observations WHERE videoId='pending-video'`))?.emailOutcome
+				completed = (await check.get(`SELECT COUNT(*) AS count FROM refresh_runs
+					WHERE status='completed'`)).count
 			} finally {
 				await check.close()
 			}
-			if (outcome === 'uncertain') break
+			if (outcome === 'uncertain' && completed === 2) break
 			await new Promise(resolve => setTimeout(resolve, 100))
 		}
 		expect(outcome, `Service failed to recover; stderr: ${stderr}`)
 			.toBe('uncertain')
+		expect(completed).toBe(2)
 		expect(child.exitCode).toBeNull()
 	} finally {
 		child.kill()
