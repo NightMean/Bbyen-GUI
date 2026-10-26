@@ -218,7 +218,7 @@ describe('video failure recovery', () => {
 		expect(sendVideoEmail).not.toHaveBeenCalled()
 		expect(await db.get(`SELECT contentType, emailOutcome
 			FROM video_observations WHERE videoId='new-video'`)).toEqual({
-			contentType: 'livestream', emailOutcome: 'unknown',
+			contentType: 'livestream', emailOutcome: 'discovered',
 		})
 		await parseFeedsAndNotify(args())
 		expect(sendVideoEmail).toHaveBeenCalledTimes(1)

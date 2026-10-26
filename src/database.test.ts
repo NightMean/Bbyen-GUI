@@ -154,6 +154,31 @@ test('repairs IDs between schema upgrades only once', async () => {
 	}
 })
 
+test('migration separates discoveries from legacy unknowns', async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-state-'))
+	const filename = path.join(directory, 'data.sqlite')
+	let db = await init({ filename })
+	try {
+		await db.exec(`DELETE FROM video_schema_migrations WHERE version=4;
+			INSERT INTO videos (videoId, channelId) VALUES ('legacy', 'channel');
+			INSERT INTO video_observations
+			(videoId, channelId, title, emailOutcome) VALUES
+			('live', 'channel', 'Live title', 'unknown'),
+			('legacy', 'channel', 'Old title', 'unknown');`)
+		await db.close()
+		db = await init({ filename })
+		expect(await db.all(`SELECT videoId, title, emailOutcome
+			FROM video_observations ORDER BY videoId`)).toEqual([
+			{ videoId: 'legacy', title: 'Old title', emailOutcome: 'unknown' },
+			{ videoId: 'live', title: 'Live title', emailOutcome: 'discovered' },
+		])
+	} finally {
+		await db.close()
+		await fs.unlink(filename)
+		await fs.rmdir(directory)
+	}
+})
+
 test('migrates processed videos without inventing their email outcome',
 	async () => {
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-video-'))

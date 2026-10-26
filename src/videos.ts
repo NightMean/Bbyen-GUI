@@ -264,7 +264,7 @@ const getChannelsVideos = async ({
 				) VALUES (
 					${videoId}, ${channelId}, ${videoTitle},
 					${videoDate?.toISOString() ?? null}, ${videoThumbnail}, ${seconds},
-					'livestream', ${new Date().toISOString()}, 'unknown'
+					'livestream', ${new Date().toISOString()}, 'discovered'
 				) ON CONFLICT(videoId) DO UPDATE SET
 					title=excluded.title, publishedAt=excluded.publishedAt,
 					thumbnailUrl=excluded.thumbnailUrl,
