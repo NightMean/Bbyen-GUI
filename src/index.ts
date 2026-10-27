@@ -45,6 +45,7 @@ import { TitleAlerts } from './titleAlerts'
 import { ChannelAddedAlerts } from './channelAddedAlerts'
 import { pruneActivity } from './activityRetention'
 import { IncidentReminders } from './incidentReminders'
+import { IncidentRecoveries } from './incidentRecoveries'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -90,7 +91,8 @@ const startService = async (existingServer?: Server) => {
 		// Both jobs share one SQLite connection and may open transactions.
 		const jobs = new RefreshCoordinator(db, logger)
 		await jobs.recoverInterrupted()
-		const alerts = new IncidentReporter(db, logger)
+		const alerts = new IncidentReporter(db, logger, undefined,
+			() => config.notifyRecoveries === true)
 		await alerts.recoverInterrupted()
 		const titleAlerts = new TitleAlerts(db, async () => {
 			const email = await mailer.init(await loadEmailConfig())
@@ -108,6 +110,11 @@ const startService = async (existingServer?: Server) => {
 			return email.sendErrorEmail
 		}, message => logger.warn(message))
 		await reminders.recoverInterrupted()
+		const recoveries = new IncidentRecoveries(db, async () => {
+			const email = await mailer.init(await loadEmailConfig())
+			return email.sendErrorEmail
+		}, message => logger.warn(message))
+		await recoveries.recoverInterrupted()
 		const refreshCookies = createCookieRefresh({ store: cookieStore,
 			config, alerts, logger })
 		const tasks = createServiceTasks({ db, service, config, logger,
@@ -169,11 +176,13 @@ const startService = async (existingServer?: Server) => {
 			saveGeneral: async value => {
 				if (config.notifyTitleChanges === false) await titleAlerts.run(false)
 				if (config.notifyChannelAdded === false) await channelAlerts.run(false)
+				if (config.notifyRecoveries !== true) await recoveries.run(false)
 				await saveGeneralSettings(CONFIG_FILE, config, value)
 				await pruneActivity(databaseConnection,
 					config.activityRetentionDays ?? null)
 				if (!value.notifyTitleChanges) await titleAlerts.run(false)
 				if (!value.notifyChannelAdded) await channelAlerts.run(false)
+				if (!value.notifyRecoveries) await recoveries.run(false)
 			},
 			saveUnsubscribePreference: value =>
 				saveUnsubscribePreference(CONFIG_FILE, config, value),
@@ -232,6 +241,13 @@ const startService = async (existingServer?: Server) => {
 			() => jobs.maintenance('incident-reminders', () =>
 				reminders.run(config.notifyFailureReminders === true))
 				.catch(() => logger.warn('Could not process incident reminders.')),
+			60_000,
+			true,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('incident-recoveries', () =>
+				recoveries.run(config.notifyRecoveries === true))
+				.catch(() => logger.warn('Could not process recovery emails.')),
 			60_000,
 			true,
 		)

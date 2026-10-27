@@ -1,5 +1,6 @@
 import { ErrorCategory } from './classifyError'
 import { isChannelId } from './channelId'
+import messages from '../email/messages.en.json'
 
 export interface AlertDeps {
 	source?: string,
@@ -54,6 +55,14 @@ export const buildSafeAlert = (
 	return { stack: '',
 		message: `${source} failed.${channel} ${ACTIONS[category]}`,
 		subject: SUBJECTS[category] }
+}
+
+export const buildRecoveryAlert = (sourceKey?: string, channelId?: string) => {
+	const source = SOURCES[sourceKey ?? 'service'] ?? 'Service'
+	const channel = channelId && isChannelId(channelId)
+		? ` Channel: ${channelId}.` : ''
+	return { stack: '', subject: messages.recoverySubject,
+		message: `${source} recovered.${channel} ${messages.recoverySuffix}` }
 }
 
 // In-memory record of which categories have already alerted this episode.

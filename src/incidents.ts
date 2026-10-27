@@ -80,6 +80,7 @@ export class IncidentStore {
 
 	async resolve(
 		source: IncidentSource, categories: ErrorCategory[], channelId?: string,
+		recoveryEnabled = false,
 	): Promise<void> {
 		if (!SOURCES.includes(source) ||
 				categories.some(c => !CATEGORIES.includes(c))) {
@@ -89,16 +90,36 @@ export class IncidentStore {
 			throw new Error('Incident channel ID must be a canonical YouTube ID.')
 		}
 		const now = this.clock().toISOString()
-		for (const category of categories) {
-			if (channelId) {
-				await this.db.run(SQL`UPDATE incidents SET resolvedAt=${now}
-					WHERE source=${source} AND category=${category}
-					AND channelId=${channelId} AND resolvedAt IS NULL;`)
-			} else {
-				await this.db.run(SQL`UPDATE incidents SET resolvedAt=${now}
-					WHERE source=${source} AND category=${category}
-					AND resolvedAt IS NULL;`)
+		await this.db.exec('BEGIN IMMEDIATE')
+		try {
+			for (const category of categories) {
+				if (recoveryEnabled) {
+					if (channelId) {
+						await this.db.run(SQL`INSERT OR IGNORE INTO incident_recovery_alerts
+							(incidentId, state) SELECT id, 'pending' FROM incidents
+							WHERE source=${source} AND category=${category}
+							AND channelId=${channelId} AND resolvedAt IS NULL;`)
+					} else {
+						await this.db.run(SQL`INSERT OR IGNORE INTO incident_recovery_alerts
+							(incidentId, state) SELECT id, 'pending' FROM incidents
+							WHERE source=${source} AND category=${category}
+							AND resolvedAt IS NULL;`)
+					}
+				}
+				if (channelId) {
+					await this.db.run(SQL`UPDATE incidents SET resolvedAt=${now}
+						WHERE source=${source} AND category=${category}
+						AND channelId=${channelId} AND resolvedAt IS NULL;`)
+				} else {
+					await this.db.run(SQL`UPDATE incidents SET resolvedAt=${now}
+						WHERE source=${source} AND category=${category}
+						AND resolvedAt IS NULL;`)
+				}
 			}
+			await this.db.exec('COMMIT')
+		} catch (err) {
+			await this.db.exec('ROLLBACK')
+			throw err
 		}
 	}
 

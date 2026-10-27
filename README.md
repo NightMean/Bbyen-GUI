@@ -279,8 +279,9 @@ Unsent alerts are retried with backoff up to five attempts; exhausted alerts
 remain in SQLite. After an interrupted alert send, a retry may repeat an email
 whose acceptance was not acknowledged. Activity displays incidents and failed
 reminder delivery. Settings can enable daily reminders for issues unresolved
-for at least 24 hours; reminders are disabled by default. A manual retry action
-is not yet available. API quota alerts fire once after
+for at least 24 hours and recovery emails; both are disabled by default. A
+queued recovery email is suppressed if the same issue recurs before delivery.
+A manual retry action is not yet available. API quota alerts fire once after
 retries at 30 minutes, one hour, two hours, and four hours have failed.
 Further retries continue at four-hour intervals without
 repeating the alert. Retry state survives restart; the scheduler checks for

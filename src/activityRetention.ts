@@ -34,8 +34,13 @@ export const pruneActivity = async (
 			AND emailState NOT IN ('pending', 'sending');`)
 		await db.run(SQL`DELETE FROM incidents WHERE resolvedAt IS NOT NULL
 			AND resolvedAt < ${cutoff}
-			AND emailState NOT IN ('pending', 'sending', 'failed');`)
+			AND emailState NOT IN ('pending', 'sending', 'failed')
+			AND NOT EXISTS (SELECT 1 FROM incident_recovery_alerts r
+				WHERE r.incidentId=incidents.id AND r.state IN
+				('pending', 'sending', 'failed'));`)
 		await db.run(`DELETE FROM incident_reminders WHERE incidentId NOT IN
+			(SELECT id FROM incidents)`)
+		await db.run(`DELETE FROM incident_recovery_alerts WHERE incidentId NOT IN
 			(SELECT id FROM incidents)`)
 		await db.run(SQL`DELETE FROM refresh_runs WHERE status <> 'running'
 			AND finishedAt IS NOT NULL AND finishedAt < ${cutoff}

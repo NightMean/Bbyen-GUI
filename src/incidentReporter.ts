@@ -20,6 +20,7 @@ export class IncidentReporter {
 		db: sqlite.Database,
 		private readonly logger: { warn: (message: string) => void },
 		clock: () => Date = () => new Date(),
+		private readonly recoveryEnabled: () => boolean = () => false,
 	) {
 		this.store = new IncidentStore(db, clock)
 	}
@@ -94,7 +95,8 @@ export class IncidentReporter {
 			if (!SOURCES.includes(source as IncidentSource)) {
 				throw new Error('Invalid incident source.')
 			}
-			await this.store.resolve(source as IncidentSource, categories, channelId)
+			await this.store.resolve(source as IncidentSource, categories, channelId,
+				this.recoveryEnabled())
 		} catch {
 			this.warn('Could not mark incidents as recovered.')
 		}

@@ -6,5 +6,7 @@
 	"channelAddedSubject": "YouTube channels are now monitored",
 	"channelAddedIntro": "BBYEN is now monitoring these channels:",
 	"reminderSubject": "BBYEN: unresolved issue reminder",
-	"reminderSuffix": "This issue remains unresolved after at least 24 hours."
+	"reminderSuffix": "This issue remains unresolved after at least 24 hours.",
+	"recoverySubject": "BBYEN: issue recovered",
+	"recoverySuffix": "The affected operation is working again."
 }

@@ -28,6 +28,13 @@ export const initIncidentSchema = async (
 		nextAttemptAt TEXT,
 		nextReminderAt TEXT
 	);
+	CREATE TABLE IF NOT EXISTS incident_recovery_alerts (
+		incidentId TEXT PRIMARY KEY,
+		state TEXT NOT NULL CHECK (state IN
+			('pending', 'sending', 'sent', 'failed', 'exhausted', 'suppressed')),
+		attemptCount INTEGER NOT NULL DEFAULT 0,
+		nextAttemptAt TEXT
+	);
 	CREATE TABLE IF NOT EXISTS email_test_runs (
 		id TEXT PRIMARY KEY,
 		startedAt TEXT NOT NULL,

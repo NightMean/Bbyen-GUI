@@ -27,7 +27,11 @@ test('prunes completed activity but retains active and unresolved work',
 				('resolved', 'smtp', 'other', '2020', '2020',
 					'2020-01-01T00:00:00Z', 1, 'sent'),
 				('retry', 'videos', 'other', '2020', '2020',
-					'2020-01-01T00:00:00Z', 1, 'failed');
+					'2020-01-01T00:00:00Z', 1, 'failed'),
+				('recovery', 'subscriptions', 'other', '2020', '2020',
+					'2020-01-01T00:00:00Z', 1, 'sent');
+			INSERT INTO incident_recovery_alerts (incidentId, state)
+				VALUES ('recovery', 'pending');
 			INSERT INTO cookie_bell_actions VALUES
 				('pending', 'profile', 'fixture', 'all', 'uncertain', '2020', '2020'),
 				('done', 'profile', 'fixture', 'all', 'confirmed', '2020', '2020');
@@ -37,7 +41,7 @@ test('prunes completed activity but retains active and unresolved work',
 			await pruneActivity(db, 30, new Date('2026-01-01T00:00:00Z'))
 			expect(await db.all('SELECT videoId FROM videos')).toHaveLength(1)
 			expect(await db.all('SELECT id FROM incidents ORDER BY id'))
-				.toEqual([{ id: 'active' }, { id: 'retry' }])
+				.toEqual([{ id: 'active' }, { id: 'recovery' }, { id: 'retry' }])
 			expect(await db.all('SELECT emailState FROM channel_title_events'))
 				.toEqual([{ emailState: 'pending' }])
 			expect(await db.all('SELECT id FROM channel_added_batches'))

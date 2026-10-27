@@ -55,6 +55,7 @@ export interface Config {
 	notifyTitleChanges?: boolean,
 	notifyChannelAdded?: boolean,
 	notifyFailureReminders?: boolean,
+	notifyRecoveries?: boolean,
 	port: number,
 	database: {
 		filename: string,
@@ -299,6 +300,10 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.notifyFailureReminders !== undefined &&
 			typeof config.notifyFailureReminders !== 'boolean') {
 		throw new Error('notifyFailureReminders must be a boolean.')
+	}
+	if (config.notifyRecoveries !== undefined &&
+			typeof config.notifyRecoveries !== 'boolean') {
+		throw new Error('notifyRecoveries must be a boolean.')
 	}
 	if (config.videoRetentionDays !== undefined) {
 		config.videoRetentionDays = parseVideoRetentionDays(
