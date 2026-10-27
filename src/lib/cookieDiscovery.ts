@@ -6,6 +6,7 @@ import {
 } from './innertubeChannels'
 import { loadConfigRaw } from '../config'
 import { CookieSessionError } from './cookieSessionError'
+import { discoverCookieProfiles, ResolvedCookieProfile } from './cookieProfiles'
 
 export { CookieSessionError } from './cookieSessionError'
 
@@ -19,6 +20,8 @@ export interface CookieFetchOptions {
 	cookie: string
 	account?: string
 	pageId?: string
+	targetProfile?: ResolvedCookieProfile
+	onProgress?: (message: string) => void
 }
 
 export const fetchAccountName = async (
@@ -166,21 +169,30 @@ export const fetchCookieChannels = async (
 		)
 	}
 
-	const { pageId, accountName } = await resolveTargetProfile(
-		cookieHeader,
-		sapisid,
-		{ account: options.account, pageId: options.pageId },
-	)
+	let target: { pageId?: string, accountName: string }
+	if (options.targetProfile) {
+		const discovery = await discoverCookieProfiles(cookieHeader)
+		const match = discovery.profiles.find(profile => profile.selectable &&
+			profile.channelId === options.targetProfile?.channelId &&
+			profile.pageId === options.targetProfile?.pageId)
+		if (!match) throw new Error('The selected YouTube profile changed.')
+		target = { pageId: match.pageId, accountName: match.name }
+	} else {
+		target = await resolveTargetProfile(cookieHeader, sapisid,
+			{ account: options.account, pageId: options.pageId })
+	}
+	const { pageId, accountName } = target
+	const progress = options.onProgress ?? console.log
 
 	const pageIdTag = pageId ? ` [Brand PageId: ${pageId}]` : ''
-	console.log(`Connected to YouTube account: ${accountName}${pageIdTag}`)
+	progress(`Connected to YouTube account: ${accountName}${pageIdTag}`)
 
 	const observed = new Map<string, ChannelBellState>()
 	const seenContinuations = new Set<string>()
 	let continuationToken: string | null = null
 	let page = 1
 
-	console.log('Fetching subscriptions from YouTube InnerTube API...')
+	progress('Fetching subscriptions from YouTube InnerTube API...')
 
 	while (true) {
 		if (page > MAX_SUBSCRIPTION_PAGES) {
@@ -258,7 +270,7 @@ export const fetchCookieChannels = async (
 			observed.set(ch.channelId, ch)
 		}
 
-		console.log(
+		progress(
 			`  Page ${page}: extracted ${extracted.channels.length} channels ` +
 				`(${bellChannels.length} with All notifications).`,
 		)
@@ -278,7 +290,7 @@ export const fetchCookieChannels = async (
 
 	const allBellChannels = [...observed.values()]
 		.filter(channel => channel.isAllNotifications)
-	console.log(
+	progress(
 		`\nTotal channels with "All" notifications: ${allBellChannels.length}`,
 	)
 	return [...observed.values()]
