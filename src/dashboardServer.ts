@@ -575,6 +575,8 @@ export const createDashboardHandler = (
 				confirmUnsubscribe: actions?.config.confirmUnsubscribe !== false,
 				cookieStale: !!actions?.config.cookieStale,
 				channels: channels.map(channel => ({ ...channel,
+					muted: actions?.config.channelSettingsById?.get(
+						channel.channelId)?.notify === false,
 					...(manualMode || (actions?.config.mode === 'cookie' &&
 						channel.cookieSubscribed)
 						? { notify: actions?.manualNotify(channel.channelId) }

@@ -430,6 +430,8 @@ test('restores cookie tracking mode from the persistent database', async () => {
 			{ channelId, notify: false })
 		expect((await axios.get(`${base}/api/channels`)).data.channels[0].notify)
 			.toBe(false)
+		expect((await axios.get(`${base}/api/channels`)).data.channels[0].muted)
+			.toBe(true)
 		const saved = JSON.parse(await fs.readFile(path.join(dir, 'channels.json'),
 			'utf8'))
 		expect(saved.savedChannelSettings).toEqual([

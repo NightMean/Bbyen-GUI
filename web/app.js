@@ -75,6 +75,7 @@
     $('results').hidden = page === 'settings'
     $('paging').hidden = true
     $('dates').hidden = page !== 'videos'
+    $('channel-filter-label').hidden = page !== 'channels'
     $('filter-label').hidden = page !== 'videos' || !state.channel
     $('cookie-stale').hidden = true
     load(); poll()
@@ -148,7 +149,7 @@
       state.channel = channel; $('search').value = ''; setPage('videos')
     })
     info.append(name)
-    if (channel.deleted) info.append(element('div', 'channel-detail', text.deleted))
+    if (channel.deleted) info.append(element('div', 'channel-detail', channel.deletedReason === 'terminated' ? text.terminatedChannel : text.deleted))
     if (cookieMode && channel.cookieSubscribed && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
     row.append(img, info)
     if (cookieMode && channel.subscriptionUncertain) {
@@ -312,11 +313,20 @@
       $('backlog-count-label').hidden = all.cookieMode || $('backlog').value !== 'newest'
       if (state.page === 'channels') {
         const term = $('search').value.toLocaleLowerCase()
-        const found = all.channels.filter(c => (c.channelTitle || c.channelId).toLocaleLowerCase().includes(term))
+        const filter = $('channel-filter').value
+        const found = all.channels.filter(c => {
+          const matches = (c.channelTitle || c.channelId).toLocaleLowerCase().includes(term)
+          if (!matches) return false
+          if (filter === 'tracked') return !c.deleted
+          if (filter === 'muted') return c.muted
+          if (filter === 'notTracked') return c.deleted && c.deletedReason !== 'terminated'
+          if (filter === 'terminated') return c.deletedReason === 'terminated'
+          return true
+        })
         if (sequence !== state.sequence) return
         $('list-label').textContent = `${found.length} ${text.channels}`
         $('cookie-stale').hidden = !all.cookieMode || !all.cookieStale
-        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode)) : [element('p', 'empty', text.emptyChannels)]))
+        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
         $('paging').hidden = true; return
       }
       const from = $('from').value, through = $('through').value
@@ -357,6 +367,7 @@
   $('grid-layout').addEventListener('click', () => setLayout('grid'))
   $('playback-speed').addEventListener('change', updateWatchTime)
   $('content-type').addEventListener('change', () => { state.offset = 0; load() })
+  $('channel-filter').addEventListener('change', () => load())
   for (const id of ['search','from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
   $('previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset-size); load() })
   $('next').addEventListener('click', () => { state.offset += size; load() })

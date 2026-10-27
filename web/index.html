@@ -58,6 +58,9 @@
       </section>
       <div id="toolbar" class="toolbar">
         <label class="search"><span data-text="search"></span><input id="search" type="search" autocomplete="off"></label>
+        <label id="channel-filter-label" hidden><span data-text="channelStatus"></span>
+          <select id="channel-filter"><option value="all" data-text="allChannels"></option><option value="tracked" data-text="trackedChannels"></option><option value="muted" data-text="mutedChannels"></option><option value="notTracked" data-text="notTrackedChannels"></option><option value="terminated" data-text="terminatedChannels"></option></select>
+        </label>
         <div id="dates" class="date-fields">
           <label><span data-text="from"></span><input id="from" type="date"></label>
           <label><span data-text="through"></span><input id="through" type="date"></label>
