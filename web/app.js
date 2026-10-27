@@ -125,7 +125,7 @@
     $('results').replaceChildren(element('p', 'empty', text.loading))
     try {
       if (state.page === 'settings') {
-        const data = await request('/api/email/settings')
+        const [data, history] = await Promise.all([request('/api/email/settings'), request('/api/email/tests')])
         if (sequence !== state.sequence) return
         const email = data.settings
         $('smtp-host').value = email.host; $('smtp-port').value = email.port
@@ -137,6 +137,8 @@
         $('user-source').textContent = data.userFromEnvironment ? text.environmentOwned : ''
         $('password-source').textContent = data.passFromEnvironment ? text.environmentOwned : ''
         $('save-credentials').disabled = data.userFromEnvironment && data.passFromEnvironment
+        const latest = history.tests[0]
+        $('test-email-result').textContent = latest ? `${text.testLast}: ${displayDate(latest.startedAt)} · ${latest.outcome === 'sent' ? text.testSent : text.testUncertain}` : ''
         return
       }
       if (state.page === 'activity') {
@@ -222,6 +224,12 @@
     if (!$('email-password').disabled && $('email-password').value) credentials.pass = $('email-password').value
     try { await post('/api/email/credentials', { credentials }); $('email-user').value = ''; $('email-password').value = ''; showNotice(text.credentialsSaved) }
     catch { showNotice(text.credentialsError) }
+  })
+  $('test-email').addEventListener('click', async () => {
+    $('test-email').disabled = true; $('test-email-result').textContent = text.testSending
+    try { const result = await post('/api/email/test', {}); $('test-email-result').textContent = result.outcome === 'sent' ? text.testSent : text.testUncertain }
+    catch { $('test-email-result').textContent = text.testUncertain }
+    finally { $('test-email').disabled = false }
   })
   $('backlog').addEventListener('change', () => { $('backlog-count-label').hidden = $('backlog').value !== 'newest' })
   $('confirm-add').addEventListener('click', async () => {
