@@ -87,6 +87,8 @@ one is active or recovered. It does not yet contain channel change history.
 Dashboard Settings can save SMTP settings and write-only credentials separately.
 Environment-supplied credentials take precedence and cannot be changed through
 the API. Updated values are read for subsequent jobs without restarting.
+The test-email API records each attempt and does not retry uncertain outcomes;
+the most recent 1,000 attempts are retained.
 The shared channel resolver accepts YouTube HTTPS URLs, handles and validated
 YouTube feed URLs; it refuses redirects to other hosts.
 Its channel list currently returns at most 500 records, while video history

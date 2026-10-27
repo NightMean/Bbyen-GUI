@@ -23,6 +23,7 @@ interface ChannelActions {
 		userFromEnvironment: boolean, passFromEnvironment: boolean },
 	saveEmail: (settings: PublicEmailSettings) => Promise<void>,
 	saveCredentials: (value: unknown) => Promise<void>,
+	testEmail: () => Promise<'sent' | 'uncertain'>,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -63,6 +64,7 @@ export const createDashboardServer = (
 			url.pathname === '/api/channels/remove' ||
 			url.pathname === '/api/email/settings' ||
 			url.pathname === '/api/email/credentials' ||
+			url.pathname === '/api/email/test' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -81,7 +83,19 @@ export const createDashboardServer = (
 			let data: { channelId?: unknown, input?: unknown, kind?: unknown,
 				notify?: unknown, initialBacklog?: unknown, settings?: unknown,
 				credentials?: unknown } = {}
-			try { data = JSON.parse(body) ?? {} } catch { /* invalid JSON */ }
+			try {
+				const parsed: unknown = JSON.parse(body)
+				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+					throw new Error('Expected an object.')
+				}
+				data = parsed
+			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname === '/api/email/test') {
+				void jobs.maintenance(randomUUID(), actions.testEmail).then(
+					outcome => send(200, { outcome }),
+					() => send(500, { error: 'Could not confirm the test outcome.' }))
+				return
+			}
 			if (url.pathname === '/api/email/settings') {
 				let settings: PublicEmailSettings
 				try { settings = parseEmailSettings(data.settings) } catch {
@@ -183,7 +197,8 @@ export const createDashboardServer = (
 	}
 	if ((url.search && url.pathname !== '/api/videos') ||
 			!['/api/health', '/api/channels', '/api/videos',
-				'/api/refresh', '/api/incidents', '/api/email/settings']
+				'/api/refresh', '/api/incidents', '/api/email/settings',
+				'/api/email/tests']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -213,6 +228,10 @@ export const createDashboardServer = (
 		return
 	}
 	void jobs.maintenance(randomUUID(), async () => {
+		if (url.pathname === '/api/email/tests') {
+			return { tests: await db.all(`SELECT id, startedAt, finishedAt, outcome
+				FROM email_test_runs ORDER BY startedAt DESC, rowid DESC LIMIT 20`) }
+		}
 		if (url.pathname === '/api/incidents') {
 			return { incidents: await db.all(`SELECT id, source, category, channelId,
 				openedAt, lastObservedAt, resolvedAt, occurrences, emailState

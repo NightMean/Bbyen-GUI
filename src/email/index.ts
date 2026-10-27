@@ -37,7 +37,9 @@ export interface ISendErrorEmail {
 }
 
 export const init = async (config: EmailConfig) => {
-	const transporter = nodemailer.createTransport(config)
+	const transporter = nodemailer.createTransport({ ...config,
+		connectionTimeout: 10_000, greetingTimeout: 10_000, socketTimeout: 30_000,
+	})
 	const emailTemplate = await loadTemplate('./video-template.ejs')
 	const errorTemplate = await loadTemplate('./error-template.ejs')
 
@@ -63,6 +65,11 @@ export const init = async (config: EmailConfig) => {
 			subject: error.subject ?? 'BBYEN encountered and error',
 			html: errorTemplate({ error }),
 		})
+	const sendTestEmail = () => transporter.sendMail({
+		from: config.sendingContact, to: config.destination,
+		subject: 'BBYEN test email',
+		text: 'Your BBYEN email delivery settings are working.',
+	})
 
-	return { sendVideoEmail, sendErrorEmail }
+	return { sendVideoEmail, sendErrorEmail, sendTestEmail }
 }

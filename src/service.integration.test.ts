@@ -143,6 +143,10 @@ test('service stays up without SMTP credentials and recovers without restart',
 					const url = `http://127.0.0.1:${port}/api/email`
 					const settings = await axios.get(`${url}/settings`)
 					expect(settings.data.settings.auth).toBeUndefined()
+					const test = await axios.post(`${url}/test`, {})
+					expect(test.data.outcome).toBe('uncertain')
+					expect((await axios.get(`${url}/tests`)).data.tests[0].outcome)
+						.toBe('uncertain')
 					settings.data.settings.host = 'smtp.example.test'
 					await axios.post(`${url}/settings`,
 						{ settings: settings.data.settings })

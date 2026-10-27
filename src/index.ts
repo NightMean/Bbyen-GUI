@@ -24,6 +24,7 @@ import { resolveChannelId } from './lib/resolveChannelId'
 import {
 	publicEmailSettings, saveEmailCredentials, saveEmailSettings,
 } from './emailSettings'
+import { sendTestEmail } from './emailTest'
 
 const main = async () => {
 	const logger = await setupLogger({ label: 'main' })
@@ -83,6 +84,10 @@ const main = async () => {
 				passFromEnvironment: process.env.BBYEN_EMAIL_PASS !== undefined }),
 			saveEmail: settings => saveEmailSettings(CONFIG_FILE, config, settings),
 			saveCredentials: value => saveEmailCredentials(SECRETS_FILE, value),
+			testEmail: () => sendTestEmail(db, async () => {
+				const mail = await mailer.init(await loadEmailConfig())
+				await mail.sendTestEmail()
+			}),
 			refresh: kind => { void quota.run(kind).catch(() =>
 				logger.error('Manual refresh failed unexpectedly.')) },
 		})

@@ -20,5 +20,13 @@ export const initIncidentSchema = async (
 		ON incidents(source, category, COALESCE(channelId, ''))
 		WHERE resolvedAt IS NULL;
 	CREATE INDEX IF NOT EXISTS incidents_by_time ON incidents(openedAt);
+	CREATE TABLE IF NOT EXISTS email_test_runs (
+		id TEXT PRIMARY KEY,
+		startedAt TEXT NOT NULL,
+		finishedAt TEXT,
+		outcome TEXT NOT NULL CHECK (outcome IN ('pending', 'sent', 'uncertain'))
+	);
 	`)
+	await db.run(`UPDATE email_test_runs SET outcome='uncertain',
+		finishedAt=CURRENT_TIMESTAMP WHERE outcome='pending'`)
 }
