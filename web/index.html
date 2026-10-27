@@ -61,6 +61,12 @@
           <label><span data-text="through"></span><input id="through" type="date"></label>
         </div>
       </div>
+      <div id="video-options" class="video-options">
+        <div><button id="list-layout" class="outline" type="button" data-text="listView" aria-pressed="true"></button>
+          <button id="grid-layout" class="outline" type="button" data-text="gridView" aria-pressed="false"></button></div>
+        <label><span data-text="playbackSpeed"></span> <select id="playback-speed"><option value="1">1×</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="2.6">2.6×</option></select></label>
+        <span id="watch-time" aria-live="polite"></span>
+      </div>
       <p id="filter-label" class="filter-label" hidden></p>
       <section id="settings-panel" hidden>
         <h2 data-text="emailSettings"></h2><p data-text="emailSettingsHelp"></p>

@@ -15,10 +15,14 @@ test('filters by date and title and paginates deterministically', async () => {
 				(videoId, channelId, title, publishedAt, emailOutcome)
 				VALUES (?, ?, ?, ?, 'sent')`, id, 'channel', 'Example', date)
 		}
+		await db.run('UPDATE video_observations SET durationSeconds=120 ' +
+			'WHERE videoId=?', 'c')
 		const params = new URLSearchParams({ from: '2026-01-02T00:00:00.000Z',
 			until: '2026-01-04T00:00:00.000Z', search: 'exam', limit: '1' })
 		const first = await listDashboardVideos(db, parseVideoQuery(params))
 		expect(first.total).toBe(2)
+		expect(first.durationSeconds).toBe(120)
+		expect(first.unknownDurationCount).toBe(1)
 		expect(first.videos[0].videoId).toBe('c')
 		params.set('offset', '1')
 		const second = await listDashboardVideos(db, parseVideoQuery(params))

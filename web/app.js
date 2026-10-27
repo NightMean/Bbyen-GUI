@@ -3,7 +3,7 @@
   let text
   try { text = await (await fetch('/en.json')).json() } catch { return }
   document.querySelectorAll('[data-text]').forEach(el => { el.textContent = text[el.dataset.text] })
-  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {} }
+  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0 }
   const size = 30
   const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const today = new Date()
@@ -37,6 +37,17 @@
   }
   const post = (url, body) => request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
   const showNotice = message => { $('notice').textContent = message }
+  const updateWatchTime = () => {
+    const seconds = Math.round(state.duration / Number($('playback-speed').value))
+    const hours = Math.floor(seconds / 3600), minutes = Math.floor((seconds % 3600) / 60)
+    $('watch-time').textContent = `${text.watchTime}: ${hours}h ${minutes}m ${seconds % 60}s · ${state.unknownDurations} ${text.unknownDurations}`
+  }
+  const setLayout = layout => {
+    $('results').classList.toggle('video-grid', layout === 'grid')
+    $('list-layout').setAttribute('aria-pressed', String(layout === 'list'))
+    $('grid-layout').setAttribute('aria-pressed', String(layout === 'grid'))
+    localStorage.setItem('bbyen-layout', layout)
+  }
   const setPage = page => {
     state.page = page; state.offset = 0
     $('videos-nav').classList.toggle('active', page === 'videos')
@@ -50,6 +61,8 @@
     $('email-user').value = ''; $('email-password').value = ''
     showNotice('')
     $('toolbar').hidden = page === 'activity' || page === 'settings'
+    $('video-options').hidden = page !== 'videos'
+    $('results').classList.toggle('video-grid', page === 'videos' && localStorage.getItem('bbyen-layout') === 'grid')
     $('settings-panel').hidden = page !== 'settings'
     $('list-heading').hidden = page === 'settings'
     $('results').hidden = page === 'settings'
@@ -183,6 +196,7 @@
       if (sequence !== state.sequence) return
       const channels = new Map(all.channels.map(c => [c.channelId, c]))
       state.total = data.total
+      state.duration = data.durationSeconds; state.unknownDurations = data.unknownDurationCount; updateWatchTime()
       $('list-label').textContent = `${data.total} ${text.videos}`
       $('results').replaceChildren(...(data.videos.length ? data.videos.map(v => renderVideo(v, channels)) : [element('p', 'empty', text.emptyVideos)]))
       $('paging').hidden = data.total <= size
@@ -201,6 +215,9 @@
   $('channels-nav').addEventListener('click', () => setPage('channels'))
   $('activity-nav').addEventListener('click', () => setPage('activity'))
   $('settings-nav').addEventListener('click', () => setPage('settings'))
+  $('list-layout').addEventListener('click', () => setLayout('list'))
+  $('grid-layout').addEventListener('click', () => setLayout('grid'))
+  $('playback-speed').addEventListener('change', updateWatchTime)
   for (const id of ['search','from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
   $('previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset-size); load() })
   $('next').addEventListener('click', () => { state.offset += size; load() })
@@ -262,5 +279,6 @@
       state.previousRefresh[kind] = current
     } catch { $('refresh-state').textContent = text.refreshUnavailable }
   }
+  setLayout(localStorage.getItem('bbyen-layout') === 'grid' ? 'grid' : 'list')
   setPage('videos'); setInterval(poll, 5000)
 })()

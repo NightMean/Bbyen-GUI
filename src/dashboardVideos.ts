@@ -75,13 +75,18 @@ export const listDashboardVideos = async (
 		values.push(query.search)
 	}
 	const where = filters.length ? ` WHERE ${filters.join(' AND ')}` : ''
-	const total = await db.get(
-		'SELECT COUNT(*) AS count FROM video_observations' + where, ...values)
+	const total = await db.get(`SELECT COUNT(*) AS count,
+		COALESCE(SUM(CASE WHEN durationSeconds >= 0 THEN durationSeconds END), 0)
+			AS durationSeconds,
+		COALESCE(SUM(CASE WHEN durationSeconds IS NULL OR durationSeconds < 0
+			THEN 1 ELSE 0 END), 0) AS unknownDurationCount
+		FROM video_observations${where}`, ...values)
 	const videos = await db.all(`SELECT videoId, channelId, title, publishedAt,
 		thumbnailUrl, durationSeconds, contentType, observedAt, emailOutcome, sentAt
 		FROM video_observations${where}
 		ORDER BY COALESCE(publishedAt, observedAt) DESC, videoId LIMIT ? OFFSET ?`,
 	...values, query.limit, query.offset)
 	return { videos, total: total.count, limit: query.limit,
-		offset: query.offset }
+		offset: query.offset, durationSeconds: total.durationSeconds,
+		unknownDurationCount: total.unknownDurationCount }
 }
