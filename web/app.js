@@ -186,11 +186,21 @@
         return
       }
       if (state.page === 'activity') {
-        const data = await request('/api/incidents')
+        const [data, changes] = await Promise.all([request('/api/incidents'), request('/api/channel-events')])
         if (sequence !== state.sequence) return
-        $('list-label').textContent = `${data.incidents.length} ${text.recentIncidents}`
+        const items = [...data.incidents.map(value => ({ kind: 'incident', date: value.lastObservedAt, value })), ...changes.events.map(value => ({ kind: 'bell', date: value.observedAt, value }))].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
+        $('list-label').textContent = `${items.length} ${text.recentActivity}`
         $('paging').hidden = true
-        $('results').replaceChildren(...(data.incidents.length ? data.incidents.map(incident => {
+        $('results').replaceChildren(...(items.length ? items.map(item => {
+          if (item.kind === 'bell') {
+            const change = item.value, row = element('article', 'incident-row')
+            const title = element('h3', '', change.previousState === null ? text.bellObserved : text.bellActivity)
+            const stateName = value => text['bell_' + value] || text.bell_unknown
+            const detail = change.previousState === null ? stateName(change.currentState) : `${stateName(change.previousState)} → ${stateName(change.currentState)}`
+            row.append(title, element('p', 'meta', `${change.channelTitle || change.channelId} · ${detail} · ${displayDate(change.observedAt)}`))
+            return row
+          }
+          const incident = item.value
           const row = element('article', 'incident-row')
           const title = element('h3', '', text['incident_' + incident.category] || text.incident_other)
           const description = element('p', 'meta', `${text['source_' + incident.source] || text.source_service} · ${displayDate(incident.lastObservedAt)}`)

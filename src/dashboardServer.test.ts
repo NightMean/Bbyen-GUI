@@ -160,6 +160,9 @@ test('validates writes and schedules refresh after saving', async () => {
 		expect(cookieChannels.cookieMode).toBe(true)
 		expect(cookieChannels.cookieStale).toBe(false)
 		expect(cookieChannels.channels[0].bellState).toBe('all')
+		const events = (await axios.get(`${base}/api/channel-events`)).data.events
+		expect(events).toMatchObject([{ channelId: id, previousState: null,
+			currentState: 'all' }])
 		config.cookieStale = true
 		expect((await axios.get(`${base}/api/channels`)).data.cookieStale)
 			.toBe(true)

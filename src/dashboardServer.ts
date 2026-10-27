@@ -350,7 +350,7 @@ export const createDashboardHandler = (
 			!['/api/health', '/api/channels', '/api/videos',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
 				'/api/email/tests', '/api/subscriptions/export', '/api/schedule',
-				'/api/settings', '/api/cookies/status']
+				'/api/settings', '/api/cookies/status', '/api/channel-events']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -412,6 +412,13 @@ export const createDashboardHandler = (
 			return { incidents: await db.all(`SELECT id, source, category, channelId,
 				openedAt, lastObservedAt, resolvedAt, occurrences, emailState
 				FROM incidents ORDER BY resolvedAt IS NULL DESC, lastObservedAt DESC
+				LIMIT 100`) }
+		}
+		if (url.pathname === '/api/channel-events') {
+			return { events: await db.all(`SELECT e.id, e.profileKey, e.channelId,
+				s.channelTitle, e.previousState, e.currentState, e.observedAt
+				FROM cookie_channel_events e LEFT JOIN subscriptions s
+				ON s.channelId=e.channelId ORDER BY e.observedAt DESC, e.id DESC
 				LIMIT 100`) }
 		}
 		if (url.pathname === '/api/channels') {
