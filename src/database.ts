@@ -6,6 +6,7 @@ import SQL from 'sql-template-strings'
 import { migrateVideoSchema } from './videoSchema'
 import { initChannelSchema } from './channelSchema'
 import { initRefreshSchema } from './refreshSchema'
+import { initIncidentSchema } from './incidentSchema'
 
 export const DEFAULT_CHANNEL_THUMBNAIL =
 	'https://www.gstatic.com/youtube/img/creator/no_avatar.png'
@@ -93,6 +94,7 @@ export const init = async ({ filename }: { filename: string }) => {
 	await migrateVideoSchema(db)
 	await initChannelSchema(db)
 	await initRefreshSchema(db)
+	await initIncidentSchema(db)
 	return db
 }
 
