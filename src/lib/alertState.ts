@@ -33,7 +33,20 @@ const SOURCES: Record<string, string> = {
 	videos: 'Video refresh',
 	subscriptions: 'Subscription refresh',
 	'service-auth': 'YouTube authorization',
+	cookie: 'YouTube cookie sync',
+	smtp: 'Email delivery',
 	service: 'Service',
+}
+
+export const buildSafeAlert = (
+	category: ErrorCategory, sourceKey?: string, channelId?: string,
+): { stack: string; message: string; subject: string } => {
+	const source = SOURCES[sourceKey ?? 'service'] ?? 'Service'
+	const channel = channelId && isChannelId(channelId)
+		? ` Channel: ${channelId}.` : ''
+	return { stack: '',
+		message: `${source} failed.${channel} ${ACTIONS[category]}`,
+		subject: SUBJECTS[category] }
 }
 
 // In-memory record of which categories have already alerted this episode.
@@ -58,10 +71,8 @@ export const notifyError = async (
 ): Promise<void> => {
 	// External exception text and stacks may contain cookies or tokens.
 	void err
-	const source = SOURCES[deps.source ?? 'service'] ?? 'Service'
-	const channel = deps.channelId && isChannelId(deps.channelId)
-		? ` Channel: ${deps.channelId}.` : ''
-	const message = `${source} failed.${channel} ${ACTIONS[category]}`
+	const safe = buildSafeAlert(category, deps.source, deps.channelId)
+	const { message } = safe
 	const episode = alerted[category]
 	episode.sources.add(deps.source ?? 'service')
 
@@ -79,11 +90,7 @@ export const notifyError = async (
 
 	episode.pending = (async () => {
 		try {
-			await deps.sendErrorEmail({
-				stack: '',
-				message,
-				subject: SUBJECTS[category],
-			})
+			await deps.sendErrorEmail(safe)
 			episode.sent = true
 			deps.logger.info(`Sent ${category} alert email.`)
 		} catch {

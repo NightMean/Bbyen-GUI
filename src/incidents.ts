@@ -26,10 +26,15 @@ const SOURCES: IncidentSource[] = [
 	'videos', 'subscriptions', 'service-auth', 'cookie', 'smtp', 'service',
 ]
 const CATEGORIES: ErrorCategory[] = ['auth', 'quota', 'other']
+export const MAX_EMAIL_ATTEMPTS = 5
+const RETRY_DELAYS_MS = [30_000, 120_000, 600_000, 3_600_000]
 
 /** Persist allowlisted context without exception text. */
 export class IncidentStore {
-	constructor(private readonly db: sqlite.Database) {}
+	constructor(
+		private readonly db: sqlite.Database,
+		private readonly clock: () => Date = () => new Date(),
+	) {}
 
 	async record(input: {
 		source: IncidentSource,
@@ -49,7 +54,7 @@ export class IncidentStore {
 			throw new Error('Incident emailEnabled must be a boolean.')
 		}
 		const id = randomUUID()
-		const now = new Date().toISOString()
+		const now = this.clock().toISOString()
 		const channelId = input.channelId ?? null
 		const state = input.emailEnabled ? 'pending' : 'disabled'
 		await this.db.run(SQL`INSERT INTO incidents
@@ -60,7 +65,8 @@ export class IncidentStore {
 			ON CONFLICT DO UPDATE SET lastObservedAt=excluded.lastObservedAt,
 				occurrences=incidents.occurrences+1,
 				emailState=CASE
-					WHEN incidents.emailState='sent' THEN 'sent'
+					WHEN incidents.emailState IN ('sent', 'exhausted')
+						THEN incidents.emailState
 					WHEN excluded.emailState='disabled' THEN 'disabled'
 					WHEN incidents.emailState='disabled' THEN 'pending'
 					ELSE incidents.emailState END;`)
@@ -79,11 +85,52 @@ export class IncidentStore {
 				categories.some(c => !CATEGORIES.includes(c))) {
 			throw new Error('Invalid incident source or category.')
 		}
-		const now = new Date().toISOString()
+		const now = this.clock().toISOString()
 		for (const category of categories) {
 			await this.db.run(SQL`UPDATE incidents SET resolvedAt=${now}
 				WHERE source=${source} AND category=${category}
 				AND resolvedAt IS NULL;`)
 		}
+	}
+
+	async claim(id: string): Promise<Incident | undefined> {
+		const now = this.clock().toISOString()
+		const updated = await this.db.run(SQL`UPDATE incidents SET
+			emailState='sending', attemptCount=attemptCount+1
+			WHERE id=${id} AND emailState IN ('pending', 'failed')
+			AND attemptCount < ${MAX_EMAIL_ATTEMPTS}
+			AND (nextAttemptAt IS NULL OR nextAttemptAt <= ${now});`)
+		if (!updated.changes) return undefined
+		return this.db.get(SQL`SELECT * FROM incidents WHERE id=${id};`)
+	}
+
+	async complete(
+		id: string, delivered: boolean, attempts: number,
+	): Promise<void> {
+		const exhausted = attempts >= MAX_EMAIL_ATTEMPTS
+		const state = delivered ? 'sent' : exhausted ? 'exhausted' : 'failed'
+		const next = delivered || exhausted ? null : new Date(
+			this.clock().getTime() + RETRY_DELAYS_MS[attempts - 1],
+		).toISOString()
+		await this.db.run(SQL`UPDATE incidents SET emailState=${state},
+			nextAttemptAt=${next} WHERE id=${id} AND emailState='sending';`)
+	}
+
+	async due(): Promise<Incident[]> {
+		const now = this.clock().toISOString()
+		return this.db.all(SQL`SELECT * FROM incidents
+			WHERE emailState IN ('pending', 'failed')
+			AND attemptCount < ${MAX_EMAIL_ATTEMPTS}
+			AND (nextAttemptAt IS NULL OR nextAttemptAt <= ${now})
+			ORDER BY openedAt, id LIMIT 20;`)
+	}
+
+	async recoverSending(): Promise<void> {
+		const now = this.clock().toISOString()
+		await this.db.run(SQL`UPDATE incidents SET
+			emailState=CASE WHEN attemptCount >= ${MAX_EMAIL_ATTEMPTS}
+				THEN 'exhausted' ELSE 'failed' END,
+			nextAttemptAt=CASE WHEN attemptCount >= ${MAX_EMAIL_ATTEMPTS}
+				THEN NULL ELSE ${now} END WHERE emailState='sending';`)
 	}
 }
