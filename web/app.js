@@ -3,7 +3,7 @@
   let text
   try { text = await (await fetch('/en.json')).json() } catch { return }
   document.querySelectorAll('[data-text]').forEach(el => { el.textContent = text[el.dataset.text] })
-  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: 'idle' }
+  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {} }
   const size = 30
   const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const today = new Date()
@@ -44,7 +44,7 @@
     $('heading').textContent = text[page]
     $('dates').hidden = page !== 'videos'
     $('filter-label').hidden = page !== 'videos' || !state.channel
-    load()
+    load(); poll()
   }
   const makeLink = (label, href) => {
     const link = element('a', '', label); link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer'; return link
@@ -181,11 +181,14 @@
   const poll = async () => {
     try {
       const data = await request('/api/refresh')
-      const current = data[state.page === 'videos' ? 'videos' : 'subscriptions'].state
-      $('refresh-state').textContent = text[current] || ''
-      if (state.previousRefresh !== 'idle' && current === 'idle') load()
-      state.previousRefresh = current
-    } catch { $('refresh-state').textContent = '' }
+      const kind = state.page === 'videos' ? 'videos' : 'subscriptions'
+      const refresh = data[kind]
+      const current = refresh.state
+      const outcome = refresh.lastRun?.status === 'interrupted' ? 'interrupted' : refresh.lastRun?.result?.status
+      $('refresh-state').textContent = current === 'idle' && outcome ? text['refresh_' + outcome] : (text[current] || '')
+      if (state.previousRefresh[kind] && state.previousRefresh[kind] !== 'idle' && current === 'idle') load()
+      state.previousRefresh[kind] = current
+    } catch { $('refresh-state').textContent = text.refreshUnavailable }
   }
-  setPage('videos'); poll(); setInterval(poll, 5000)
+  setPage('videos'); setInterval(poll, 5000)
 })()
