@@ -55,6 +55,7 @@ test('validates writes and schedules refresh after saving', async () => {
 		add: async id => { calls.push(id) },
 		resolve: async input => input,
 		setNotify: async (id, notify) => { calls.push(`${id}:${notify}`) },
+		remove: async id => { calls.push(`remove:${id}`) },
 		manualMode: () => true,
 		manualNotify: () => true,
 		refresh: kind => { calls.push(kind) },
@@ -87,6 +88,8 @@ test('validates writes and schedules refresh after saving', async () => {
 			{ channelId: id, notify: false })
 		expect(muted.data.notify).toBe(false)
 		expect(calls).toContain(`${id}:false`)
+		await axios.post(`${base}/api/channels/remove`, { channelId: id })
+		expect(calls.slice(-2)).toEqual([`remove:${id}`, 'subscriptions'])
 		let finish!: () => void
 		const hold = new Promise<void>(resolve => { finish = resolve })
 		const work = jobs.run('videos', async () => {

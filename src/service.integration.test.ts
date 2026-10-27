@@ -241,6 +241,12 @@ test('dashboard updates manual notification settings in the running service',
 			const saved = JSON.parse(await fs.readFile(
 				path.join(dir, 'channels.json'), 'utf8'))
 			expect(saved.whitelistedChannelIds[0].notify).toBe(false)
+			await axios.post(`http://127.0.0.1:${port}/api/channels/remove`,
+				{ channelId: id })
+			const removed = JSON.parse(await fs.readFile(
+				path.join(dir, 'channels.json'), 'utf8'))
+			expect(removed.whitelistedChannelIds).toEqual([])
+			expect(removed.savedChannelSettings[0].notify).toBe(false)
 		} finally {
 			child.kill(); await exited
 			await fs.rm(dir, { recursive: true, force: true })

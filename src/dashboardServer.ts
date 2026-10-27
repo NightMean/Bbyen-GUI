@@ -12,6 +12,7 @@ interface ChannelActions {
 	resolve: (input: string) => Promise<string>,
 	refresh: (kind: RefreshKind) => void,
 	setNotify: (channelId: string, notify: boolean) => Promise<void>,
+	remove: (channelId: string) => Promise<void>,
 	manualMode: () => boolean,
 	manualNotify: (channelId: string) => boolean | null,
 }
@@ -51,6 +52,7 @@ export const createDashboardServer = (
 			(url.pathname === '/api/channels' ||
 			url.pathname === '/api/channels/resolve' ||
 			url.pathname === '/api/channels/notify' ||
+			url.pathname === '/api/channels/remove' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -109,6 +111,18 @@ export const createDashboardServer = (
 					actions.setNotify(id, data.notify as boolean)).then(() =>
 					send(200, { channelId: id, notify: data.notify }),
 				() => send(500, { error: 'Could not save notification setting.' }))
+				return
+			}
+			if (url.pathname === '/api/channels/remove') {
+				if (!actions.manualMode()) {
+					send(400, { error: 'Manual removal is unavailable.' })
+					return
+				}
+				void jobs.maintenance(randomUUID(), () => actions.remove(id))
+					.then(() => {
+						actions.refresh('subscriptions')
+						send(202, { channelId: id })
+					}, () => send(500, { error: 'Could not remove the channel.' }))
 				return
 			}
 			void jobs.maintenance(randomUUID(), () => actions.add(id as string))

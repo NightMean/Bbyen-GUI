@@ -94,6 +94,13 @@
         try { await post('/api/channels/notify', { channelId: channel.channelId, notify: !channel.notify }); showNotice(text.saved); load() }
         catch { showNotice(text.settingError) } finally { mute.disabled = false }
       }); row.append(mute)
+      const remove = element('button', 'quiet', text.remove)
+      remove.type = 'button'; remove.addEventListener('click', async () => {
+        if (!window.confirm(text.removeConfirm)) return
+        remove.disabled = true
+        try { await post('/api/channels/remove', { channelId: channel.channelId }); showNotice(text.removed); load() }
+        catch { showNotice(text.removeError) } finally { remove.disabled = false }
+      }); row.append(remove)
     }
     if (/^UC[\w-]{22}$/.test(channel.channelId)) {
       const link = makeLink(text.openChannel, `https://www.youtube.com/channel/${channel.channelId}`)

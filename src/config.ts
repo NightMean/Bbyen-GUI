@@ -73,6 +73,7 @@ export interface Config {
 	whitelistedChannelIds?: ChannelEntry[],
 	blacklistedChannelIds?: ChannelEntry[],
 	manualChannelIds?: ChannelEntry[],
+	savedChannelSettings?: ChannelEntry[],
 	channelSettingsById?: Map<string, ChannelEntry>,
 }
 
@@ -316,6 +317,9 @@ export const loadConfig = async (
 			manualChannelIds: await normalizeChannelEntries(
 				normalizeChannel as (c: string) => Promise<string>,
 				lists.manualChannelIds),
+			savedChannelSettings: await normalizeChannelEntries(
+				normalizeChannel as (c: string) => Promise<string>,
+				lists.savedChannelSettings),
 		}
 	})
 	return {
@@ -324,8 +328,10 @@ export const loadConfig = async (
 		whitelistedChannelIds: channels.whitelistedChannelIds,
 		blacklistedChannelIds: channels.blacklistedChannelIds,
 		manualChannelIds: channels.manualChannelIds,
+		savedChannelSettings: channels.savedChannelSettings,
 		channelSettingsById:
 			buildChannelSettingsMap(mergeChannelEntries([
+				...(channels.savedChannelSettings ?? []),
 				...(channels.whitelistedChannelIds ?? []),
 				...(channels.manualChannelIds ?? []),
 			])),

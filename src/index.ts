@@ -16,7 +16,9 @@ import { QuotaRunner } from './quotaRunner'
 import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
-import { addManualChannel, setManualChannelNotify } from './manualChannels'
+import {
+	addManualChannel, removeManualChannel, setManualChannelNotify,
+} from './manualChannels'
 import { resolveChannelId } from './lib/resolveChannelId'
 
 const main = async () => {
@@ -67,6 +69,7 @@ const main = async () => {
 			resolve: resolveChannelId,
 			setNotify: (id, notify) =>
 				setManualChannelNotify(CHANNELS_FILE, config, id, notify),
+			remove: id => removeManualChannel(CHANNELS_FILE, config, id),
 			manualMode: () => config.mode === 'whitelist',
 			manualNotify: id => config.whitelistedChannelIds?.some(c => c.id === id)
 				? config.channelSettingsById?.get(id)?.notify !== false : null,

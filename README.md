@@ -72,10 +72,12 @@ so SQLite and its journal stay in persistent storage. The template port is
 3030, matching Compose. For whitelist mode, set `mode` to `whitelist`.
 
 Open the preliminary dashboard on port 3031 to browse stored videos, search
-channels, add a channel, mute manual-channel emails, or request a refresh.
+channels, add or remove a manual channel, mute its emails, or request a refresh.
 The dashboard resolves channel inputs before adding them and schedules a
 subscription refresh after saving. Muting does not replay missed videos when
 the channel is unmuted.
+Removing a manual channel preserves its video history and stores its channel
+preferences in `savedChannelSettings` for use if it is added again.
 Manual refresh requests use the same scheduler and quota handling as timed
 refreshes; the refresh endpoint reports their most recent outcomes.
 The shared channel resolver accepts YouTube HTTPS URLs, handles and validated

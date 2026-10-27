@@ -3,7 +3,9 @@ import os from 'os'
 import path from 'path'
 import { expect, test } from 'vitest'
 import { Config } from './config'
-import { addManualChannel, setManualChannelNotify } from './manualChannels'
+import {
+	addManualChannel, removeManualChannel, setManualChannelNotify,
+} from './manualChannels'
 
 test('adds to both lists and preserves preferences', async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-channels-'))
@@ -56,5 +58,27 @@ test('rejects invalid inputs and preserves the file', async () => {
 		await expect(addManualChannel(file, {} as Config, 'invalid'))
 			.rejects.toThrow()
 		expect(await fs.readFile(file, 'utf8')).toBe(original)
+	} finally { await fs.rm(directory, { recursive: true, force: true }) }
+})
+
+test('retains channel preferences after removal and re-addition', async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-remove-'))
+	const file = path.join(directory, 'channels.json')
+	const id = 'UCabcdefghijklmnopqrstuv'
+	const config = { mode: 'whitelist' } as Config
+	try {
+		await fs.writeFile(file, JSON.stringify({
+			whitelistedChannelIds: [{ id, notify: false,
+				initialBacklog: { mode: 'newest', count: 2 } }],
+			manualChannelIds: [id],
+		}))
+		await removeManualChannel(file, config, id)
+		const saved = JSON.parse(await fs.readFile(file, 'utf8'))
+		expect(saved.whitelistedChannelIds).toEqual([])
+		expect(saved.manualChannelIds).toEqual([])
+		expect(saved.savedChannelSettings[0].notify).toBe(false)
+		await addManualChannel(file, config, id)
+		expect(config.channelSettingsById?.get(id)).toEqual({ id, notify: false,
+			initialBacklog: { mode: 'newest', count: 2 } })
 	} finally { await fs.rm(directory, { recursive: true, force: true }) }
 })

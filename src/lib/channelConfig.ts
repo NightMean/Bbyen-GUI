@@ -5,6 +5,7 @@ export interface ChannelLists {
 	whitelistedChannelIds?: RawChannelEntry[],
 	blacklistedChannelIds?: RawChannelEntry[],
 	manualChannelIds?: RawChannelEntry[],
+	savedChannelSettings?: RawChannelEntry[],
 	[key: string]: unknown,
 }
 
@@ -14,6 +15,7 @@ export const parseChannelLists = (value: unknown): ChannelLists => {
 	}
 	for (const key of [
 		'whitelistedChannelIds', 'blacklistedChannelIds', 'manualChannelIds',
+		'savedChannelSettings',
 	]) {
 		const entries = (value as Record<string, unknown>)[key]
 		if (entries === undefined) continue
