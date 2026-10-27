@@ -222,8 +222,10 @@ retries at 30 minutes, one hour, two hours, and four hours have failed.
 Further retries continue at four-hour intervals without
 repeating the alert. Retry state survives restart; the scheduler checks for
 due retries approximately once per minute.
-API-mode video checks are deferred during their quota backoff; an independent
-RSS fallback for that period is not yet available.
+During video API quota backoff, RSS checks continue using available feed data.
+Duration and livestream classification may be unavailable. On later API
+recovery, the service enriches retained observations without resending their
+video emails, including observations no longer present in the current feed.
 
 The service stores refresh run times, outcomes, and bounded channel IDs in
 SQLite. Runs still marked in progress when the service starts are recorded as

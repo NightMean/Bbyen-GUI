@@ -85,3 +85,25 @@ test('a failed alert record remains eligible for a later retry', async () => {
 		expect(reportQuota).toHaveBeenCalledTimes(2)
 	} finally { await db.close() }
 })
+
+test('RSS fallback failure preserves the quota outcome', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		const coordinator = new RefreshCoordinator(db, { warn: vi.fn() })
+		const work = vi.fn().mockResolvedValue(throttled)
+		const runner = new QuotaRunner({ coordinator, backoff: new QuotaBackoff(db),
+			enabled: true, alertsEnabled: () => true,
+			work: { videos: work, subscriptions: work },
+			rssFallback: vi.fn().mockRejectedValue(new Error('offline')),
+			reportQuota: vi.fn().mockResolvedValue(true),
+			clearQuota: vi.fn(), warn: vi.fn() })
+		expect(await runner.run('videos')).toMatchObject({
+			status: 'failed', errorCategory: 'quota', degradedReason: 'quota',
+		})
+		expect(await runner.run('videos')).toMatchObject({
+			status: 'failed', errorCategory: 'quota', degradedReason: 'quota',
+		})
+		expect(await db.get('SELECT failures FROM quota_backoff'))
+			.toEqual({ failures: 1 })
+	} finally { await db.close() }
+})

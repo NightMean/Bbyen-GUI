@@ -220,6 +220,38 @@ describe('video failure recovery', () => {
 				.toEqual({ publishedAt: null, emailOutcome: 'sent' })
 		})
 
+	test('processes duplicate feed entries only once', async () => {
+		const item = { videoId: 'same', title: 'Video',
+			isoDate: '2026-01-01T00:00:00Z' }
+		vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({
+			items: [item, item],
+		} as never)
+		const result = await parseFeedsAndNotify({ ...args(), config: {
+			...config, mode: 'whitelist',
+		} } as never)
+		expect(result.status).toBe('success')
+		expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+	})
+
+	test('rejects an incomplete feed after an earlier baseline', async () => {
+		const manual = { ...config, mode: 'whitelist' }
+		vi.mocked(RSSParser.prototype.parseURL)
+			.mockResolvedValueOnce({ items: [] } as never)
+			.mockResolvedValueOnce({ items: [
+				{ videoId: 'valid', title: 'Video',
+					isoDate: '2026-01-01T00:00:00Z' },
+				{ title: 'Missing ID' },
+			] } as never)
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		const result = await parseFeedsAndNotify({
+			...args(), config: manual,
+		} as never)
+		expect(result.status).toBe('failed')
+		expect(sendVideoEmail).not.toHaveBeenCalled()
+		expect(await db.get('SELECT COUNT(*) AS count FROM videos'))
+			.toEqual({ count: 0 })
+	})
+
 	test('stores API videos even when duration is unavailable', async () => {
 		list.mockResolvedValue({ data: { items: [{
 			snippet: { publishedAt: '2026-01-01T00:00:00Z', title: 'Video',
@@ -230,6 +262,37 @@ describe('video failure recovery', () => {
 		expect(await db.get(`SELECT durationSeconds, emailOutcome
 			FROM video_observations WHERE videoId='new-video'`))
 			.toEqual({ durationSeconds: null, emailOutcome: 'sent' })
+	})
+
+	test('bounds API enrichment across all channels in one refresh', async () => {
+		const channels = ['UCfixture', 'UCsecond', 'UCthird']
+		for (const id of channels.slice(1)) {
+			await db.run(`INSERT INTO subscriptions
+				(channelId, channelTitle, channelThumbnail) VALUES (?, ?, 'avatar')`,
+			id, id)
+		}
+		for (const id of channels) {
+			for (let i = 0; i < 20; i++) {
+				const videoId = `${id}-${i}`
+				await db.run('INSERT INTO videos (videoId, channelId) VALUES (?, ?)',
+					videoId, id)
+				await db.run(`INSERT INTO video_observations
+					(videoId, channelId, emailOutcome) VALUES (?, ?, 'sent')`,
+				videoId, id)
+			}
+		}
+		vi.mocked(RSSParser.prototype.parseURL)
+			.mockResolvedValue({ items: [] } as never)
+		list.mockResolvedValue({ data: { items: [{
+			snippet: { title: 'Video', channelTitle: 'Creator',
+				thumbnails: { high: { url: 'thumb' } } },
+			contentDetails: { duration: 'PT1M' },
+		}] } })
+		await parseFeedsAndNotify(args())
+		expect(list).toHaveBeenCalledTimes(50)
+		expect(await db.get(`SELECT COUNT(*) AS count FROM video_observations
+			WHERE apiMetadataAt IS NULL`)).toEqual({ count: 10 })
+		expect(sendVideoEmail).not.toHaveBeenCalled()
 	})
 
 	test('observes an active livestream and emails the VOD', async () => {

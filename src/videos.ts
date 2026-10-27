@@ -24,6 +24,9 @@ import {
 	handleTerminatedChannel,
 } from './lib/channelTermination'
 
+const MAX_METADATA_ENRICHMENT_PER_CHANNEL = 20
+const MAX_METADATA_ENRICHMENT_PER_REFRESH = 50
+
 const formatDuration = (duration: Duration) => {
 	const hours = duration.hours === 0 ? '' : `${duration.hours}:`
 	const minutes = String(duration.minutes)
@@ -67,6 +70,8 @@ interface IGetChannelsVideos {
 	config: Config,
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
 	alerts: AlertReporter,
+	rssOnly?: boolean,
+	metadataBudget: { remaining: number },
 	getEligibility: (id: string, entry?: ChannelEntry) =>
 		EmailEligibility,
 }
@@ -82,6 +87,8 @@ const getChannelsVideos = async ({
 	sendErrorEmail,
 	getEligibility,
 	alerts,
+	rssOnly = false,
+	metadataBudget,
 }: IGetChannelsVideos) => {
 	const { channelId, channelThumbnail } = channel
 	const outcome: { failed: boolean; stop: boolean; checkedYouTube: boolean;
@@ -100,6 +107,14 @@ const getChannelsVideos = async ({
 	const videosSent = new Set((await db.all(SQL`
 		SELECT videoId FROM videos WHERE channelId=${channelId};
 	`)).map(v => v.videoId))
+	const useApi = config.mode !== 'whitelist' && !rssOnly
+	const limit = Math.min(metadataBudget.remaining,
+		MAX_METADATA_ENRICHMENT_PER_CHANNEL)
+	const pendingMetadata = useApi ? new Set((await db.all(SQL`
+		SELECT videoId FROM video_observations WHERE channelId=${channelId}
+		AND apiMetadataAt IS NULL ORDER BY observedAt DESC
+		LIMIT ${limit};
+	`)).map(row => row.videoId as string)) : new Set<string>()
 
 	// An empty successful feed is still a completed first scan.
 	const baseline = await db.get(SQL`
@@ -131,15 +146,16 @@ const getChannelsVideos = async ({
 		await alert(feedError)
 		return outcome
 	}
+	const feedItems = feed.items as BacklogItem[]
+	if (!Array.isArray(feedItems) || feedItems.some(item => !item ||
+			typeof item.videoId !== 'string' || !item.videoId)) {
+		await alert(new Error('Feed contains an item without a video ID.'))
+		return outcome
+	}
 
 	const entry = config.channelSettingsById?.get(channelId)
 	if (!baseline) {
-		const items = feed.items as BacklogItem[]
-		if (items.some(item => typeof item.videoId !== 'string' || !item.videoId)) {
-			await alert(new Error('Feed contains an item without a video ID.'))
-			return outcome
-		}
-		const candidates = items.filter(item => !videosSent.has(item.videoId))
+		const candidates = feedItems.filter(item => !videosSent.has(item.videoId))
 		const legacy = entry?.notifyOnFirstScan ?? config.notifyOnFirstScan
 		const policy: BacklogPolicy = entry?.initialBacklog ??
 			(entry?.notifyOnFirstScan !== undefined ?
@@ -176,11 +192,25 @@ const getChannelsVideos = async ({
 	// In whitelist mode there is no API channel title; the RSS feed title is the
 	// channel name.
 	const rssChannelTitle = (feed as { title?: string }).title
+	// Previously collected RSS videos may no longer appear in the current feed.
+	const feedIds = new Set(feedItems.map(item => item.videoId))
+	const queued = [...pendingMetadata].filter(id => !feedIds.has(id))
+	const seen = new Set<string>()
+	const items = [...feedItems, ...queued.map(videoId => ({ videoId }))]
 
-	for (let { videoId } of feed.items) {
+	for (let { videoId } of items) {
 		try {
+			if (seen.has(videoId)) continue
+			seen.add(videoId)
 
-			if (videosSent.has(videoId)) continue
+			const alreadyProcessed = videosSent.has(videoId)
+			if (alreadyProcessed && (!useApi || !pendingMetadata.has(videoId))) {
+				continue
+			}
+			if (useApi && (alreadyProcessed || !feedIds.has(videoId))) {
+				if (metadataBudget.remaining <= 0) continue
+				metadataBudget.remaining--
+			}
 
 			let videoDate: Date | null
 			let videoTitle: string | null
@@ -190,7 +220,7 @@ const getChannelsVideos = async ({
 			let isLiveStreamOrPremere: boolean
 			let isLiveActive = false
 
-			if (config.mode === 'whitelist') {
+			if (!useApi) {
 				// RSS-only: no duration, no livestream status. Notify all.
 				const item = feed.items.find(it => it.videoId === videoId) as
 					{ title?: string, isoDate?: string, pubDate?: string }
@@ -206,7 +236,7 @@ const getChannelsVideos = async ({
 				const details = (await service.videos.list({
 					auth,
 					part: ['contentDetails,snippet,liveStreamingDetails'],
-					id: videoId,
+					id: [videoId],
 				}))?.data?.items?.[0]
 				outcome.checkedYouTube = true
 
@@ -270,15 +300,27 @@ const getChannelsVideos = async ({
 				? videoDuration.weeks * 604800 + videoDuration.days * 86400 +
 					videoDuration.hours * 3600 + videoDuration.minutes * 60 +
 					videoDuration.seconds : null
+			if (alreadyProcessed) {
+				const metadataAt = isLiveActive ? null : new Date().toISOString()
+				await db.run(SQL`UPDATE video_observations SET title=${videoTitle},
+					publishedAt=COALESCE(${videoDate?.toISOString() ?? null},
+						publishedAt),
+					thumbnailUrl=${videoThumbnail},
+					durationSeconds=COALESCE(${seconds}, durationSeconds),
+					contentType=COALESCE(
+						${isLiveStreamOrPremere ? 'livestream' : null}, contentType),
+					apiMetadataAt=${metadataAt} WHERE videoId=${videoId};`)
+				continue
+			}
 			if (isLiveActive) {
 				// Preserve the video for the dashboard while waiting for its VOD.
 				await db.run(SQL`INSERT INTO video_observations (
 					videoId, channelId, title, publishedAt, thumbnailUrl,
-					durationSeconds, contentType, observedAt, emailOutcome
+					durationSeconds, contentType, observedAt, emailOutcome, apiMetadataAt
 				) VALUES (
 					${videoId}, ${channelId}, ${videoTitle},
 					${videoDate?.toISOString() ?? null}, ${videoThumbnail}, ${seconds},
-					'livestream', ${new Date().toISOString()}, 'discovered'
+					'livestream', ${new Date().toISOString()}, 'discovered', NULL
 				) ON CONFLICT(videoId) DO UPDATE SET
 					title=excluded.title, publishedAt=excluded.publishedAt,
 					thumbnailUrl=excluded.thumbnailUrl,
@@ -286,6 +328,7 @@ const getChannelsVideos = async ({
 				continue
 			}
 			// Record the attempt before SMTP: after a crash it must not be replayed.
+			const metadataAt = useApi ? new Date().toISOString() : null
 			await db.exec('BEGIN IMMEDIATE')
 			try {
 				await db.run(SQL`
@@ -295,18 +338,20 @@ const getChannelsVideos = async ({
 				await db.run(SQL`
 					INSERT INTO video_observations (
 						videoId, channelId, title, publishedAt, thumbnailUrl,
-						durationSeconds, contentType, observedAt, emailOutcome
+						durationSeconds, contentType, observedAt, emailOutcome,
+						apiMetadataAt
 					) VALUES (
 						${videoId}, ${channelId}, ${videoTitle},
 						${videoDate?.toISOString() ?? null}, ${videoThumbnail}, ${seconds},
 						${isLiveStreamOrPremere ? 'livestream' : null},
-						${new Date().toISOString()}, ${emailOutcome}
+						${new Date().toISOString()}, ${emailOutcome}, ${metadataAt}
 					) ON CONFLICT(videoId) DO UPDATE SET
 						title=excluded.title, publishedAt=excluded.publishedAt,
 						thumbnailUrl=excluded.thumbnailUrl,
 						durationSeconds=excluded.durationSeconds,
 						contentType=excluded.contentType,
-						emailOutcome=excluded.emailOutcome;
+						emailOutcome=excluded.emailOutcome,
+						apiMetadataAt=excluded.apiMetadataAt;
 				`)
 				await db.exec('COMMIT')
 			} catch (err) {
@@ -387,6 +432,7 @@ interface IParseFeedsAndNotify {
 	config: Config,
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
 	alerts?: AlertReporter,
+	rssOnly?: boolean,
 }
 export const parseFeedsAndNotify = async (
 	{ db, ...rest }: IParseFeedsAndNotify,
@@ -411,7 +457,7 @@ export const parseFeedsAndNotify = async (
 	try {
 
 		logger.info('Checking for new videos...')
-		if (rest.config.mode !== 'whitelist' && !rest.auth) {
+		if (rest.config.mode !== 'whitelist' && !rest.rssOnly && !rest.auth) {
 			throw new Error('YouTube authorization is required for API video checks.')
 		}
 		await pruneVideoObservations(db, rest.config.videoRetentionDays ?? null)
@@ -429,6 +475,7 @@ export const parseFeedsAndNotify = async (
 				WHERE manual=1 AND apiSubscribed=0`) : []
 		const manualOnly = new Set<string>(manualRows.map(row => row.channelId))
 		const getEligibility = makeEmailEligibility(rest.config, manualOnly)
+		const metadataBudget = { remaining: MAX_METADATA_ENRICHMENT_PER_REFRESH }
 
 		const channels: Channel[] = await db.all(SQL`
 			SELECT channelId, channelTitle, channelThumbnail
@@ -450,6 +497,7 @@ export const parseFeedsAndNotify = async (
 				logger,
 				db,
 				getEligibility,
+				metadataBudget,
 				...rest,
 				alerts,
 			})
@@ -460,7 +508,9 @@ export const parseFeedsAndNotify = async (
 				category ??= channelResult.category
 			} else {
 				succeeded++
-				await alerts.clear(['other'], 'videos', channel.channelId)
+				if (!rest.rssOnly) {
+					await alerts.clear(['other'], 'videos', channel.channelId)
+				}
 				if (channelResult.checkedYouTube) {
 					await alerts.clear(['auth', 'quota'], 'videos', channel.channelId)
 				}
@@ -472,7 +522,7 @@ export const parseFeedsAndNotify = async (
 			}
 		}
 
-		if (!failed && channels.length > 0) {
+		if (!failed && channels.length > 0 && !rest.rssOnly) {
 			await alerts.clear([ 'other' ], 'videos')
 			if (checkedYouTube) await alerts.clear([ 'auth', 'quota' ], 'videos')
 		}

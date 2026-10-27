@@ -105,6 +105,14 @@ export const migrateVideoSchema = async (
 				INSERT INTO video_schema_migrations (version) VALUES (4);
 			`)
 		}
+		const metadata = await db.get(
+			'SELECT version FROM video_schema_migrations WHERE version = 5')
+		if (!metadata) {
+			await db.exec(`
+				ALTER TABLE video_observations ADD COLUMN apiMetadataAt TEXT;
+				INSERT INTO video_schema_migrations (version) VALUES (5);
+			`)
+		}
 		await db.exec('COMMIT')
 	} catch (err) {
 		await db.exec('ROLLBACK')

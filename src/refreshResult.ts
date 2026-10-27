@@ -10,4 +10,5 @@ export interface RefreshResult {
 	failedChannelsTruncated?: boolean,
 	errorCategory?: ErrorCategory,
 	apiChecked?: boolean,
+	degradedReason?: 'quota',
 }

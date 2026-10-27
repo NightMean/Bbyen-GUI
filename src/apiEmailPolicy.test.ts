@@ -34,7 +34,7 @@ test('API discovery retains all subscriptions and applies allowlist email',
 					items: [subscription(allowed), subscription(other)],
 				} }) },
 				videos: { list: vi.fn().mockImplementation(async ({ id }) => ({
-					data: { items: [{ snippet: { title: id,
+					data: { items: [{ snippet: { title: id[0],
 						publishedAt: '2026-01-01T00:00:00Z', channelTitle: 'Creator',
 						thumbnails: { high: { url: 'image' } } },
 					contentDetails: { duration: 'PT1M' } }] },

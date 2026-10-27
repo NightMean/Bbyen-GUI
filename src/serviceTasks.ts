@@ -129,6 +129,14 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		}
 		return result
 	}
+	const runRssVideos = async (): Promise<RefreshResult> => {
+		const mailers = await getMailers()
+		if (!mailers) return unavailable('other')
+		return parseFeedsAndNotify({ db: deps.db, service: deps.service,
+			config: deps.config, rssOnly: true, alerts: jobAlerts,
+			sendVideoEmail: mailers.sendVideoEmail,
+			sendErrorEmail: mailers.sendErrorEmail })
+	}
 	const retryAlerts = async (): Promise<void> => {
 		const mailers = await getMailers()
 		if (mailers && deps.retryPendingAlerts) {
@@ -149,5 +157,6 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		return false
 	}
 	const clearQuota = () => alerts.clear(['quota'], 'service')
-	return { runSubscriptions, runVideos, retryAlerts, reportQuota, clearQuota }
+	return { runSubscriptions, runVideos, runRssVideos, retryAlerts,
+		reportQuota, clearQuota }
 }

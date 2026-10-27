@@ -53,6 +53,7 @@ const main = async () => {
 			backoff: new QuotaBackoff(db), enabled: config.mode === 'youtube',
 			alertsEnabled: () => config.logging.emailOnError,
 			work: { subscriptions: tasks.runSubscriptions, videos: tasks.runVideos },
+			rssFallback: tasks.runRssVideos,
 			reportQuota: tasks.reportQuota, clearQuota: tasks.clearQuota,
 			warn: message => logger.warn(message),
 		})

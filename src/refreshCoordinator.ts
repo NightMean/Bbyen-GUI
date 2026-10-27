@@ -32,7 +32,8 @@ const sanitizeResult = (value: unknown): RefreshResult => {
 			? { failedChannelsTruncated: true } : {}),
 		...(category ? { errorCategory: category } : {}),
 		...(typeof data.apiChecked === 'boolean'
-			? { apiChecked: data.apiChecked } : {}) }
+			? { apiChecked: data.apiChecked } : {}),
+		...(data.degradedReason === 'quota' ? { degradedReason: 'quota' } : {}) }
 }
 
 export class RefreshCoordinator {
