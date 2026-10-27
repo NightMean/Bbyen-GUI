@@ -76,9 +76,13 @@ export const reconcileCookieSnapshot = async (
 					subscribed=1, latestBell=excluded.latestBell,
 					lastConfirmedBell=excluded.lastConfirmedBell,
 					observedAt=excluded.observedAt;`)
-			if (confirmed === 'all') monitored.add(channel.channelId)
 			const existing = await db.get(SQL`SELECT deleted, deletedReason
 				FROM subscriptions WHERE channelId=${channel.channelId};`)
+			// A first unknown bell must not revoke an already tracked channel.
+			// It remains unconfirmed until YouTube supplies a definite state.
+			const track = confirmed === 'all' || (confirmed === null &&
+				channel.notificationState === 'unknown' && existing?.deleted === 0)
+			if (track) monitored.add(channel.channelId)
 			if (confirmed === 'all' && existing?.deleted &&
 					existing.deletedReason !== 'terminated') {
 				await db.run(SQL`DELETE FROM video_scan_baselines
@@ -86,14 +90,14 @@ export const reconcileCookieSnapshot = async (
 				await db.run(SQL`DELETE FROM initial_backlog_videos
 					WHERE channelId=${channel.channelId};`)
 			}
-			const isMonitored = confirmed === 'all' ? 0 : 1
-			const reason = isMonitored ? 'cookie-ineligible' : null
+			const inactive = track ? 0 : 1
+			const reason = inactive ? 'cookie-ineligible' : null
 			await db.run(SQL`INSERT INTO subscriptions
 				(channelId, channelTitle, channelThumbnail, firstObservedAt,
 					bellState, bellUpdatedAt, deleted, deletedReason, deletedAt)
 				VALUES (${channel.channelId}, ${channel.title || channel.channelId},
 					${DEFAULT_CHANNEL_THUMBNAIL}, ${now}, ${channel.notificationState},
-					${now}, ${isMonitored}, ${reason}, ${isMonitored ? now : null})
+					${now}, ${inactive}, ${reason}, ${inactive ? now : null})
 				ON CONFLICT(channelId) DO UPDATE SET
 					channelTitle=CASE WHEN ${channel.title} <> '' AND
 						${channel.title} <> ${channel.channelId} THEN ${channel.title}
@@ -103,11 +107,11 @@ export const reconcileCookieSnapshot = async (
 						ELSE subscriptions.bellUpdatedAt END,
 					bellState=${channel.notificationState},
 					deleted=CASE WHEN deletedReason='terminated' THEN 1
-						ELSE ${isMonitored} END,
+						ELSE ${inactive} END,
 					deletedReason=CASE WHEN deletedReason='terminated' THEN 'terminated'
 						ELSE ${reason} END,
 					deletedAt=CASE WHEN deletedReason='terminated' THEN deletedAt
-						WHEN ${isMonitored}=0 THEN NULL
+						WHEN ${inactive}=0 THEN NULL
 						WHEN deleted=0 THEN ${now} ELSE deletedAt END;`)
 		}
 		for (const prior of previous.values()) {

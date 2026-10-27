@@ -65,6 +65,23 @@ test('terminated channels stay terminated when observed with All', async () => {
 	} finally { await db.close() }
 })
 
+test('first unknown bell retains an already tracked channel', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.run(`INSERT INTO subscriptions
+			(channelId, channelTitle, channelThumbnail)
+			VALUES (?, 'Creator', 'image')`,
+		first)
+		await reconcileCookieSnapshot(db, { profileKey: 'profile', complete: true,
+			activateProfile: true, channels: [channel(first, 'unknown'),
+				channel(second, 'unknown')] })
+		expect(await db.all('SELECT channelId FROM subscriptions WHERE deleted=0'))
+			.toEqual([{ channelId: first }])
+		expect(await db.get('SELECT lastConfirmedBell FROM cookie_channel_state ' +
+			'WHERE channelId=?', first)).toEqual({ lastConfirmedBell: null })
+	} finally { await db.close() }
+})
+
 test('records meaningful changes once and allows confirmed profile switches',
 	async () => {
 		const db = await init({ filename: ':memory:' })
