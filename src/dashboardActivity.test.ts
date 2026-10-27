@@ -36,6 +36,27 @@ test('paginates combined activity deterministically across equal timestamps',
 		} finally { await db.close() }
 	})
 
+test('includes refresh outcomes and tolerates unreadable history', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.run(`INSERT INTO refresh_runs
+			(id, kind, status, startedAt, finishedAt, resultJson)
+			VALUES ('complete', 'videos', 'completed', '2026-01-01', '2026-01-02',
+			?)`, JSON.stringify({ status: 'partial', succeeded: 3, failed: 1,
+			secret: 'not-returned' }))
+		await db.run(`INSERT INTO refresh_runs
+			(id, kind, status, startedAt, resultJson)
+			VALUES ('broken', 'subscriptions', 'interrupted', '2026-01-03', '{')`)
+		const result = await listActivity(db, { limit: 30, offset: 0 })
+		expect(result.total).toBe(2)
+		expect(result.items[0].value).toMatchObject({ kind: 'subscriptions',
+			status: 'interrupted', resultStatus: null })
+		expect(result.items[1].value).toMatchObject({ kind: 'videos',
+			resultStatus: 'partial', succeeded: 3, failed: 1 })
+		expect(result.items[1].value).not.toHaveProperty('secret')
+	} finally { await db.close() }
+})
+
 test('validates activity paging parameters', () => {
 	expect(parseActivityPage(new URLSearchParams('limit=30&offset=100')))
 		.toEqual({ limit: 30, offset: 100 })

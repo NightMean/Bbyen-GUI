@@ -46,7 +46,18 @@ const activityQuery = `
 		json_object('title', COALESCE(s.channelTitle, e.channelId),
 			'observedAt', e.observedAt, 'emailState', b.emailState)
 	FROM channel_added_events e JOIN channel_added_batches b ON b.id=e.batchId
-	LEFT JOIN subscriptions s ON s.channelId=e.channelId`
+	LEFT JOIN subscriptions s ON s.channelId=e.channelId
+	UNION ALL
+	SELECT 'refresh', COALESCE(finishedAt, startedAt), id,
+		json_object('kind', kind, 'status', status, 'startedAt', startedAt,
+			'finishedAt', finishedAt, 'resultStatus',
+			CASE WHEN json_valid(resultJson)
+			THEN json_extract(resultJson, '$.status') ELSE NULL END,
+			'succeeded', CASE WHEN json_valid(resultJson)
+			THEN json_extract(resultJson, '$.succeeded') ELSE NULL END,
+			'failed', CASE WHEN json_valid(resultJson)
+			THEN json_extract(resultJson, '$.failed') ELSE NULL END)
+	FROM refresh_runs`
 
 export const listActivity = async (db: sqlite.Database,
 	page: ReturnType<typeof parseActivityPage>) => {

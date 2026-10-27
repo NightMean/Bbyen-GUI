@@ -255,6 +255,15 @@
         $('next').disabled = state.offset + size >= data.total
         $('page-label').textContent = `${state.offset + 1}\u2013${Math.min(state.offset + size, data.total)} / ${data.total}`
         $('results').replaceChildren(...(items.length ? items.map(item => {
+          if (item.kind === 'refresh') {
+            const run = item.value, row = element('article', 'incident-row')
+            const status = run.status === 'completed' ? run.resultStatus : run.status
+            const label = text['activityRefresh_' + status] || text.refreshUnavailable
+            const detail = run.kind === 'videos' ? text.scheduleVideos : text.scheduleChannels
+            row.append(element('h3', '', label), element('p', 'meta', `${detail} · ${displayDate(run.finishedAt || run.startedAt)}`))
+            if (Number.isSafeInteger(run.succeeded) && Number.isSafeInteger(run.failed)) row.append(element('p', 'meta', `${run.succeeded} ${text.refreshSucceededCount} · ${run.failed} ${text.refreshFailedCount}`))
+            return row
+          }
           if (item.kind === 'added') {
             const change = item.value, row = element('article', 'incident-row')
             row.append(element('h3', '', text.channelAddedActivity), element('p', 'meta', `${change.title} · ${displayDate(change.observedAt)} · ${text['titleEmail_' + change.emailState] || ''}`))
