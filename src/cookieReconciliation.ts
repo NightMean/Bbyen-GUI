@@ -21,6 +21,7 @@ interface PreviousState {
 /** Apply only a complete, explicitly selected profile snapshot. */
 export const reconcileCookieSnapshot = async (
 	db: sqlite.Database, snapshot: CookieSnapshot,
+	options: { externalTransaction?: boolean } = {},
 ): Promise<void> => {
 	if (snapshot.complete !== true) {
 		throw new Error('Cookie snapshot is incomplete.')
@@ -41,7 +42,7 @@ export const reconcileCookieSnapshot = async (
 	}
 	const profileKey = snapshot.profileKey
 	const now = new Date().toISOString()
-	await db.exec('BEGIN IMMEDIATE')
+	if (!options.externalTransaction) await db.exec('BEGIN IMMEDIATE')
 	try {
 		const active = await db.get('SELECT profileKey FROM cookie_active_profile')
 		if (active?.profileKey !== profileKey && !snapshot.activateProfile) {
@@ -136,9 +137,9 @@ export const reconcileCookieSnapshot = async (
 		await db.run(SQL`INSERT INTO cookie_active_profile (id, profileKey)
 			VALUES (1, ${profileKey}) ON CONFLICT(id) DO UPDATE SET
 				profileKey=excluded.profileKey;`)
-		await db.exec('COMMIT')
+		if (!options.externalTransaction) await db.exec('COMMIT')
 	} catch (err) {
-		await db.exec('ROLLBACK')
+		if (!options.externalTransaction) await db.exec('ROLLBACK')
 		throw err
 	}
 }
