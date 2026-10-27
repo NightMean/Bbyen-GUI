@@ -140,7 +140,7 @@
     $('results').replaceChildren(element('p', 'empty', text.loading))
     try {
       if (state.page === 'settings') {
-        const [data, history, schedule] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule')])
+        const [data, history, schedule, general] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule'), request('/api/settings')])
         if (sequence !== state.sequence) return
         const email = data.settings
         $('smtp-host').value = email.host; $('smtp-port').value = email.port
@@ -149,6 +149,12 @@
         $('smtp-destination').value = email.destination
         $('schedule-channels').value = schedule.intervals.subscriptions
         $('schedule-videos').value = schedule.intervals.videos
+        $('default-backlog').value = general.settings.initialBacklog.mode
+        $('default-count-label').hidden = general.settings.initialBacklog.mode !== 'newest'
+        $('default-count').disabled = general.settings.initialBacklog.mode !== 'newest'
+        $('default-count').value = general.settings.initialBacklog.count || 5
+        $('retention-days').value = general.settings.videoRetentionDays ?? ''
+        $('failure-email').checked = general.settings.emailOnError
         $('email-user').disabled = data.userFromEnvironment
         $('email-password').disabled = data.passFromEnvironment
         $('user-source').textContent = data.userFromEnvironment ? text.environmentOwned : ''
@@ -253,6 +259,18 @@
     const intervals = { subscriptions: $('schedule-channels').value, videos: $('schedule-videos').value }
     try { const saved = await post('/api/schedule', { intervals }); $('schedule-channels').value = saved.intervals.subscriptions; $('schedule-videos').value = saved.intervals.videos; showNotice(text.scheduleSaved) }
     catch { showNotice(text.scheduleError) }
+  })
+  $('default-backlog').addEventListener('change', () => { $('default-count-label').hidden = $('default-backlog').value !== 'newest'; $('default-count').disabled = $('default-count-label').hidden })
+  $('general-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const mode = $('default-backlog').value
+    const count = Number($('default-count').value)
+    if (mode === 'newest' && (!Number.isSafeInteger(count) || count < 1)) { showNotice(text.invalidCount); return }
+    const initialBacklog = mode === 'newest' ? { mode, count } : { mode }
+    const videoRetentionDays = $('retention-days').value ? Number($('retention-days').value) : null
+    const settings = { initialBacklog, videoRetentionDays, emailOnError: $('failure-email').checked }
+    try { await post('/api/settings', { settings }); showNotice(text.generalSaved) }
+    catch { showNotice(text.generalError) }
   })
   $('test-email').addEventListener('click', async () => {
     $('test-email').disabled = true; $('test-email-result').textContent = text.testSending

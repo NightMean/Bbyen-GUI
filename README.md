@@ -91,6 +91,9 @@ Manual refresh requests use the same scheduler and quota handling as timed
 refreshes; the refresh endpoint reports their most recent outcomes.
 Dashboard Settings accepts separate intervals such as `6 hours` or `3 days` and
 replaces the running timers after the new settings are saved.
+Settings also controls the default first-scan policy, video-detail retention,
+and failure emails. Retention removes old details during video checks while
+keeping processed video IDs for deduplication.
 The Activity view shows up to 100 recent incidents, including whether each
 one is active or recovered. It does not yet contain channel change history.
 Settings can export a versioned JSON file of channel lists and preferences.

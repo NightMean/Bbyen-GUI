@@ -92,6 +92,14 @@
           <label><span data-text="scheduleVideos"></span><input id="schedule-videos" required maxlength="64"></label>
           <button class="outline" type="submit" data-text="saveSchedule"></button>
         </form>
+        <h2 data-text="generalTitle"></h2><p data-text="generalHelp"></p>
+        <form id="general-form" class="settings-form">
+          <label><span data-text="backlogLabel"></span><select id="default-backlog"><option value="none" data-text="backlogNone"></option><option value="all" data-text="backlogAll"></option><option value="newest" data-text="backlogNewest"></option></select></label>
+          <label id="default-count-label" hidden><span data-text="backlogCount"></span><input id="default-count" type="number" min="1" step="1" value="5"></label>
+          <label><span data-text="retentionLabel"></span><input id="retention-days" type="number" min="1" step="1"><small data-text="retentionHelp"></small></label>
+          <label class="check"><input id="failure-email" type="checkbox"><span data-text="failureEmails"></span></label>
+          <button class="outline" type="submit" data-text="saveGeneral"></button>
+        </form>
         <h2 data-text="subscriptionTransfer"></h2><p data-text="exportHelp"></p>
         <a class="outline export-link" href="/api/subscriptions/export" download data-text="exportSubscriptions"></a>
         <div class="import-panel">
