@@ -22,6 +22,10 @@ test('serves persisted data and rejects unsupported requests', async () => {
 		expect(channels.data.channels[0].channelTitle).toBe('Test')
 		expect((await axios.get(`${base}/api/videos`)).data.videos[0].title)
 			.toBe('Example')
+		const filtered = await axios.get(`${base}/api/videos?search=nomatch`)
+		expect(filtered.data.total).toBe(0)
+		expect((await axios.get(`${base}/api/videos?limit=0`,
+			{ validateStatus: () => true })).status).toBe(400)
 		expect((await axios.get(`${base}/api/refresh`)).data.videos.state)
 			.toBe('idle')
 		expect((await axios.post(`${base}/api/channels`, null,

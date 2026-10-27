@@ -78,8 +78,9 @@ Manual refresh requests use the same scheduler and quota handling as timed
 refreshes; the refresh endpoint reports their most recent outcomes.
 The shared channel resolver accepts YouTube HTTPS URLs, handles and validated
 YouTube feed URLs; it refuses redirects to other hosts.
-Its channel and video lists currently return at most 500 records, and the web
-interface and configuration controls are still under development. Set
+Its channel list currently returns at most 500 records, while video history
+supports pagination and date, channel and title filters. The web interface and
+configuration controls are still under development. Set
 `BBYEN_DASHBOARD_PORT` to change the listening port and update the Compose
 port mapping to match. This endpoint has no login or built-in HTTPS; configure
 network access and any HTTPS proxy for your environment.

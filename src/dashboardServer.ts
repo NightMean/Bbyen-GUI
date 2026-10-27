@@ -3,6 +3,7 @@ import { createServer, Server } from 'http'
 import * as sqlite from 'sqlite'
 import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
+import { listDashboardVideos, parseVideoQuery } from './dashboardVideos'
 
 interface ChannelActions {
 	add: (channelId: string) => Promise<void>,
@@ -91,8 +92,9 @@ export const createDashboardServer = (
 		send(405, { error: 'Method not allowed.' })
 		return
 	}
-	if (url.search || !['/api/health', '/api/channels', '/api/videos',
-		'/api/refresh'].includes(url.pathname)) {
+	if ((url.search && url.pathname !== '/api/videos') ||
+			!['/api/health', '/api/channels', '/api/videos',
+				'/api/refresh'].includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
 	}
@@ -107,6 +109,11 @@ export const createDashboardServer = (
 				() => send(500, { error: 'Refresh status is unavailable.' }))
 		return
 	}
+	let query: ReturnType<typeof parseVideoQuery>
+	try { query = parseVideoQuery(url.searchParams) } catch {
+		send(400, { error: 'Invalid video filters.' })
+		return
+	}
 	void jobs.maintenance(randomUUID(), async () => {
 		if (url.pathname === '/api/channels') {
 			return { channels: await db.all(`SELECT channelId, channelTitle,
@@ -114,10 +121,7 @@ export const createDashboardServer = (
 				bellUpdatedAt FROM subscriptions ORDER BY channelTitle, channelId
 				LIMIT 500`) }
 		}
-		return { videos: await db.all(`SELECT videoId, channelId, title,
-			publishedAt, thumbnailUrl, durationSeconds, contentType, observedAt,
-			emailOutcome, sentAt FROM video_observations
-			ORDER BY COALESCE(publishedAt, observedAt) DESC, videoId LIMIT 500`) }
+		return listDashboardVideos(db, query)
 	}).then(result => send(200, result), () => {
 		send(500, { error: 'Dashboard data is temporarily unavailable.' })
 	})
