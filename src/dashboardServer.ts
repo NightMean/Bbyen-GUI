@@ -7,6 +7,9 @@ import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
 import { listDashboardVideos, parseVideoQuery } from './dashboardVideos'
 import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
+import {
+	PublicEmailSettings, parseEmailCredentials, parseEmailSettings,
+} from './emailSettings'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -16,6 +19,10 @@ interface ChannelActions {
 	remove: (channelId: string) => Promise<void>,
 	manualMode: () => boolean,
 	manualNotify: (channelId: string) => boolean | null,
+	emailSettings: () => { settings: PublicEmailSettings,
+		userFromEnvironment: boolean, passFromEnvironment: boolean },
+	saveEmail: (settings: PublicEmailSettings) => Promise<void>,
+	saveCredentials: (value: unknown) => Promise<void>,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -54,6 +61,8 @@ export const createDashboardServer = (
 			url.pathname === '/api/channels/resolve' ||
 			url.pathname === '/api/channels/notify' ||
 			url.pathname === '/api/channels/remove' ||
+			url.pathname === '/api/email/settings' ||
+			url.pathname === '/api/email/credentials' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -66,12 +75,35 @@ export const createDashboardServer = (
 		request.setEncoding('utf8')
 		request.on('data', chunk => {
 			body += chunk
-			if (body.length > 4096) request.destroy()
+			if (body.length > 8192) request.destroy()
 		})
 		request.on('end', () => {
 			let data: { channelId?: unknown, input?: unknown, kind?: unknown,
-				notify?: unknown, initialBacklog?: unknown } = {}
+				notify?: unknown, initialBacklog?: unknown, settings?: unknown,
+				credentials?: unknown } = {}
 			try { data = JSON.parse(body) ?? {} } catch { /* invalid JSON */ }
+			if (url.pathname === '/api/email/settings') {
+				let settings: PublicEmailSettings
+				try { settings = parseEmailSettings(data.settings) } catch {
+					send(400, { error: 'Enter valid email settings.' }); return
+				}
+				void jobs.maintenance(randomUUID(), () => actions.saveEmail(settings))
+					.then(() => send(200, { saved: true }),
+						() => send(500, { error: 'Could not save email settings.' }))
+				return
+			}
+			if (url.pathname === '/api/email/credentials') {
+				try { parseEmailCredentials(data.credentials) } catch {
+					send(400, { error: 'Check credentials and environment settings.' })
+					return
+				}
+				void jobs.maintenance(randomUUID(), () =>
+					actions.saveCredentials(data.credentials))
+					.then(() => send(200, { saved: true }), () => send(500, {
+						error: 'Could not save credentials. Check service storage.',
+					}))
+				return
+			}
 			if (url.pathname === '/api/refresh') {
 				if (data.kind !== 'subscriptions' && data.kind !== 'videos') {
 					send(400, { error: 'Choose a valid refresh type.' })
@@ -151,12 +183,21 @@ export const createDashboardServer = (
 	}
 	if ((url.search && url.pathname !== '/api/videos') ||
 			!['/api/health', '/api/channels', '/api/videos',
-				'/api/refresh', '/api/incidents'].includes(url.pathname)) {
+				'/api/refresh', '/api/incidents', '/api/email/settings']
+				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
 	}
 	if (url.pathname === '/api/health') {
 		send(200, { status: 'running' })
+		return
+	}
+	if (url.pathname === '/api/email/settings') {
+		if (!actions) {
+			send(503, { error: 'Email settings unavailable.' })
+			return
+		}
+		send(200, actions.emailSettings())
 		return
 	}
 	if (url.pathname === '/api/refresh') {

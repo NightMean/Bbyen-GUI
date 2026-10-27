@@ -1,7 +1,8 @@
 import { google } from 'googleapis'
 import parseDuration from 'parse-duration'
 import {
-	CHANNELS_FILE, loadConfig, loadConfigRaw, loadEmailConfig,
+	CHANNELS_FILE, CONFIG_FILE, SECRETS_FILE, loadConfig, loadConfigRaw,
+	loadEmailConfig,
 } from './config'
 import * as database from './database'
 import { recoverPendingVideoEmails } from './videoSchema'
@@ -20,6 +21,9 @@ import {
 	addManualChannel, removeManualChannel, setManualChannelNotify,
 } from './manualChannels'
 import { resolveChannelId } from './lib/resolveChannelId'
+import {
+	publicEmailSettings, saveEmailCredentials, saveEmailSettings,
+} from './emailSettings'
 
 const main = async () => {
 	const logger = await setupLogger({ label: 'main' })
@@ -74,6 +78,11 @@ const main = async () => {
 			manualMode: () => config.mode === 'whitelist',
 			manualNotify: id => config.whitelistedChannelIds?.some(c => c.id === id)
 				? config.channelSettingsById?.get(id)?.notify !== false : null,
+			emailSettings: () => ({ settings: publicEmailSettings(config),
+				userFromEnvironment: process.env.BBYEN_EMAIL_USER !== undefined,
+				passFromEnvironment: process.env.BBYEN_EMAIL_PASS !== undefined }),
+			saveEmail: settings => saveEmailSettings(CONFIG_FILE, config, settings),
+			saveCredentials: value => saveEmailCredentials(SECRETS_FILE, value),
 			refresh: kind => { void quota.run(kind).catch(() =>
 				logger.error('Manual refresh failed unexpectedly.')) },
 		})

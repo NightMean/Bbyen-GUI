@@ -92,6 +92,10 @@ test('service startup recovers attempts and records jobs', async () => {
 
 test('service stays up without SMTP credentials and recovers without restart',
 	async () => {
+		const probe = createServer()
+		await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve))
+		const port = (probe.address() as AddressInfo).port
+		await new Promise<void>(resolve => probe.close(() => resolve()))
 		const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-setup-'))
 		const filename = path.join(directory, 'database.sqlite')
 		const config = JSON.parse(await fs.readFile('config.example.json', 'utf8'))
@@ -106,7 +110,7 @@ test('service stays up without SMTP credentials and recovers without restart',
 		const db = await init({ filename })
 		await db.close()
 		const env: NodeJS.ProcessEnv = { ...process.env, CONFIG_DIR: directory,
-			BBYEN_DASHBOARD_PORT: '0' }
+			BBYEN_DASHBOARD_PORT: String(port) }
 		delete env.BBYEN_EMAIL_USER
 		delete env.BBYEN_EMAIL_PASS
 		const child = spawn(process.execPath,
@@ -136,10 +140,17 @@ test('service stays up without SMTP credentials and recovers without restart',
 				} finally { await check.close() }
 				const states = rows.map(row => JSON.parse(row.resultJson).status)
 				if (!addedCredentials && states.includes('failed')) {
-					await fs.writeFile(path.join(directory, 'secrets.json'),
-						JSON.stringify({ email: { auth: {
-							user: 'fixture', pass: 'fixture',
-						} } }))
+					const url = `http://127.0.0.1:${port}/api/email`
+					const settings = await axios.get(`${url}/settings`)
+					expect(settings.data.settings.auth).toBeUndefined()
+					settings.data.settings.host = 'smtp.example.test'
+					await axios.post(`${url}/settings`,
+						{ settings: settings.data.settings })
+					expect((await axios.get(`${url}/settings`)).data.settings.host)
+						.toBe('smtp.example.test')
+					await axios.post(`${url}/credentials`, { credentials: {
+						user: 'fixture', pass: 'fixture',
+					} })
 					addedCredentials = true
 				}
 				if (addedCredentials && states.includes('success') && smtpRecovered) {

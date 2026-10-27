@@ -64,6 +64,12 @@ test('validates writes and schedules refresh after saving', async () => {
 		remove: async id => { calls.push(`remove:${id}`) },
 		manualMode: () => true,
 		manualNotify: () => true,
+		emailSettings: () => ({ settings: { host: 'smtp.example.test', port: 465,
+			secure: true, sendingContact: 'sender@example.test',
+			destination: 'recipient@example.test' }, userFromEnvironment: false,
+		passFromEnvironment: false }),
+		saveEmail: async () => undefined,
+		saveCredentials: async () => undefined,
 		refresh: kind => { calls.push(kind) },
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
