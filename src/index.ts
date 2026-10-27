@@ -17,6 +17,7 @@ import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
 import { addManualChannel } from './manualChannels'
+import { resolveChannelId } from './lib/resolveChannelId'
 
 const main = async () => {
 	const logger = await setupLogger({ label: 'main' })
@@ -63,6 +64,7 @@ const main = async () => {
 		})
 		const server = createDashboardServer(db, jobs, {
 			add: id => addManualChannel(CHANNELS_FILE, config, id),
+			resolve: resolveChannelId,
 			refresh: () => { void quota.run('subscriptions').catch(() =>
 				logger.error('Channel refresh failed unexpectedly.')) },
 		})

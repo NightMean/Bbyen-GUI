@@ -49,6 +49,7 @@ test('validates writes and schedules refresh after saving', async () => {
 	const calls: string[] = []
 	const server = createDashboardServer(db, jobs, {
 		add: async id => { calls.push(id) },
+		resolve: async input => input,
 		refresh: () => { calls.push('refresh') },
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -66,6 +67,9 @@ test('validates writes and schedules refresh after saving', async () => {
 		const result = await axios.post(`${base}/api/channels`, { channelId: id })
 		expect(result.status).toBe(202)
 		expect(calls).toEqual([id, 'refresh'])
+		const resolved = await axios.post(`${base}/api/channels/resolve`,
+			{ input: id })
+		expect(resolved.data.channelId).toBe(id)
 	} finally {
 		await new Promise<void>((resolve, reject) => server.close(err =>
 			err ? reject(err) : resolve()))

@@ -67,6 +67,9 @@ test('service startup recovers attempts and records jobs', async () => {
 		const result = await axios.get(`http://127.0.0.1:${port}/api/videos`)
 		expect(result.data.videos[0].emailOutcome).toBe('uncertain')
 		const channelId = 'UCabcdefghijklmnopqrstuv'
+		const preview = await axios.post(
+			`http://127.0.0.1:${port}/api/channels/resolve`, { input: channelId })
+		expect(preview.data.channelId).toBe(channelId)
 		const added = await axios.post(`http://127.0.0.1:${port}/api/channels`,
 			{ channelId })
 		expect(added.status).toBe(202)

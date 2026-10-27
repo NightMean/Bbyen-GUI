@@ -6,6 +6,7 @@ import { isChannelId } from './lib/channelId'
 
 interface ChannelActions {
 	add: (channelId: string) => Promise<void>,
+	resolve: (input: string) => Promise<string>,
 	refresh: () => void,
 }
 
@@ -25,8 +26,9 @@ export const createDashboardServer = (
 		send(400, { error: 'Invalid request.' })
 		return
 	}
-	if (request.method === 'POST' && url.pathname === '/api/channels' &&
-			!url.search && actions) {
+	if (request.method === 'POST' && !url.search && actions &&
+			(url.pathname === '/api/channels' ||
+			url.pathname === '/api/channels/resolve')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
 				origin !== `https://${request.headers.host}`) ||
@@ -41,8 +43,26 @@ export const createDashboardServer = (
 			if (body.length > 4096) request.destroy()
 		})
 		request.on('end', () => {
-			let id: unknown
-			try { id = JSON.parse(body).channelId } catch { /* invalid JSON */ }
+			let data: { channelId?: unknown, input?: unknown } = {}
+			try { data = JSON.parse(body) ?? {} } catch { /* invalid JSON */ }
+			if (url.pathname === '/api/channels/resolve') {
+				if (typeof data.input !== 'string' || !data.input.trim() ||
+						data.input.length > 2048) {
+					send(400, { error: 'Enter a YouTube channel, video, or feed.' })
+					return
+				}
+				void actions.resolve(data.input).then(channelId => {
+					if (!isChannelId(channelId)) {
+						send(422, { error: 'Could not resolve this YouTube address.' })
+						return
+					}
+					send(200, { channelId })
+				}, () => send(422, {
+					error: 'Could not resolve this YouTube address.',
+				}))
+				return
+			}
+			const id = data.channelId
 			if (typeof id !== 'string' || !isChannelId(id)) {
 				send(400, { error: 'A valid channel ID is required.' })
 				return
