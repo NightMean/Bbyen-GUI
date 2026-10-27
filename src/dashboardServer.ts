@@ -9,6 +9,8 @@ import {
 	PublicEmailSettings, parseEmailCredentials, parseEmailSettings,
 } from './emailSettings'
 import { serveDashboardAsset } from './dashboardAssets'
+import { exportSubscriptions } from './subscriptionExport'
+import type { Config } from './config'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -23,6 +25,7 @@ interface ChannelActions {
 	saveEmail: (settings: PublicEmailSettings) => Promise<void>,
 	saveCredentials: (value: unknown) => Promise<void>,
 	testEmail: () => Promise<'sent' | 'uncertain'>,
+	config: Config,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -183,7 +186,7 @@ export const createDashboardHandler = (
 	if ((url.search && url.pathname !== '/api/videos') ||
 			!['/api/health', '/api/channels', '/api/videos',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
-				'/api/email/tests']
+				'/api/email/tests', '/api/subscriptions/export']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -213,6 +216,10 @@ export const createDashboardHandler = (
 		return
 	}
 	void jobs.maintenance(randomUUID(), async () => {
+		if (url.pathname === '/api/subscriptions/export') {
+			if (!actions) throw new Error('Subscription export unavailable.')
+			return exportSubscriptions(actions.config)
+		}
 		if (url.pathname === '/api/email/tests') {
 			return { tests: await db.all(`SELECT id, startedAt, finishedAt, outcome
 				FROM email_test_runs ORDER BY startedAt DESC, rowid DESC LIMIT 20`) }
@@ -235,7 +242,13 @@ export const createDashboardHandler = (
 			})) }
 		}
 		return listDashboardVideos(db, query)
-	}).then(result => send(200, result), () => {
+	}).then(result => {
+		if (url.pathname === '/api/subscriptions/export') {
+			response.setHeader('Content-Disposition',
+				'attachment; filename="bbyen-subscriptions.json"')
+		}
+		send(200, result)
+	}, () => {
 		send(500, { error: 'Dashboard data is temporarily unavailable.' })
 	})
 }

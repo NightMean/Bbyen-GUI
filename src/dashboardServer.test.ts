@@ -4,6 +4,7 @@ import { expect, test } from 'vitest'
 import { init } from './database'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
 import { RefreshCoordinator } from './refreshCoordinator'
+import { Config } from './config'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -57,7 +58,10 @@ test('validates writes and schedules refresh after saving', async () => {
 	const db = await init({ filename: ':memory:' })
 	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
 	const calls: string[] = []
+	const id = 'UCabcdefghijklmnopqrstuv'
 	const server = createDashboardServer(db, jobs, {
+		config: { whitelistedChannelIds: [{ id }],
+			email: { auth: { pass: 'fixture' } } } as Config,
 		add: async id => { calls.push(id) },
 		resolve: async input => input,
 		setNotify: async (id, notify) => { calls.push(`${id}:${notify}`) },
@@ -75,8 +79,11 @@ test('validates writes and schedules refresh after saving', async () => {
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
-	const id = 'UCabcdefghijklmnopqrstuv'
 	try {
+		const exported = await axios.get(`${base}/api/subscriptions/export`)
+		expect(exported.data.whitelistedChannelIds).toEqual([{ id }])
+		expect(exported.data.blacklistedChannelIds).toBeNull()
+		expect(JSON.stringify(exported.data)).not.toContain('fixture')
 		const bad = await axios.post(`${base}/api/channels`, { channelId: id }, {
 			headers: { Origin: 'http://other.example' }, validateStatus: () => true,
 		})

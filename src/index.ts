@@ -83,6 +83,7 @@ const startService = async (existingServer?: Server) => {
 			warn: message => logger.warn(message),
 		})
 		const handler = createDashboardHandler(db, jobs, {
+			config,
 			add: (id, backlog) =>
 				addManualChannel(CHANNELS_FILE, config, id, backlog),
 			resolve: resolveChannelId,
