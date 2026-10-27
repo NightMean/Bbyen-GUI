@@ -15,7 +15,7 @@
   "refreshRequested": "Refresh requested. The list will update when it finishes.", "refreshError": "Could not start the refresh.",
   "invalidDates": "Choose a valid date range that does not include a future day.",
   "remove": "Remove", "removeConfirm": "Remove this channel from manual tracking? Its video history and preferences will be kept.", "removed": "Channel removed. The channel list will update after refresh.", "removeError": "Could not remove the channel.", "mute": "Mute email", "unmute": "Unmute email", "saved": "Notification setting saved.", "settingError": "Could not save the notification setting.", "allChannels": "All channels", "showAll": "Show all", "unknownTitle": "Untitled video", "unknownChannel": "Unknown channel",
-  "unknownDate": "Date unavailable", "openChannel": "Open channel", "openVideo": "Watch on YouTube", "deleted": "Not currently tracked",
+  "unknownDate": "Date unavailable", "openChannel": "Open channel", "openVideo": "Watch on YouTube", "deleted": "Not currently tracked", "bell_all": "YouTube bell: All", "bell_personalized": "YouTube bell: Personalized", "bell_none": "YouTube bell: None", "bell_unknown": "YouTube bell: Unconfirmed",
   "idle": "Idle", "queued": "Queued", "running": "Refreshing", "refreshUnavailable": "Refresh status unavailable", "refresh_success": "Last refresh succeeded", "refresh_partial": "Last refresh was partial", "refresh_failed": "Last refresh failed", "refresh_interrupted": "Last refresh interrupted", "sent": "Email sent", "muted": "Email muted", "excluded": "Email excluded",
   "backlog_skipped": "Existing video skipped", "failed": "Email failed", "uncertain": "Delivery uncertain", "pending": "Sending", "discovered": "Discovered", "unknown": "Outcome unavailable"
 }

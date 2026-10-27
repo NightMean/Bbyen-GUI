@@ -76,6 +76,7 @@
     $('paging').hidden = true
     $('dates').hidden = page !== 'videos'
     $('filter-label').hidden = page !== 'videos' || !state.channel
+    $('cookie-stale').hidden = true
     load(); poll()
   }
   const makeLink = (label, href) => {
@@ -120,7 +121,7 @@
     if (video.sentAt) outcome.append(element('div', '', displayDate(video.sentAt)))
     row.append(thumb, body, outcome); return row
   }
-  const renderChannel = channel => {
+  const renderChannel = (channel, cookieMode) => {
     const row = element('article', 'channel-row')
     const img = element('img', 'avatar'); img.alt = ''; img.loading = 'lazy'
     const source = safeImage(channel.channelThumbnail); if (source) img.src = source
@@ -131,6 +132,7 @@
     })
     info.append(name)
     if (channel.deleted) info.append(element('div', 'channel-detail', text.deleted))
+    if (cookieMode && channel.deletedReason !== 'unsubscribed' && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
     row.append(img, info)
     if (typeof channel.notify === 'boolean' && !channel.deleted) {
       const mute = element('button', 'outline channel-mute', channel.notify ? text.mute : text.unmute)
@@ -211,7 +213,8 @@
         const found = all.channels.filter(c => (c.channelTitle || c.channelId).toLocaleLowerCase().includes(term))
         if (sequence !== state.sequence) return
         $('list-label').textContent = `${found.length} ${text.channels}`
-        $('results').replaceChildren(...(found.length ? found.map(renderChannel) : [element('p', 'empty', text.emptyChannels)]))
+        $('cookie-stale').hidden = !all.cookieMode || !all.cookieStale
+        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode)) : [element('p', 'empty', text.emptyChannels)]))
         $('paging').hidden = true; return
       }
       const from = $('from').value, through = $('through').value

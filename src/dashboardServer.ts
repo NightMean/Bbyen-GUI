@@ -420,10 +420,12 @@ export const createDashboardHandler = (
 				bellUpdatedAt FROM subscriptions ORDER BY channelTitle, channelId
 				LIMIT 500`)
 			const manualMode = actions?.manualMode() ?? false
-			return { manualMode, channels: channels.map(channel => ({ ...channel,
-				...(manualMode ? { notify: actions?.manualNotify(channel.channelId) }
-					: {}),
-			})) }
+			return { manualMode, cookieMode: actions?.config.mode === 'cookie',
+				cookieStale: !!actions?.config.cookieStale,
+				channels: channels.map(channel => ({ ...channel,
+					...(manualMode ? { notify: actions?.manualNotify(channel.channelId) }
+						: {}),
+				})) }
 		}
 		return listDashboardVideos(db, query)
 	}).then(result => {

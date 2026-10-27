@@ -156,6 +156,13 @@ test('validates writes and schedules refresh after saving', async () => {
 		const cookieStatus = await axios.get(`${base}/api/cookies/status`)
 		expect(cookieStatus.data.mode).toBe('cookie')
 		expect(JSON.stringify(cookieStatus.data)).not.toContain('synthetic-fixture')
+		const cookieChannels = (await axios.get(`${base}/api/channels`)).data
+		expect(cookieChannels.cookieMode).toBe(true)
+		expect(cookieChannels.cookieStale).toBe(false)
+		expect(cookieChannels.channels[0].bellState).toBe('all')
+		config.cookieStale = true
+		expect((await axios.get(`${base}/api/channels`)).data.cookieStale)
+			.toBe(true)
 		const blocked = await axios.post(`${base}/api/channels`, { channelId: id },
 			{ validateStatus: () => true })
 		expect(blocked.status).toBe(409)
