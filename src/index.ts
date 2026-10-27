@@ -30,6 +30,7 @@ import {
 } from './emailSettings'
 import { sendTestEmail } from './emailTest'
 import { SubscriptionImportService } from './subscriptionImportService'
+import { RefreshSchedule, saveRefreshIntervals } from './refreshSchedule'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -42,6 +43,7 @@ const listen = async (server: Server): Promise<void> => {
 const startService = async (existingServer?: Server) => {
 	const logger = await setupLogger({ label: 'main' })
 	let db: Awaited<ReturnType<typeof database.init>> | undefined
+	let schedule: RefreshSchedule | undefined
 	try {
 		const service = google.youtube('v3')
 		const raw = await loadConfigRaw()
@@ -83,6 +85,14 @@ const startService = async (existingServer?: Server) => {
 			reportQuota: tasks.reportQuota, clearQuota: tasks.clearQuota,
 			warn: message => logger.warn(message),
 		})
+		const runRefresh = (kind: 'subscriptions' | 'videos') => {
+			void quota.run(kind).catch(() =>
+				logger.error('Refresh failed unexpectedly.'))
+		}
+		schedule = new RefreshSchedule(runRefresh)
+		const activeSchedule = schedule
+		schedule.configure({ subscriptions: subscriptionsTimer,
+			videos: videosTimer })
 		const handler = createDashboardHandler(db, jobs, {
 			config,
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),
@@ -100,12 +110,13 @@ const startService = async (existingServer?: Server) => {
 				passFromEnvironment: process.env.BBYEN_EMAIL_PASS !== undefined }),
 			saveEmail: settings => saveEmailSettings(CONFIG_FILE, config, settings),
 			saveCredentials: value => saveEmailCredentials(SECRETS_FILE, value),
+			saveSchedule: value =>
+				saveRefreshIntervals(CONFIG_FILE, config, activeSchedule, value),
 			testEmail: () => sendTestEmail(databaseConnection, async () => {
 				const mail = await mailer.init(await loadEmailConfig())
 				await mail.sendTestEmail()
 			}),
-			refresh: kind => { void quota.run(kind).catch(() =>
-				logger.error('Manual refresh failed unexpectedly.')) },
+			refresh: runRefresh,
 		})
 		const server = existingServer ?? createServer(handler)
 		if (existingServer) {
@@ -113,19 +124,8 @@ const startService = async (existingServer?: Server) => {
 			server.on('request', handler)
 		} else await listen(server)
 		server.on('error', () => logger.error('Dashboard server failed.'))
-		setIntervalInstant(
-			() => quota.run('subscriptions')
-				.catch(() => logger.error('Subscription refresh failed unexpectedly.')),
-			subscriptionsTimer,
-			config.kickoff.subscriptions,
-		)
-
-		setIntervalInstant(
-			() => quota.run('videos')
-				.catch(() => logger.error('Video refresh failed unexpectedly.')),
-			videosTimer,
-			config.kickoff.videos,
-		)
+		if (config.kickoff.subscriptions) runRefresh('subscriptions')
+		if (config.kickoff.videos) runRefresh('videos')
 		setIntervalInstant(
 			() => jobs.maintenance('alerts', async () => {
 				await alerts.recoverInterrupted()
@@ -143,6 +143,7 @@ const startService = async (existingServer?: Server) => {
 
 	} catch (err) {
 		logger.error('Service startup failed. Check configuration and storage.')
+		schedule?.stop()
 		if (db) await db.close().catch(() => logger.warn('Database close failed.'))
 		throw err
 	}

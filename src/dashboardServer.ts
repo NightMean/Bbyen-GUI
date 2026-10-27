@@ -15,6 +15,7 @@ import { parseSubscriptionImport } from './subscriptionImport'
 import {
 	ImportChangedError, ImportConfirmationError, SubscriptionImportService,
 } from './subscriptionImportService'
+import { parseRefreshIntervals, RefreshIntervals } from './refreshSchedule'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -31,6 +32,7 @@ interface ChannelActions {
 	testEmail: () => Promise<'sent' | 'uncertain'>,
 	config: Config,
 	imports: SubscriptionImportService,
+	saveSchedule: (value: RefreshIntervals) => Promise<void>,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -60,6 +62,7 @@ export const createDashboardHandler = (
 			url.pathname === '/api/email/test' ||
 			url.pathname === '/api/subscriptions/import/preview' ||
 			url.pathname === '/api/subscriptions/import/apply' ||
+			url.pathname === '/api/schedule' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -80,7 +83,8 @@ export const createDashboardHandler = (
 			let data: { channelId?: unknown, input?: unknown, kind?: unknown,
 				notify?: unknown, initialBacklog?: unknown, settings?: unknown,
 				credentials?: unknown, importData?: unknown, previewId?: unknown,
-				conflictChoice?: unknown, acceptPartial?: unknown } = {}
+				conflictChoice?: unknown, acceptPartial?: unknown,
+				intervals?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -88,6 +92,20 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname === '/api/schedule') {
+				let intervals: RefreshIntervals
+				try {
+					intervals = parseRefreshIntervals(data.intervals).intervals
+				} catch {
+					send(400, { error: 'Enter valid refresh intervals.' }); return
+				}
+				void jobs.maintenance(randomUUID(), () =>
+					actions.saveSchedule(intervals))
+					.then(() => send(200, { intervals }), () => send(500, {
+						error: 'Could not confirm saved intervals. Reload before retrying.',
+					}))
+				return
+			}
 			if (url.pathname === '/api/subscriptions/import/preview') {
 				try { parseSubscriptionImport(data.importData) } catch {
 					send(400, { error: 'Subscription file is invalid.' }); return
@@ -226,7 +244,7 @@ export const createDashboardHandler = (
 	if ((url.search && url.pathname !== '/api/videos') ||
 			!['/api/health', '/api/channels', '/api/videos',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
-				'/api/email/tests', '/api/subscriptions/export']
+				'/api/email/tests', '/api/subscriptions/export', '/api/schedule']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -241,6 +259,11 @@ export const createDashboardHandler = (
 			return
 		}
 		send(200, actions.emailSettings())
+		return
+	}
+	if (url.pathname === '/api/schedule') {
+		if (!actions) { send(503, { error: 'Schedule unavailable.' }); return }
+		send(200, { intervals: actions.config.timers })
 		return
 	}
 	if (url.pathname === '/api/refresh') {

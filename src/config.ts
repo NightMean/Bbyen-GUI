@@ -54,8 +54,8 @@ export interface Config {
 		filename: string,
 	},
 	timers: {
-		subscriptions: '2 days',
-		videos: '20 minutes'
+		subscriptions: string,
+		videos: string,
 	},
 	kickoff: {
 		subscriptions: boolean,

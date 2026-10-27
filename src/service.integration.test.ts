@@ -238,7 +238,8 @@ test('dashboard updates manual notification settings in the running service',
 		const child = spawn(process.execPath,
 			['-r', 'ts-node/register/transpile-only', 'src/index.ts'], {
 				env: { ...process.env, CONFIG_DIR: dir,
-					BBYEN_DASHBOARD_PORT: String(port) },
+					BBYEN_DASHBOARD_PORT: String(port),
+					BBYEN_EMAIL_USER: 'fixture', BBYEN_EMAIL_PASS: 'fixture' },
 				stdio: ['ignore', 'pipe', 'pipe'],
 			})
 		child.stdout.resume(); child.stderr.resume()
@@ -264,6 +265,22 @@ test('dashboard updates manual notification settings in the running service',
 				path.join(dir, 'channels.json'), 'utf8'))
 			expect(removed.whitelistedChannelIds).toEqual([])
 			expect(removed.savedChannelSettings[0].notify).toBe(false)
+			await axios.post(`http://127.0.0.1:${port}/api/schedule`, {
+				intervals: { subscriptions: '1 day', videos: '200 ms' },
+			})
+			let scheduled = false
+			const scheduleDeadline = Date.now() + 5000
+			while (Date.now() < scheduleDeadline) {
+				const check = await sqlite.open({ filename: config.database.filename,
+					driver: sqlite3.Database })
+				try { scheduled = !!(await check.get(`SELECT id FROM refresh_runs
+					WHERE kind='videos' AND status='completed'`)) } finally {
+					await check.close()
+				}
+				if (scheduled) break
+				await new Promise(resolve => setTimeout(resolve, 100))
+			}
+			expect(scheduled).toBe(true)
 		} finally {
 			child.kill(); await exited
 			await fs.rm(dir, { recursive: true, force: true })
