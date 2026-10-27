@@ -40,6 +40,7 @@ import { recoverCookieCleanup } from './cookieCleanup'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
+import { saveUnsubscribePreference } from './unsubscribePreference'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -146,6 +147,8 @@ const startService = async (existingServer?: Server) => {
 			saveSchedule: value =>
 				saveRefreshIntervals(CONFIG_FILE, config, activeSchedule, value),
 			saveGeneral: value => saveGeneralSettings(CONFIG_FILE, config, value),
+			saveUnsubscribePreference: value =>
+				saveUnsubscribePreference(CONFIG_FILE, config, value),
 			testEmail: () => sendTestEmail(databaseConnection, async () => {
 				const mail = await mailer.init(await loadEmailConfig())
 				await mail.sendTestEmail()

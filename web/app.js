@@ -3,7 +3,7 @@
   let text
   try { text = await (await fetch('/en.json')).json() } catch { return }
   document.querySelectorAll('[data-text]').forEach(el => { el.textContent = text[el.dataset.text] })
-  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null, cookieCandidate: null, cookiePreview: null, manualPreview: null, cookieEpoch: 0, cookieMode: false }
+  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null, cookieCandidate: null, cookiePreview: null, manualPreview: null, cookieEpoch: 0, cookieMode: false, confirmUnsubscribe: true }
   const size = 30
   const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const today = new Date()
@@ -98,6 +98,14 @@
     $('manual-switch').hidden = !active
   }
   const describeChannels = (heading, channels) => `${heading} (${channels.length})\n${channels.map(channel => `  ${channel.title || channel.channelId}${channel.unconfirmed ? ` · ${text.cookieUnconfirmed}` : ''}`).join('\n')}`
+  const confirmUnsubscribe = () => {
+    if (!state.confirmUnsubscribe) return Promise.resolve({ confirmed: true, skip: false })
+    const dialog = $('unsubscribe-dialog'); $('unsubscribe-skip').checked = false
+    return new Promise(resolve => {
+      dialog.addEventListener('close', () => resolve({ confirmed: dialog.returnValue === 'confirm', skip: $('unsubscribe-skip').checked }), { once: true })
+      dialog.returnValue = ''; dialog.showModal()
+    })
+  }
   const reviewSubscription = async channelId => {
     try {
       const data = await post('/api/channels/subscription/review', { channelId })
@@ -162,9 +170,14 @@
     if (cookieMode && channel.cookieSubscribed && !channel.subscriptionUncertain && !channel.bellUncertain) {
       const remove = element('button', 'quiet', text.unsubscribe)
       remove.type = 'button'; remove.addEventListener('click', async () => {
-        if (!window.confirm(text.unsubscribeConfirm)) return
         remove.disabled = true
         try {
+          const decision = await confirmUnsubscribe()
+          if (!decision.confirmed) return
+          if (decision.skip) {
+            try { await post('/api/unsubscribe-confirmation', { confirmUnsubscribe: false }); state.confirmUnsubscribe = false }
+            catch { showNotice(text.confirmationSaveError); return }
+          }
           const result = await post('/api/channels/subscription', { channelId: channel.channelId, subscribed: false })
           showNotice(result.outcome === 'uncertain' ? text.subscriptionUncertain : text.unsubscribed); load()
         } catch { showNotice(text.subscriptionError); load() } finally { remove.disabled = false }
@@ -212,6 +225,8 @@
         $('default-count').value = general.settings.initialBacklog.count || 5
         $('retention-days').value = general.settings.videoRetentionDays ?? ''
         $('failure-email').checked = general.settings.emailOnError
+        $('confirm-unsubscribe-setting').checked = general.settings.confirmUnsubscribe
+        state.confirmUnsubscribe = general.settings.confirmUnsubscribe
         $('email-user').disabled = data.userFromEnvironment
         $('email-password').disabled = data.passFromEnvironment
         $('user-source').textContent = data.userFromEnvironment ? text.environmentOwned : ''
@@ -258,6 +273,7 @@
       const all = await request('/api/channels')
       if (sequence !== state.sequence) return
       state.cookieMode = all.cookieMode
+      state.confirmUnsubscribe = all.confirmUnsubscribe
       $('add').disabled = !all.manualMode && !all.cookieMode
       $('add').textContent = all.manualMode || all.cookieMode ? text.add : text.addManualOnly
       $('cookie-add-help').hidden = !all.cookieMode
@@ -348,8 +364,8 @@
     if (mode === 'newest' && (!Number.isSafeInteger(count) || count < 1)) { showNotice(text.invalidCount); return }
     const initialBacklog = mode === 'newest' ? { mode, count } : { mode }
     const videoRetentionDays = $('retention-days').value ? Number($('retention-days').value) : null
-    const settings = { initialBacklog, videoRetentionDays, emailOnError: $('failure-email').checked }
-    try { await post('/api/settings', { settings }); showNotice(text.generalSaved) }
+    const settings = { initialBacklog, videoRetentionDays, emailOnError: $('failure-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked }
+    try { await post('/api/settings', { settings }); state.confirmUnsubscribe = settings.confirmUnsubscribe; showNotice(text.generalSaved) }
     catch { showNotice(text.generalError) }
   })
   $('test-email').addEventListener('click', async () => {

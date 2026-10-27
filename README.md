@@ -318,6 +318,8 @@ changes are unavailable because YouTube rejected the mutation in live testing.
 Each subscription request is checked against a fresh account snapshot before
 and after the mutation. If the result is uncertain, review the current state
 before allowing another attempt; a delayed request can still take effect.
+Unsubscribe asks for confirmation by default. The dialog can turn off future
+prompts, and Settings can restore them.
 Cookie exports are snapshots of browser credentials: the service can accept a
 replacement without restarting but cannot renew them from the browser itself.
 

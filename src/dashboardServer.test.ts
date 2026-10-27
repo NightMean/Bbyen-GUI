@@ -129,6 +129,9 @@ test('validates writes and schedules refresh after saving', async () => {
 		testEmail: async () => 'sent',
 		saveSchedule: async () => undefined,
 		saveGeneral: async () => undefined,
+		saveUnsubscribePreference: async value => {
+			config.confirmUnsubscribe = value
+		},
 		refresh: kind => { calls.push(kind) },
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))

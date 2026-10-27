@@ -50,6 +50,7 @@ export interface Config {
 	email: Omit<EmailConfig, 'auth'> & { auth?: Partial<EmailConfig['auth']> },
 	mode: 'youtube' | 'whitelist' | 'cookie',
 	cookieStale?: boolean,
+	confirmUnsubscribe?: boolean,
 	port: number,
 	database: {
 		filename: string,
@@ -277,6 +278,10 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.initialBacklog !== undefined) {
 		config.initialBacklog = parseBacklogPolicy(
 			config.initialBacklog, 'initialBacklog')
+	}
+	if (config.confirmUnsubscribe !== undefined &&
+			typeof config.confirmUnsubscribe !== 'boolean') {
+		throw new Error('confirmUnsubscribe must be a boolean.')
 	}
 	if (config.videoRetentionDays !== undefined) {
 		config.videoRetentionDays = parseVideoRetentionDays(

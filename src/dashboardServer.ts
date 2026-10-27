@@ -43,6 +43,7 @@ interface ChannelActions {
 	imports: SubscriptionImportService,
 	saveSchedule: (value: RefreshIntervals) => Promise<void>,
 	saveGeneral: (value: GeneralSettings) => Promise<void>,
+	saveUnsubscribePreference: (value: boolean) => Promise<void>,
 	cookiePreviews: CookiePreviewService,
 	cookieStatus: () => Promise<unknown>,
 	activateCookie: (candidateId: string, previewId: string) => Promise<void>,
@@ -87,6 +88,7 @@ export const createDashboardHandler = (
 			url.pathname === '/api/subscriptions/import/apply' ||
 			url.pathname === '/api/schedule' ||
 			url.pathname === '/api/settings' ||
+			url.pathname === '/api/unsubscribe-confirmation' ||
 			url.pathname === '/api/cookies/inspect' ||
 			url.pathname === '/api/cookies/compare' ||
 			url.pathname === '/api/cookies/activate' ||
@@ -116,7 +118,8 @@ export const createDashboardHandler = (
 				credentials?: unknown, importData?: unknown, previewId?: unknown,
 				conflictChoice?: unknown, acceptPartial?: unknown,
 				intervals?: unknown, cookie?: unknown, candidateId?: unknown,
-				profileId?: unknown, preference?: unknown, subscribed?: unknown } = {}
+				profileId?: unknown, preference?: unknown, subscribed?: unknown,
+				confirmUnsubscribe?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -191,13 +194,31 @@ export const createDashboardHandler = (
 				}))
 				return
 			}
+			if (url.pathname === '/api/unsubscribe-confirmation') {
+				if (typeof data.confirmUnsubscribe !== 'boolean') {
+					send(400, { error: 'Choose a confirmation setting.' }); return
+				}
+				const enabled = data.confirmUnsubscribe
+				void jobs.maintenance(randomUUID(), () =>
+					actions.saveUnsubscribePreference(enabled)).then(() =>
+					send(200, { confirmUnsubscribe: enabled }), () => send(500, {
+					error: 'Could not confirm the saved setting.',
+				}))
+				return
+			}
 			if (url.pathname === '/api/settings') {
-				let settings: GeneralSettings
-				try { settings = parseGeneralSettings(data.settings) } catch {
+				try { parseGeneralSettings(data.settings) } catch {
 					send(400, { error: 'Enter valid settings.' }); return
 				}
-				void jobs.maintenance(randomUUID(), () => actions.saveGeneral(settings))
-					.then(() => send(200, { settings }), () => send(500, {
+				void jobs.maintenance(randomUUID(), async () => {
+					const input = data.settings as Record<string, unknown>
+					const settings = parseGeneralSettings({ ...input,
+						confirmUnsubscribe: input.confirmUnsubscribe ??
+							actions.config.confirmUnsubscribe ?? true })
+					await actions.saveGeneral(settings)
+					return settings
+				})
+					.then(settings => send(200, { settings }), () => send(500, {
 						error: 'Could not confirm settings. Reload before retrying.',
 					}))
 				return
@@ -517,6 +538,7 @@ export const createDashboardHandler = (
 				LIMIT 500`)
 			const manualMode = actions?.manualMode() ?? false
 			return { manualMode, cookieMode: actions?.config.mode === 'cookie',
+				confirmUnsubscribe: actions?.config.confirmUnsubscribe !== false,
 				cookieStale: !!actions?.config.cookieStale,
 				channels: channels.map(channel => ({ ...channel,
 					...(manualMode ? { notify: actions?.manualNotify(channel.channelId) }

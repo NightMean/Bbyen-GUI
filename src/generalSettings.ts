@@ -8,6 +8,7 @@ export interface GeneralSettings {
 	initialBacklog: BacklogPolicy,
 	videoRetentionDays: number | null,
 	emailOnError: boolean,
+	confirmUnsubscribe: boolean,
 }
 
 export const readGeneralSettings = (config: Config): GeneralSettings => ({
@@ -15,6 +16,7 @@ export const readGeneralSettings = (config: Config): GeneralSettings => ({
 		{ mode: config.notifyOnFirstScan ? 'all' : 'none' },
 	videoRetentionDays: config.videoRetentionDays ?? null,
 	emailOnError: config.logging.emailOnError,
+	confirmUnsubscribe: config.confirmUnsubscribe !== false,
 })
 
 export const parseGeneralSettings = (value: unknown): GeneralSettings => {
@@ -27,7 +29,16 @@ export const parseGeneralSettings = (value: unknown): GeneralSettings => {
 	}
 	return { initialBacklog: parseBacklogPolicy(data.initialBacklog,
 		'initialBacklog'), videoRetentionDays: parseVideoRetentionDays(
-		data.videoRetentionDays), emailOnError: data.emailOnError }
+		data.videoRetentionDays), emailOnError: data.emailOnError,
+	confirmUnsubscribe: data.confirmUnsubscribe === undefined ? true :
+		parseConfirmation(data.confirmUnsubscribe) }
+}
+
+const parseConfirmation = (value: unknown): boolean => {
+	if (typeof value !== 'boolean') {
+		throw new Error('Confirmation must be boolean.')
+	}
+	return value
 }
 
 export const saveGeneralSettings = async (
@@ -38,6 +49,7 @@ export const saveGeneralSettings = async (
 		config.initialBacklog = settings.initialBacklog
 		config.videoRetentionDays = settings.videoRetentionDays
 		config.logging.emailOnError = settings.emailOnError
+		config.confirmUnsubscribe = settings.confirmUnsubscribe
 	}
 	try { await updateJsonFile(filename, value => {
 		if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -48,6 +60,7 @@ export const saveGeneralSettings = async (
 				Array.isArray(current.logging)) throw new Error('Logging is invalid.')
 		return { ...current, initialBacklog: settings.initialBacklog,
 			videoRetentionDays: settings.videoRetentionDays,
+			confirmUnsubscribe: settings.confirmUnsubscribe,
 			logging: { ...current.logging, emailOnError: settings.emailOnError } }
 	}) } catch (err) {
 		// A replacement can succeed even if lock cleanup fails afterward.
@@ -56,6 +69,7 @@ export const saveGeneralSettings = async (
 			const effective = parseGeneralSettings({
 				initialBacklog: stored.initialBacklog,
 				videoRetentionDays: stored.videoRetentionDays,
+				confirmUnsubscribe: stored.confirmUnsubscribe,
 				emailOnError: stored.logging?.emailOnError })
 			if (JSON.stringify(effective) === JSON.stringify(settings)) apply()
 		} catch { console.warn('Could not verify saved general settings.') }

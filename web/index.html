@@ -116,6 +116,7 @@
           <label id="default-count-label" hidden><span data-text="backlogCount"></span><input id="default-count" type="number" min="1" step="1" value="5"></label>
           <label><span data-text="retentionLabel"></span><input id="retention-days" type="number" min="1" step="1"><small data-text="retentionHelp"></small></label>
           <label class="check"><input id="failure-email" type="checkbox"><span data-text="failureEmails"></span></label>
+          <label class="check"><input id="confirm-unsubscribe-setting" type="checkbox"><span data-text="confirmUnsubscribeSetting"></span></label>
           <button class="outline" type="submit" data-text="saveGeneral"></button>
         </form>
         <h2 data-text="subscriptionTransfer"></h2><p data-text="exportHelp"></p>
@@ -141,5 +142,13 @@
       </div>
     </main>
   </div>
+  <dialog id="unsubscribe-dialog" aria-labelledby="unsubscribe-dialog-title">
+    <form method="dialog">
+      <h2 id="unsubscribe-dialog-title" data-text="unsubscribe"></h2>
+      <p data-text="unsubscribeConfirm"></p>
+      <label class="check"><input id="unsubscribe-skip" type="checkbox"><span data-text="unsubscribeDontAsk"></span></label>
+      <div class="input-row"><button class="outline" value="cancel" data-text="cancel"></button><button class="primary" value="confirm" data-text="unsubscribe"></button></div>
+    </form>
+  </dialog>
 </body>
 </html>
