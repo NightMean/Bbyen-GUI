@@ -22,6 +22,8 @@ import {
 } from './generalSettings'
 import { CookiePreviewService } from './cookiePreview'
 import { ManualSourceSwitch } from './manualSourceSwitch'
+import { CookieBellActions } from './cookieBellActions'
+import { BellNotificationPreference } from './lib/innertubeChannels'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -45,6 +47,7 @@ interface ChannelActions {
 	activateCookie: (candidateId: string, previewId: string) => Promise<void>,
 	manualSwitch: ManualSourceSwitch,
 	cookieCleanupPending: () => Promise<boolean>,
+	bellActions: CookieBellActions,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -69,6 +72,9 @@ export const createDashboardHandler = (
 			url.pathname === '/api/channels/resolve' ||
 			url.pathname === '/api/channels/notify' ||
 			url.pathname === '/api/channels/remove' ||
+			url.pathname === '/api/channels/bell' ||
+			url.pathname === '/api/channels/bell/review' ||
+			url.pathname === '/api/channels/bell/acknowledge' ||
 			url.pathname === '/api/email/settings' ||
 			url.pathname === '/api/email/credentials' ||
 			url.pathname === '/api/email/test' ||
@@ -105,7 +111,7 @@ export const createDashboardHandler = (
 				credentials?: unknown, importData?: unknown, previewId?: unknown,
 				conflictChoice?: unknown, acceptPartial?: unknown,
 				intervals?: unknown, cookie?: unknown, candidateId?: unknown,
-				profileId?: unknown } = {}
+				profileId?: unknown, preference?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -305,6 +311,36 @@ export const createDashboardHandler = (
 				() => send(500, { error: 'Could not save notification setting.' }))
 				return
 			}
+			if (url.pathname === '/api/channels/bell/review') {
+				void jobs.maintenance(randomUUID(), () =>
+					actions.bellActions.review(id))
+					.then(result => send(200, result), () => send(409, {
+						error: 'Could not verify the account and bell state.',
+					}))
+				return
+			}
+			if (url.pathname === '/api/channels/bell' ||
+					url.pathname === '/api/channels/bell/acknowledge') {
+				if (data.preference !== 'all' && data.preference !== 'personalized' &&
+						data.preference !== 'none') {
+					send(400, { error: 'Choose a valid bell preference.' }); return
+				}
+				const preference: BellNotificationPreference = data.preference
+				if (url.pathname.endsWith('/acknowledge')) {
+					void jobs.maintenance(randomUUID(), () =>
+						actions.bellActions.acknowledge(id, preference)).then(() =>
+						send(200, { acknowledged: true }), () => send(409, {
+						error: 'Could not verify the account and bell state.',
+					}))
+					return
+				}
+				void jobs.maintenance(randomUUID(), () =>
+					actions.bellActions.change(id, preference)).then(outcome =>
+					send(200, { outcome }), () => send(409, {
+					error: 'Could not verify the account and bell state.',
+				}))
+				return
+			}
 			if (url.pathname === '/api/channels/remove') {
 				if (!actions.manualMode()) {
 					send(400, { error: 'Manual removal is unavailable.' })
@@ -434,7 +470,11 @@ export const createDashboardHandler = (
 		if (url.pathname === '/api/channels') {
 			const channels = await db.all(`SELECT channelId, channelTitle,
 				channelThumbnail, deleted, deletedReason, firstObservedAt, bellState,
-				bellUpdatedAt FROM subscriptions ORDER BY channelTitle, channelId
+				bellUpdatedAt, EXISTS(SELECT 1 FROM cookie_bell_actions a
+				JOIN cookie_connection c ON c.channelId=a.profileKey
+				WHERE a.channelId=subscriptions.channelId AND c.id=1
+				AND a.state IN ('pending', 'uncertain')) AS bellUncertain
+				FROM subscriptions ORDER BY channelTitle, channelId
 				LIMIT 500`)
 			const manualMode = actions?.manualMode() ?? false
 			return { manualMode, cookieMode: actions?.config.mode === 'cookie',

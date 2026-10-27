@@ -9,6 +9,7 @@ import { SubscriptionImportService } from './subscriptionImportService'
 import { CookiePreviewService } from './cookiePreview'
 import { CookieConnectionStore } from './cookieConnection'
 import { ManualSourceSwitch } from './manualSourceSwitch'
+import { CookieBellActions } from './cookieBellActions'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -66,6 +67,7 @@ test('validates writes and schedules refresh after saving', async () => {
 	const config = { mode: 'whitelist', whitelistedChannelIds: [{ id }],
 		email: { auth: { pass: 'fixture' } } } as Config
 	const cookieStore = new CookieConnectionStore(db)
+	let bell: 'all' | 'personalized' = 'all'
 	const cookiePreviews = new CookiePreviewService(db, {
 		discover: async () => ({ cookieHeader: 'SAPISID=synthetic-fixture',
 			profiles: [{ name: 'Profile', selected: true, selectable: true,
@@ -81,6 +83,15 @@ test('validates writes and schedules refresh after saving', async () => {
 		cookieCleanupPending: () => cookieStore.cleanupPending(),
 		manualSwitch: new ManualSourceSwitch(db, config, 'unused', 'unused',
 			'unused', cookiePreviews),
+		bellActions: new CookieBellActions(db, config, cookieStore, async () => {
+			const connection = await cookieStore.read()
+			if (!connection) throw new Error('No fixture connection.')
+			await cookieStore.refresh(connection.generation, [{ channelId: id,
+				title: 'Channel', notificationState: bell,
+				isAllNotifications: bell === 'all' }])
+			return { status: 'success', total: 1, succeeded: 1, failed: 0,
+				skipped: 0, failedChannels: [] }
+		}, async () => { bell = 'personalized' }),
 		activateCookie: async (candidate, preview) => {
 			const confirmed = await cookiePreviews.confirm(candidate, preview)
 			await cookieStore.activate(confirmed.cookieHeader, confirmed.profile,
@@ -158,11 +169,22 @@ test('validates writes and schedules refresh after saving', async () => {
 		expect(JSON.stringify(cookieStatus.data)).not.toContain('synthetic-fixture')
 		const cookieChannels = (await axios.get(`${base}/api/channels`)).data
 		expect(cookieChannels.cookieMode).toBe(true)
+		const invalidBell = await axios.post(`${base}/api/channels/bell`,
+			{ channelId: id, preference: 'invalid' },
+			{ validateStatus: () => true })
+		expect(invalidBell.status).toBe(400)
+		const changedBell = await axios.post(`${base}/api/channels/bell`,
+			{ channelId: id, preference: 'personalized' })
+		expect(changedBell.data.outcome).toBe('confirmed')
+		expect((await axios.get(`${base}/api/channels`)).data.channels[0].deleted)
+			.toBe(1)
 		expect(cookieChannels.cookieStale).toBe(false)
 		expect(cookieChannels.channels[0].bellState).toBe('all')
 		const events = (await axios.get(`${base}/api/channel-events`)).data.events
-		expect(events).toMatchObject([{ channelId: id, previousState: null,
-			currentState: 'all' }])
+		expect(events).toMatchObject([
+			{ channelId: id, previousState: 'all', currentState: 'personalized' },
+			{ channelId: id, previousState: null, currentState: 'all' },
+		])
 		await db.run('UPDATE subscriptions SET channelTitle=? WHERE channelId=?',
 			'Renamed', id)
 		await db.run(`INSERT INTO channel_title_events

@@ -134,6 +134,31 @@
     if (channel.deleted) info.append(element('div', 'channel-detail', text.deleted))
     if (cookieMode && channel.deletedReason !== 'unsubscribed' && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
     row.append(img, info)
+    if (cookieMode && channel.bellUncertain) {
+      const review = element('button', 'outline', text.bellReview)
+      review.type = 'button'; review.addEventListener('click', async () => {
+        review.disabled = true
+        try {
+          const data = await post('/api/channels/bell/review', { channelId: channel.channelId })
+          if (data.previousTarget && window.confirm(`${text.bellReviewConfirm}\n\n${text.bellCurrent}: ${text['bell_' + data.current]}\n${text.bellRequested}: ${text['bell_' + data.previousTarget]}`)) {
+            await post('/api/channels/bell/acknowledge', { channelId: channel.channelId, preference: data.current }); showNotice(text.bellReviewed)
+          }
+          load()
+        } catch { showNotice(text.bellError) } finally { review.disabled = false }
+      }); row.append(review)
+    } else if (cookieMode && ['all', 'personalized', 'none'].includes(channel.bellState) && channel.deletedReason !== 'unsubscribed' && channel.deletedReason !== 'terminated') {
+      const select = element('select', 'channel-bell'); select.setAttribute('aria-label', `${text.bellSelect}: ${channel.channelTitle || channel.channelId}`)
+      for (const preference of ['all', 'personalized', 'none']) {
+        const option = element('option', '', text['bell_' + preference]); option.value = preference; option.selected = preference === channel.bellState; select.append(option)
+      }
+      select.addEventListener('change', async () => {
+        select.disabled = true
+        try {
+          const result = await post('/api/channels/bell', { channelId: channel.channelId, preference: select.value })
+          showNotice(result.outcome === 'uncertain' ? text.bellUncertain : text.bellSaved); load()
+        } catch { showNotice(text.bellError); load() } finally { select.disabled = false }
+      }); row.append(select)
+    }
     if (typeof channel.notify === 'boolean' && !channel.deleted) {
       const mute = element('button', 'outline channel-mute', channel.notify ? text.mute : text.unmute)
       mute.type = 'button'; mute.addEventListener('click', async () => {

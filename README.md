@@ -312,6 +312,12 @@ currently monitored channels and deleting the stored connection and the matching
 after preview is retained and must be removed separately before reconnecting.
 Environment variables and copies or backups of cookies are not deleted.
 API-to-cookie and combined mode remain unavailable.
+In cookie mode, the Channels page can change a subscribed channel's YouTube
+bell. Each change is checked against a fresh account snapshot before and after
+the request. If the result is uncertain, review the current state before
+allowing another attempt; a delayed request can still take effect.
+Cookie exports are snapshots of browser credentials: the service can accept a
+replacement without restarting but cannot renew them from the browser itself.
 
 Then run:
 

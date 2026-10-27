@@ -38,6 +38,7 @@ import { CookiePreviewService } from './cookiePreview'
 import { activateConfirmedCookie } from './activateCookie'
 import { recoverCookieCleanup } from './cookieCleanup'
 import { ManualSourceSwitch } from './manualSourceSwitch'
+import { CookieBellActions } from './cookieBellActions'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -120,6 +121,8 @@ const startService = async (existingServer?: Server) => {
 			cookieStatus: () => cookieStore.status(),
 			cookieCleanupPending: () => cookieStore.cleanupPending(),
 			manualSwitch,
+			bellActions: new CookieBellActions(db, config, cookieStore,
+				tasks.runSubscriptions),
 			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
 				config, cookieStore, cookiePreviews, candidateId, previewId),
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),
