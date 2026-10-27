@@ -42,6 +42,7 @@ test('running service sends a pending name alert through SMTP', async () => {
 	const filename = path.join(dir, 'database.sqlite')
 	const config = JSON.parse(await fs.readFile('config.example.json', 'utf8'))
 	config.mode = 'whitelist'; config.database.filename = filename
+	config.notifyFailureReminders = true
 	config.kickoff = { videos: false, subscriptions: false }
 	config.email = { host: '127.0.0.1',
 		port: (smtp.address() as AddressInfo).port,
@@ -63,6 +64,10 @@ test('running service sends a pending name alert through SMTP', async () => {
 	await batch.record('UC0000000000000000000001')
 	await batch.record('UC0000000000000000000002')
 	await db.exec('COMMIT')
+	await db.run(`INSERT INTO incidents (id, source, category, openedAt,
+		lastObservedAt, occurrences, emailState) VALUES
+		('old-incident', 'cookie', 'auth', '2020-01-01T00:00:00Z',
+			'2020-01-01T00:00:00Z', 1, 'disabled')`)
 	await db.close()
 	const child = spawn(process.execPath,
 		['-r', 'ts-node/register/transpile-only', 'src/index.ts'], {
@@ -82,14 +87,14 @@ test('running service sends a pending name alert through SMTP', async () => {
 					.data.events
 				const additions = (await axios.get(
 					`http://127.0.0.1:${port}/api/channel-added-events`)).data.events
-				if (events[0]?.emailState === 'sent' &&
+				if (events[0]?.emailState === 'sent' && messages.length === 3 &&
 						additions.length === 2 &&
 						additions.every((entry: any) => entry.emailState === 'sent')) break
 			} catch { /* Service is still starting. */ }
 			await new Promise(resolve => setTimeout(resolve, 100))
 		}
 		expect(events[0]?.emailState).toBe('sent')
-		expect(messages).toHaveLength(2)
+		expect(messages).toHaveLength(3)
 		const titleMail = messages.find(message =>
 			message.includes('Previous name:'))
 		const channelMail = messages.find(message => message.includes('monitoring'))
@@ -97,7 +102,13 @@ test('running service sends a pending name alert through SMTP', async () => {
 		expect(titleMail).toContain('Current name: New')
 		expect(channelMail).toContain('UC0000000000000000000001')
 		expect(channelMail).toContain('UC0000000000000000000002')
+		const reminder = messages.some(message =>
+			message.includes('unresolved issue reminder'))
+		expect(reminder).toBe(true)
 		const base = `http://127.0.0.1:${port}`
+		const incidents = (await axios.get(`${base}/api/incidents`)).data.incidents
+		expect(incidents.find((incident: any) => incident.id === 'old-incident')
+			.reminderState).toBe('waiting')
 		const settings = (await axios.get(`${base}/api/settings`)).data.settings
 		await axios.post(`${base}/api/settings`, { settings: { ...settings,
 			notifyTitleChanges: false, notifyChannelAdded: false } })
@@ -119,7 +130,7 @@ test('running service sends a pending name alert through SMTP', async () => {
 			.data.events
 		expect(additions.filter((event: any) => event.emailState === 'suppressed'))
 			.toHaveLength(1)
-		expect(messages).toHaveLength(2)
+		expect(messages).toHaveLength(3)
 	} finally {
 		child.kill(); await exited
 		await new Promise<void>(resolve => smtp.close(() => resolve()))

@@ -15,7 +15,8 @@ test('saves defaults and retains unrelated settings', async () => {
 	const settings = { initialBacklog: { mode: 'newest', count: 2 },
 		videoRetentionDays: 30, activityRetentionDays: null, emailOnError: false,
 		confirmUnsubscribe: true,
-		notifyTitleChanges: true, notifyChannelAdded: true }
+		notifyTitleChanges: true, notifyChannelAdded: true,
+		notifyFailureReminders: false }
 	try {
 		await fs.writeFile(file,
 			JSON.stringify({ logging: config.logging, other: 1 }))

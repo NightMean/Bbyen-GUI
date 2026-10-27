@@ -13,6 +13,7 @@ export interface GeneralSettings {
 	confirmUnsubscribe: boolean,
 	notifyTitleChanges: boolean,
 	notifyChannelAdded: boolean,
+	notifyFailureReminders: boolean,
 }
 
 export const readGeneralSettings = (config: Config): GeneralSettings => ({
@@ -24,6 +25,7 @@ export const readGeneralSettings = (config: Config): GeneralSettings => ({
 	confirmUnsubscribe: config.confirmUnsubscribe !== false,
 	notifyTitleChanges: config.notifyTitleChanges !== false,
 	notifyChannelAdded: config.notifyChannelAdded !== false,
+	notifyFailureReminders: config.notifyFailureReminders === true,
 })
 
 export const parseGeneralSettings = (value: unknown): GeneralSettings => {
@@ -44,7 +46,9 @@ export const parseGeneralSettings = (value: unknown): GeneralSettings => {
 	notifyTitleChanges: data.notifyTitleChanges === undefined ? true :
 		parseConfirmation(data.notifyTitleChanges),
 	notifyChannelAdded: data.notifyChannelAdded === undefined ? true :
-		parseConfirmation(data.notifyChannelAdded) }
+		parseConfirmation(data.notifyChannelAdded),
+	notifyFailureReminders: data.notifyFailureReminders === undefined ? false :
+		parseConfirmation(data.notifyFailureReminders) }
 }
 
 const parseConfirmation = (value: unknown): boolean => {
@@ -66,6 +70,7 @@ export const saveGeneralSettings = async (
 		config.confirmUnsubscribe = settings.confirmUnsubscribe
 		config.notifyTitleChanges = settings.notifyTitleChanges
 		config.notifyChannelAdded = settings.notifyChannelAdded
+		config.notifyFailureReminders = settings.notifyFailureReminders
 	}
 	try { await updateJsonFile(filename, value => {
 		if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -80,6 +85,7 @@ export const saveGeneralSettings = async (
 			confirmUnsubscribe: settings.confirmUnsubscribe,
 			notifyTitleChanges: settings.notifyTitleChanges,
 			notifyChannelAdded: settings.notifyChannelAdded,
+			notifyFailureReminders: settings.notifyFailureReminders,
 			logging: { ...current.logging, emailOnError: settings.emailOnError } }
 	}) } catch (err) {
 		// A replacement can succeed even if lock cleanup fails afterward.
@@ -92,6 +98,7 @@ export const saveGeneralSettings = async (
 				confirmUnsubscribe: stored.confirmUnsubscribe,
 				notifyTitleChanges: stored.notifyTitleChanges,
 				notifyChannelAdded: stored.notifyChannelAdded,
+				notifyFailureReminders: stored.notifyFailureReminders,
 				emailOnError: stored.logging?.emailOnError })
 			if (JSON.stringify(effective) === JSON.stringify(settings)) apply()
 		} catch { console.warn('Could not verify saved general settings.') }

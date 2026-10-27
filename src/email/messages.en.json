@@ -4,5 +4,7 @@
 	"titlePrevious": "Previous name",
 	"titleCurrent": "Current name",
 	"channelAddedSubject": "YouTube channels are now monitored",
-	"channelAddedIntro": "BBYEN is now monitoring these channels:"
+	"channelAddedIntro": "BBYEN is now monitoring these channels:",
+	"reminderSubject": "BBYEN: unresolved issue reminder",
+	"reminderSuffix": "This issue remains unresolved after at least 24 hours."
 }

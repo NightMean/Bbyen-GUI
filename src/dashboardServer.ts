@@ -221,7 +221,9 @@ export const createDashboardHandler = (
 						notifyTitleChanges: input.notifyTitleChanges ??
 							actions.config.notifyTitleChanges ?? true,
 						notifyChannelAdded: input.notifyChannelAdded ??
-							actions.config.notifyChannelAdded ?? true })
+							actions.config.notifyChannelAdded ?? true,
+						notifyFailureReminders: input.notifyFailureReminders ??
+							actions.config.notifyFailureReminders ?? false })
 					await actions.saveGeneral(settings)
 					return settings
 				})
@@ -506,9 +508,11 @@ export const createDashboardHandler = (
 				FROM email_test_runs ORDER BY startedAt DESC, rowid DESC LIMIT 20`) }
 		}
 		if (url.pathname === '/api/incidents') {
-			return { incidents: await db.all(`SELECT id, source, category, channelId,
-				openedAt, lastObservedAt, resolvedAt, occurrences, emailState
-				FROM incidents ORDER BY resolvedAt IS NULL DESC, lastObservedAt DESC
+			return { incidents: await db.all(`SELECT i.id, i.source, i.category,
+				i.channelId, i.openedAt, i.lastObservedAt, i.resolvedAt, i.occurrences,
+				i.emailState, r.state AS reminderState
+				FROM incidents i LEFT JOIN incident_reminders r ON r.incidentId=i.id
+				ORDER BY i.resolvedAt IS NULL DESC, i.lastObservedAt DESC
 				LIMIT 100`) }
 		}
 		if (url.pathname === '/api/channel-events') {

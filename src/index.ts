@@ -44,6 +44,7 @@ import { saveUnsubscribePreference } from './unsubscribePreference'
 import { TitleAlerts } from './titleAlerts'
 import { ChannelAddedAlerts } from './channelAddedAlerts'
 import { pruneActivity } from './activityRetention'
+import { IncidentReminders } from './incidentReminders'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -102,6 +103,11 @@ const startService = async (existingServer?: Server) => {
 			return channels => email.sendChannelAdded(channels, config.cookieStale)
 		}, message => logger.warn(message))
 		await channelAlerts.recoverInterrupted()
+		const reminders = new IncidentReminders(db, async () => {
+			const email = await mailer.init(await loadEmailConfig())
+			return email.sendErrorEmail
+		}, message => logger.warn(message))
+		await reminders.recoverInterrupted()
 		const refreshCookies = createCookieRefresh({ store: cookieStore,
 			config, alerts, logger })
 		const tasks = createServiceTasks({ db, service, config, logger,
@@ -219,6 +225,13 @@ const startService = async (existingServer?: Server) => {
 			() => jobs.maintenance('activity-retention', () =>
 				pruneActivity(databaseConnection, config.activityRetentionDays ?? null))
 				.catch(() => logger.warn('Could not prune activity history.')),
+			60_000,
+			true,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('incident-reminders', () =>
+				reminders.run(config.notifyFailureReminders === true))
+				.catch(() => logger.warn('Could not process incident reminders.')),
 			60_000,
 			true,
 		)

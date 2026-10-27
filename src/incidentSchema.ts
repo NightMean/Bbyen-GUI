@@ -20,6 +20,14 @@ export const initIncidentSchema = async (
 		ON incidents(source, category, COALESCE(channelId, ''))
 		WHERE resolvedAt IS NULL;
 	CREATE INDEX IF NOT EXISTS incidents_by_time ON incidents(openedAt);
+	CREATE TABLE IF NOT EXISTS incident_reminders (
+		incidentId TEXT PRIMARY KEY,
+		state TEXT NOT NULL CHECK (state IN
+			('pending', 'sending', 'waiting', 'failed', 'exhausted')),
+		attemptCount INTEGER NOT NULL DEFAULT 0,
+		nextAttemptAt TEXT,
+		nextReminderAt TEXT
+	);
 	CREATE TABLE IF NOT EXISTS email_test_runs (
 		id TEXT PRIMARY KEY,
 		startedAt TEXT NOT NULL,

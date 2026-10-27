@@ -226,6 +226,7 @@
         $('retention-days').value = general.settings.videoRetentionDays ?? ''
         $('activity-retention-days').value = general.settings.activityRetentionDays ?? ''
         $('failure-email').checked = general.settings.emailOnError
+        $('failure-reminder').checked = general.settings.notifyFailureReminders
         $('title-email').checked = general.settings.notifyTitleChanges
         $('channel-email').checked = general.settings.notifyChannelAdded
         $('confirm-unsubscribe-setting').checked = general.settings.confirmUnsubscribe
@@ -274,6 +275,7 @@
             const guidance = incident.source === 'smtp' ? text.help_smtp : incident.source === 'cookie' ? text.help_cookie : text['help_' + incident.category] || text.help_other
             row.append(element('p', 'incident-help', guidance))
           }
+          if (incident.reminderState === 'failed' || incident.reminderState === 'exhausted') row.append(element('p', 'incident-help', text.reminderFailed))
           return row
         }) : [element('p', 'empty', text.emptyActivity)]))
         return
@@ -373,7 +375,7 @@
     const initialBacklog = mode === 'newest' ? { mode, count } : { mode }
     const videoRetentionDays = $('retention-days').value ? Number($('retention-days').value) : null
     const activityRetentionDays = $('activity-retention-days').value === '' ? null : Number($('activity-retention-days').value)
-    const settings = { initialBacklog, videoRetentionDays, activityRetentionDays, emailOnError: $('failure-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked, notifyChannelAdded: $('channel-email').checked }
+    const settings = { initialBacklog, videoRetentionDays, activityRetentionDays, emailOnError: $('failure-email').checked, notifyFailureReminders: $('failure-reminder').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked, notifyChannelAdded: $('channel-email').checked }
     try { await post('/api/settings', { settings }); state.confirmUnsubscribe = settings.confirmUnsubscribe; showNotice(text.generalSaved) }
     catch { showNotice(text.generalError) }
   })

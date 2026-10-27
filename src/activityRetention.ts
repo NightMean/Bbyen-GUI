@@ -35,6 +35,8 @@ export const pruneActivity = async (
 		await db.run(SQL`DELETE FROM incidents WHERE resolvedAt IS NOT NULL
 			AND resolvedAt < ${cutoff}
 			AND emailState NOT IN ('pending', 'sending', 'failed');`)
+		await db.run(`DELETE FROM incident_reminders WHERE incidentId NOT IN
+			(SELECT id FROM incidents)`)
 		await db.run(SQL`DELETE FROM refresh_runs WHERE status <> 'running'
 			AND finishedAt IS NOT NULL AND finishedAt < ${cutoff}
 			AND id NOT IN (SELECT id FROM refresh_runs WHERE kind='videos'
