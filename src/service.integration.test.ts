@@ -269,3 +269,46 @@ test('dashboard updates manual notification settings in the running service',
 			await fs.rm(dir, { recursive: true, force: true })
 		}
 	}, 25000)
+
+test('first-run setup starts the service without restarting', async () => {
+	const probe = createServer()
+	await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve))
+	const port = (probe.address() as AddressInfo).port
+	await new Promise<void>(resolve => probe.close(() => resolve()))
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-first-start-'))
+	const env: NodeJS.ProcessEnv = { ...process.env, CONFIG_DIR: dir,
+		BBYEN_DASHBOARD_PORT: String(port) }
+	delete env.BBYEN_EMAIL_USER; delete env.BBYEN_EMAIL_PASS
+	const child = spawn(process.execPath,
+		['-r', 'ts-node/register/transpile-only', 'src/index.ts'], {
+			env,
+			stdio: ['ignore', 'pipe', 'pipe'],
+		})
+	child.stdout.resume(); child.stderr.resume()
+	const exited = new Promise<void>(resolve =>
+		child.once('exit', () => resolve()))
+	try {
+		const url = `http://127.0.0.1:${port}`
+		const deadline = Date.now() + 15000
+		let ready = false
+		while (Date.now() < deadline && child.exitCode === null) {
+			try { await axios.get(`${url}/api/setup`); ready = true; break }
+			catch { await new Promise(resolve => setTimeout(resolve, 100)) }
+		}
+		expect(ready).toBe(true)
+		expect((await axios.get(`${url}/`)).data).toContain('/setup.js')
+		const setup = await axios.post(`${url}/api/setup/manual`, {})
+		expect(setup.data.ready).toBe(true)
+		expect((await axios.get(`${url}/api/health`)).data.status).toBe('running')
+		expect((await axios.get(`${url}/`)).data).toContain('/app.js')
+		const config = JSON.parse(await fs.readFile(path.join(dir, 'config.json'),
+			'utf8'))
+		expect(config.mode).toBe('whitelist')
+		expect(config.notifyOnFirstScan).toBe(false)
+		expect(config.database.filename).toBe(path.join(dir, 'database.sqlite'))
+		expect(child.exitCode).toBeNull()
+	} finally {
+		child.kill(); await exited
+		await fs.rm(dir, { recursive: true, force: true })
+	}
+}, 25000)

@@ -1,8 +1,9 @@
 import { google } from 'googleapis'
 import parseDuration from 'parse-duration'
+import { createServer, Server } from 'http'
 import {
-	CHANNELS_FILE, CONFIG_FILE, SECRETS_FILE, loadConfig, loadConfigRaw,
-	loadEmailConfig,
+	CHANNELS_FILE, CONFIG_DIR, CONFIG_FILE, SECRETS_FILE, loadConfig,
+	loadConfigRaw, loadEmailConfig,
 } from './config'
 import * as database from './database'
 import { recoverPendingVideoEmails } from './videoSchema'
@@ -16,7 +17,10 @@ import { QuotaBackoff } from './quotaBackoff'
 import { QuotaRunner } from './quotaRunner'
 import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
-import { createDashboardServer, dashboardPort } from './dashboardServer'
+import { createDashboardHandler, dashboardPort } from './dashboardServer'
+import {
+	createBootstrapHandler, missingConfiguration,
+} from './dashboardBootstrap'
 import {
 	addManualChannel, removeManualChannel, setManualChannelNotify,
 } from './manualChannels'
@@ -26,9 +30,17 @@ import {
 } from './emailSettings'
 import { sendTestEmail } from './emailTest'
 
-const main = async () => {
-	const logger = await setupLogger({ label: 'main' })
+const listen = async (server: Server): Promise<void> => {
+	await new Promise<void>((resolve, reject) => {
+		server.once('error', reject)
+		server.listen(dashboardPort(process.env.BBYEN_DASHBOARD_PORT),
+			'0.0.0.0', () => { server.removeListener('error', reject); resolve() })
+	})
+}
 
+const startService = async (existingServer?: Server) => {
+	const logger = await setupLogger({ label: 'main' })
+	let db: Awaited<ReturnType<typeof database.init>> | undefined
 	try {
 		const service = google.youtube('v3')
 		const raw = await loadConfigRaw()
@@ -38,7 +50,8 @@ const main = async () => {
 		const config = await loadConfig(service, initialAuth, {
 			resolveEmail: false,
 		})
-		const db = await database.init(config.database)
+		db = await database.init(config.database)
+		const databaseConnection = db
 		await recoverPendingVideoEmails(db)
 
 		// Reject over-long intervals up front: Node's timer delay is a 32-bit
@@ -69,7 +82,7 @@ const main = async () => {
 			reportQuota: tasks.reportQuota, clearQuota: tasks.clearQuota,
 			warn: message => logger.warn(message),
 		})
-		const server = createDashboardServer(db, jobs, {
+		const handler = createDashboardHandler(db, jobs, {
 			add: (id, backlog) =>
 				addManualChannel(CHANNELS_FILE, config, id, backlog),
 			resolve: resolveChannelId,
@@ -84,18 +97,18 @@ const main = async () => {
 				passFromEnvironment: process.env.BBYEN_EMAIL_PASS !== undefined }),
 			saveEmail: settings => saveEmailSettings(CONFIG_FILE, config, settings),
 			saveCredentials: value => saveEmailCredentials(SECRETS_FILE, value),
-			testEmail: () => sendTestEmail(db, async () => {
+			testEmail: () => sendTestEmail(databaseConnection, async () => {
 				const mail = await mailer.init(await loadEmailConfig())
 				await mail.sendTestEmail()
 			}),
 			refresh: kind => { void quota.run(kind).catch(() =>
 				logger.error('Manual refresh failed unexpectedly.')) },
 		})
-		await new Promise<void>((resolve, reject) => {
-			server.once('error', reject)
-			server.listen(dashboardPort(process.env.BBYEN_DASHBOARD_PORT),
-				'0.0.0.0', () => { server.removeListener('error', reject); resolve() })
-		})
+		const server = existingServer ?? createServer(handler)
+		if (existingServer) {
+			server.removeAllListeners('request')
+			server.on('request', handler)
+		} else await listen(server)
 		server.on('error', () => logger.error('Dashboard server failed.'))
 		setIntervalInstant(
 			() => quota.run('subscriptions')
@@ -125,10 +138,26 @@ const main = async () => {
 			true,
 		)
 
-	} catch {
+	} catch (err) {
 		logger.error('Service startup failed. Check configuration and storage.')
-		process.exit(1)
+		if (db) await db.close().catch(() => logger.warn('Database close failed.'))
+		throw err
 	}
 }
 
-main()
+const main = async () => {
+	const missing = await missingConfiguration(CONFIG_FILE, CHANNELS_FILE)
+	if (!missing.config && !missing.channels) return startService()
+	const server = createServer()
+	server.on('request', createBootstrapHandler({ config: CONFIG_FILE,
+		channels: CHANNELS_FILE, directory: CONFIG_DIR,
+		start: () => startService(server),
+	}))
+	await listen(server)
+	server.on('error', () => console.error('Dashboard setup server failed.'))
+}
+
+void main().catch(() => {
+	console.error('Service startup failed. Check configuration and storage.')
+	process.exit(1)
+})

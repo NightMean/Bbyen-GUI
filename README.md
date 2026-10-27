@@ -58,6 +58,13 @@ You may run it on bare metal or build and run the included Docker configuration.
 
 Run these commands from this source checkout, alongside `Dockerfile` and
 `docker-compose.yml`. Compose builds the current source into `bbyen:local`.
+For a new manual-mode installation, create `data/`, run `docker compose up -d`,
+then open port 3031 on the host and follow the setup page. Setup creates only
+missing configuration files, stores SQLite in the mounted directory, and
+starts the service without restarting. Configure SMTP in dashboard Settings.
+Account and cookie onboarding is not yet available in the dashboard.
+
+Alternatively, prepare the existing configuration templates yourself:
 
 ```sh
 mkdir -p data
