@@ -156,6 +156,10 @@ test('validates writes and schedules refresh after saving', async () => {
 		const cookieStatus = await axios.get(`${base}/api/cookies/status`)
 		expect(cookieStatus.data.mode).toBe('cookie')
 		expect(JSON.stringify(cookieStatus.data)).not.toContain('synthetic-fixture')
+		const blocked = await axios.post(`${base}/api/channels`, { channelId: id },
+			{ validateStatus: () => true })
+		expect(blocked.status).toBe(409)
+		expect(calls.filter(call => call === id)).toHaveLength(1)
 		let finish!: () => void
 		const hold = new Promise<void>(resolve => { finish = resolve })
 		const work = jobs.run('videos', async () => {

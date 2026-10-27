@@ -325,12 +325,19 @@ export const createDashboardHandler = (
 				send(400, { error: 'Invalid initial video preference.' })
 				return
 			}
-			void jobs.maintenance(randomUUID(), () => actions.add(id, backlog))
-				.then(() => {
-					actions.refresh('subscriptions')
-					send(202, { channelId: id })
-				},
-				() => send(500, { error: 'Could not save the channel.' }))
+			void jobs.maintenance(randomUUID(), async () => {
+				if (!actions.manualMode()) return false
+				await actions.add(id, backlog)
+				return true
+			}).then(added => {
+				if (!added) {
+					send(409, { error: 'Adding channels is available in manual mode.' })
+					return
+				}
+				actions.refresh('subscriptions')
+				send(202, { channelId: id })
+			},
+			() => send(500, { error: 'Could not save the channel.' }))
 		})
 		return
 	}

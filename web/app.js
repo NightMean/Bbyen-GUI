@@ -61,7 +61,8 @@
     $('settings-nav').classList.toggle('active', page === 'settings')
     $('heading').textContent = text[page]
     $('refresh').hidden = page === 'activity' || page === 'settings'
-    $('add').hidden = page === 'settings'
+    $('add').hidden = page === 'settings' || page === 'activity'
+    $('add').disabled = true; $('add').textContent = text.add
     $('add-panel').hidden = true
     $('email-user').value = ''; $('email-password').value = ''
     $('import-file').value = ''; $('import-review').hidden = true; state.importPreview = null
@@ -202,6 +203,9 @@
         return
       }
       const all = await request('/api/channels')
+      if (sequence !== state.sequence) return
+      $('add').disabled = !all.manualMode
+      $('add').textContent = all.manualMode ? text.add : text.addManualOnly
       if (state.page === 'channels') {
         const term = $('search').value.toLocaleLowerCase()
         const found = all.channels.filter(c => (c.channelTitle || c.channelId).toLocaleLowerCase().includes(term))
