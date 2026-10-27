@@ -301,6 +301,11 @@ for the InnerTube request path. A raw Cookie header has no domain metadata,
 so include only cookies intended for YouTube when supplying that format.
 When YouTube reports that a cookie session is logged out, profile discovery
 fails as an authentication error rather than treating it as an empty account.
+The dashboard's cookie connection API previews changes before confirmation and
+stores a confirmed cookie in the SQLite database together with its profile and
+tracking snapshot. Database backups therefore contain the session credential.
+Cookie dashboard controls and switching back to manual mode are still under
+development; API-to-cookie and combined mode remain unavailable.
 
 Then run:
 

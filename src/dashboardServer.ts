@@ -19,6 +19,7 @@ import { parseRefreshIntervals, RefreshIntervals } from './refreshSchedule'
 import {
 	GeneralSettings, parseGeneralSettings, readGeneralSettings,
 } from './generalSettings'
+import { CookiePreviewService } from './cookiePreview'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -37,6 +38,9 @@ interface ChannelActions {
 	imports: SubscriptionImportService,
 	saveSchedule: (value: RefreshIntervals) => Promise<void>,
 	saveGeneral: (value: GeneralSettings) => Promise<void>,
+	cookiePreviews: CookiePreviewService,
+	cookieStatus: () => Promise<unknown>,
+	activateCookie: (candidateId: string, previewId: string) => Promise<void>,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -68,6 +72,10 @@ export const createDashboardHandler = (
 			url.pathname === '/api/subscriptions/import/apply' ||
 			url.pathname === '/api/schedule' ||
 			url.pathname === '/api/settings' ||
+			url.pathname === '/api/cookies/inspect' ||
+			url.pathname === '/api/cookies/compare' ||
+			url.pathname === '/api/cookies/activate' ||
+			url.pathname === '/api/cookies/cancel' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -81,7 +89,8 @@ export const createDashboardHandler = (
 		request.on('data', chunk => {
 			body += chunk
 			const limit = url.pathname === '/api/subscriptions/import/preview'
-				? 2 * 1024 * 1024 : 8192
+				? 2 * 1024 * 1024 : url.pathname === '/api/cookies/inspect'
+					? 512 * 1024 : 8192
 			if (body.length > limit) request.destroy()
 		})
 		request.on('end', () => {
@@ -89,7 +98,8 @@ export const createDashboardHandler = (
 				notify?: unknown, initialBacklog?: unknown, settings?: unknown,
 				credentials?: unknown, importData?: unknown, previewId?: unknown,
 				conflictChoice?: unknown, acceptPartial?: unknown,
-				intervals?: unknown } = {}
+				intervals?: unknown, cookie?: unknown, candidateId?: unknown,
+				profileId?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -97,6 +107,55 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname.startsWith('/api/cookies/')) {
+				if (actions.config.mode === 'youtube') {
+					send(409, { error: 'API-to-cookie switching is unavailable.' })
+					return
+				}
+				if (url.pathname === '/api/cookies/inspect') {
+					if (typeof data.cookie !== 'string' || !data.cookie ||
+							data.cookie.length > 256 * 1024) {
+						send(400, { error: 'Enter a valid YouTube cookie.' }); return
+					}
+					void actions.cookiePreviews.inspect(data.cookie).then(result =>
+						send(200, result), () => send(422, {
+						error: 'Could not verify the cookie or account profiles.',
+					}))
+					return
+				}
+				if (typeof data.candidateId !== 'string' || !data.candidateId) {
+					send(400, { error: 'Cookie preview is missing.' }); return
+				}
+				const candidate = data.candidateId
+				if (url.pathname === '/api/cookies/cancel') {
+					actions.cookiePreviews.cancel(candidate)
+					send(200, { cancelled: true })
+					return
+				}
+				if (url.pathname === '/api/cookies/compare') {
+					if (typeof data.profileId !== 'string' || !data.profileId) {
+						send(400, { error: 'Choose an available profile.' }); return
+					}
+					const profile = data.profileId
+					void jobs.maintenance(randomUUID(), () =>
+						actions.cookiePreviews.compare(candidate, profile)).then(result =>
+						send(200, result), () => send(422, {
+						error: 'Could not compare channels for this profile.',
+					}))
+					return
+				}
+				if (typeof data.previewId !== 'string' || !data.previewId) {
+					send(400, { error: 'Cookie comparison is missing.' }); return
+				}
+				const preview = data.previewId
+				void jobs.maintenance(randomUUID(), () =>
+					actions.activateCookie(candidate, preview)).then(() => {
+					actions.refresh('videos'); send(200, { connected: true })
+				}, () => send(409, {
+					error: 'Could not confirm the connection. Review the preview again.',
+				}))
+				return
+			}
 			if (url.pathname === '/api/settings') {
 				let settings: GeneralSettings
 				try { settings = parseGeneralSettings(data.settings) } catch {
@@ -261,7 +320,7 @@ export const createDashboardHandler = (
 			!['/api/health', '/api/channels', '/api/videos',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
 				'/api/email/tests', '/api/subscriptions/export', '/api/schedule',
-				'/api/settings']
+				'/api/settings', '/api/cookies/status']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -288,6 +347,10 @@ export const createDashboardHandler = (
 		send(200, { settings: readGeneralSettings(actions.config) })
 		return
 	}
+	if (url.pathname === '/api/cookies/status' && !actions) {
+		send(503, { error: 'Cookie connection status unavailable.' })
+		return
+	}
 	if (url.pathname === '/api/refresh') {
 		// Status must remain observable while a long-running job owns the queue.
 		void Promise.all([jobs.status('subscriptions'), jobs.status('videos')])
@@ -301,6 +364,10 @@ export const createDashboardHandler = (
 		return
 	}
 	void jobs.maintenance(randomUUID(), async () => {
+		if (url.pathname === '/api/cookies/status') {
+			return { mode: actions!.config.mode,
+				connection: await actions!.cookieStatus() }
+		}
 		if (url.pathname === '/api/subscriptions/export') {
 			if (!actions) throw new Error('Subscription export unavailable.')
 			return exportSubscriptions(actions.config)

@@ -77,6 +77,9 @@ export class CookiePreviewService {
 			throw new Error('Cookie preview expired.')
 		}
 		const comparison = await this.compareSnapshot(profile.channelId, channels)
+		if (this.candidate(candidateId) !== candidate) {
+			throw new Error('Cookie preview expired.')
+		}
 		const id = randomUUID()
 		candidate.preview = { id, profileId,
 			fingerprint: this.fingerprint(channels, comparison) }
@@ -163,6 +166,10 @@ export class CookiePreviewService {
 			throw new Error('Cookie preview expired.')
 		}
 		const comparison = await this.compareSnapshot(profile.channelId, channels)
+		if (this.candidate(candidateId) !== candidate ||
+				candidate.preview !== preview) {
+			throw new Error('Cookie preview expired.')
+		}
 		if (this.fingerprint(channels, comparison) !== preview.fingerprint) {
 			delete candidate.preview
 			throw new Error('Channels changed; preview again before confirming.')

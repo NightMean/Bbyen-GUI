@@ -6,6 +6,8 @@ import { createDashboardServer, dashboardPort } from './dashboardServer'
 import { RefreshCoordinator } from './refreshCoordinator'
 import { Config } from './config'
 import { SubscriptionImportService } from './subscriptionImportService'
+import { CookiePreviewService } from './cookiePreview'
+import { CookieConnectionStore } from './cookieConnection'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -60,15 +62,32 @@ test('validates writes and schedules refresh after saving', async () => {
 	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
 	const calls: string[] = []
 	const id = 'UCabcdefghijklmnopqrstuv'
+	const config = { mode: 'whitelist', whitelistedChannelIds: [{ id }],
+		email: { auth: { pass: 'fixture' } } } as Config
+	const cookieStore = new CookieConnectionStore(db)
+	const cookiePreviews = new CookiePreviewService(db, {
+		discover: async () => ({ cookieHeader: 'SAPISID=synthetic-fixture',
+			profiles: [{ name: 'Profile', selected: true, selectable: true,
+				channelId: id }] }),
+		fetch: async () => [{ channelId: id, title: 'Channel',
+			notificationState: 'all', isAllNotifications: true }],
+	})
 	const server = createDashboardServer(db, jobs, {
-		config: { whitelistedChannelIds: [{ id }],
-			email: { auth: { pass: 'fixture' } } } as Config,
+		config,
 		imports: new SubscriptionImportService('unused', {} as Config),
+		cookiePreviews,
+		cookieStatus: () => cookieStore.status(),
+		activateCookie: async (candidate, preview) => {
+			const confirmed = await cookiePreviews.confirm(candidate, preview)
+			await cookieStore.activate(confirmed.cookieHeader, confirmed.profile,
+				confirmed.channels)
+			config.mode = 'cookie'
+		},
 		add: async id => { calls.push(id) },
 		resolve: async input => input,
 		setNotify: async (id, notify) => { calls.push(`${id}:${notify}`) },
 		remove: async id => { calls.push(`remove:${id}`) },
-		manualMode: () => true,
+		manualMode: () => config.mode === 'whitelist',
 		manualNotify: () => true,
 		emailSettings: () => ({ settings: { host: 'smtp.example.test', port: 465,
 			secure: true, sendingContact: 'sender@example.test',
@@ -118,6 +137,21 @@ test('validates writes and schedules refresh after saving', async () => {
 		expect(calls).toContain(`${id}:false`)
 		await axios.post(`${base}/api/channels/remove`, { channelId: id })
 		expect(calls.slice(-2)).toEqual([`remove:${id}`, 'subscriptions'])
+		const inspected = await axios.post(`${base}/api/cookies/inspect`,
+			{ cookie: 'SAPISID=synthetic-fixture' })
+		expect(JSON.stringify(inspected.data)).not.toContain('synthetic-fixture')
+		const compared = await axios.post(`${base}/api/cookies/compare`, {
+			candidateId: inspected.data.candidateId,
+			profileId: inspected.data.profiles[0].profileId,
+		})
+		expect(compared.data.start[0].channelId).toBe(id)
+		await axios.post(`${base}/api/cookies/activate`, {
+			candidateId: inspected.data.candidateId,
+			previewId: compared.data.previewId,
+		})
+		const cookieStatus = await axios.get(`${base}/api/cookies/status`)
+		expect(cookieStatus.data.mode).toBe('cookie')
+		expect(JSON.stringify(cookieStatus.data)).not.toContain('synthetic-fixture')
 		let finish!: () => void
 		const hold = new Promise<void>(resolve => { finish = resolve })
 		const work = jobs.run('videos', async () => {
@@ -130,6 +164,7 @@ test('validates writes and schedules refresh after saving', async () => {
 			expect(['queued', 'running']).toContain(status.data.videos.state)
 		} finally { finish(); await work }
 	} finally {
+		cookiePreviews.dispose()
 		await new Promise<void>((resolve, reject) => server.close(err =>
 			err ? reject(err) : resolve()))
 		await db.close()

@@ -34,6 +34,8 @@ import { RefreshSchedule, saveRefreshIntervals } from './refreshSchedule'
 import { saveGeneralSettings } from './generalSettings'
 import { CookieConnectionStore } from './cookieConnection'
 import { createCookieRefresh } from './cookieRefresh'
+import { CookiePreviewService } from './cookiePreview'
+import { activateConfirmedCookie } from './activateCookie'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -104,8 +106,13 @@ const startService = async (existingServer?: Server) => {
 		const activeSchedule = schedule
 		schedule.configure({ subscriptions: subscriptionsTimer,
 			videos: videosTimer })
+		const cookiePreviews = new CookiePreviewService(db)
 		const handler = createDashboardHandler(db, jobs, {
 			config,
+			cookiePreviews,
+			cookieStatus: () => cookieStore.status(),
+			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
+				config, cookieStore, cookiePreviews, candidateId, previewId),
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),
 			add: (id, backlog) =>
 				addManualChannel(CHANNELS_FILE, config, id, backlog),
