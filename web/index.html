@@ -70,6 +70,21 @@
       </div>
       <p id="filter-label" class="filter-label" hidden></p>
       <section id="settings-panel" hidden>
+        <h2 data-text="connectionTitle"></h2><p id="connection-status" role="status"></p>
+        <p id="connection-warning"></p>
+        <div id="cookie-connect">
+          <p data-text="cookieHelp"></p>
+          <label><span data-text="cookiePaste"></span><textarea id="cookie-input" rows="4" autocomplete="off" maxlength="262144"></textarea></label>
+          <label><span data-text="cookieFile"></span><input id="cookie-file" type="file" accept=".txt,.json,text/plain,application/json"></label>
+          <button id="cookie-inspect" class="outline" type="button" data-text="cookieInspect"></button>
+          <div id="cookie-profiles" hidden><label><span data-text="cookieProfile"></span><select id="cookie-profile"></select></label>
+            <button id="cookie-compare" class="outline" type="button" data-text="cookieCompare"></button></div>
+          <div id="cookie-review" hidden><pre id="cookie-details"></pre>
+            <button id="cookie-activate" class="primary" type="button" data-text="cookieActivate"></button></div>
+        </div>
+        <div id="manual-switch" hidden><button id="manual-preview" class="outline" type="button" data-text="manualPreview"></button>
+          <div id="manual-review" hidden><pre id="manual-details"></pre>
+            <button id="manual-apply" class="primary" type="button" data-text="manualApply"></button></div></div>
         <h2 data-text="emailSettings"></h2><p data-text="emailSettingsHelp"></p>
         <form id="email-settings-form" class="settings-form">
           <label><span data-text="smtpHost"></span><input id="smtp-host" required maxlength="253"></label>

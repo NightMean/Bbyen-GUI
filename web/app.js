@@ -3,7 +3,7 @@
   let text
   try { text = await (await fetch('/en.json')).json() } catch { return }
   document.querySelectorAll('[data-text]').forEach(el => { el.textContent = text[el.dataset.text] })
-  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null }
+  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null, cookieCandidate: null, cookiePreview: null, manualPreview: null, cookieEpoch: 0 }
   const size = 30
   const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const today = new Date()
@@ -49,6 +49,11 @@
     localStorage.setItem('bbyen-layout', layout)
   }
   const setPage = page => {
+    state.cookieEpoch++
+    if (state.cookieCandidate) void post('/api/cookies/cancel', { candidateId: state.cookieCandidate }).catch(() => {})
+    state.cookieCandidate = null; state.cookiePreview = null; state.manualPreview = null
+    $('cookie-input').value = ''; $('cookie-file').value = ''
+    $('cookie-profiles').hidden = true; $('cookie-review').hidden = true; $('manual-review').hidden = true
     state.page = page; state.offset = 0
     $('videos-nav').classList.toggle('active', page === 'videos')
     $('channels-nav').classList.toggle('active', page === 'channels')
@@ -79,6 +84,18 @@
     if (!value || !Number.isFinite(Date.parse(value))) return text.unknownDate
     return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   }
+  const renderConnection = connection => {
+    const active = connection.mode === 'cookie'
+    $('connection-status').textContent = active ? `${text.connectionCookie}: ${connection.connection?.name || ''}` : connection.mode === 'youtube' ? text.connectionApi : text.connectionManual
+    const warnings = []
+    if (connection.connection?.stale) warnings.push(text.connectionStale)
+    if (connection.cleanupPending) warnings.push(text.cleanupPending)
+    if (connection.environmentCookie) warnings.push(text.environmentCookie)
+    $('connection-warning').textContent = warnings.join(' ')
+    $('cookie-connect').hidden = connection.mode === 'youtube' || connection.cleanupPending
+    $('manual-switch').hidden = !active
+  }
+  const describeChannels = (heading, channels) => `${heading} (${channels.length})\n${channels.map(channel => `  ${channel.title || channel.channelId}${channel.unconfirmed ? ` · ${text.cookieUnconfirmed}` : ''}`).join('\n')}`
   const renderVideo = (video, channels) => {
     const row = element('article', 'result')
     const videoId = /^[a-zA-Z0-9_-]+$/.test(video.videoId) ? video.videoId : ''
@@ -140,8 +157,9 @@
     $('results').replaceChildren(element('p', 'empty', text.loading))
     try {
       if (state.page === 'settings') {
-        const [data, history, schedule, general] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule'), request('/api/settings')])
+        const [data, history, schedule, general, connection] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule'), request('/api/settings'), request('/api/cookies/status')])
         if (sequence !== state.sequence) return
+        renderConnection(connection)
         const email = data.settings
         $('smtp-host').value = email.host; $('smtp-port').value = email.port
         $('smtp-secure').checked = email.secure
@@ -340,6 +358,80 @@
       $('import-review').hidden = true; $('import-file').value = ''; state.importPreview = null; showNotice(text.importSuccess)
     } catch { $('import-review').hidden = true; state.importPreview = null; showNotice(text.importApplyError) }
     finally { $('import-apply').disabled = false }
+  })
+  $('cookie-inspect').addEventListener('click', async () => {
+    const button = $('cookie-inspect'); button.disabled = true
+    const epoch = ++state.cookieEpoch
+    if (state.cookieCandidate) void post('/api/cookies/cancel', { candidateId: state.cookieCandidate }).catch(() => {})
+    state.cookieCandidate = null; state.cookiePreview = null
+    $('cookie-profiles').hidden = true; $('cookie-review').hidden = true
+    try {
+      const file = $('cookie-file').files[0]
+      if (file && file.size > 256 * 1024) throw new Error('file too large')
+      const cookie = file ? await file.text() : $('cookie-input').value
+      $('cookie-input').value = ''; $('cookie-file').value = ''
+      const result = await post('/api/cookies/inspect', { cookie })
+      if (epoch !== state.cookieEpoch || state.page !== 'settings') {
+        void post('/api/cookies/cancel', { candidateId: result.candidateId }).catch(() => {}); return
+      }
+      state.cookieCandidate = result.candidateId
+      $('cookie-profile').replaceChildren()
+      for (const profile of result.profiles) {
+        const option = element('option', '', `${profile.name}${profile.handle ? ` · ${profile.handle}` : ''}`)
+        option.value = profile.profileId; option.disabled = !profile.selectable; option.selected = profile.selected && profile.selectable
+        $('cookie-profile').append(option)
+      }
+      $('cookie-profiles').hidden = false; showNotice('')
+    } catch { if (epoch === state.cookieEpoch) showNotice(text.cookieError) }
+    finally { $('cookie-input').value = ''; $('cookie-file').value = ''; button.disabled = false }
+  })
+  $('cookie-profile').addEventListener('change', () => { state.cookieEpoch++; state.cookiePreview = null; $('cookie-review').hidden = true })
+  $('cookie-compare').addEventListener('click', async () => {
+    const candidateId = state.cookieCandidate, profileId = $('cookie-profile').value, epoch = state.cookieEpoch
+    if (!candidateId || !profileId) return
+    $('cookie-compare').disabled = true; $('cookie-review').hidden = true; state.cookiePreview = null
+    try {
+      const preview = await post('/api/cookies/compare', { candidateId, profileId })
+      if (epoch !== state.cookieEpoch) return
+      state.cookiePreview = preview.previewId
+      $('cookie-details').textContent = [describeChannels(text.cookieStart, preview.start), describeChannels(text.cookieStop, preview.stop), describeChannels(text.cookieContinue, preview.continuing)].join('\n\n')
+      $('cookie-review').hidden = false; showNotice('')
+    } catch { if (epoch === state.cookieEpoch) showNotice(text.cookieError) }
+    finally { $('cookie-compare').disabled = false }
+  })
+  $('cookie-activate').addEventListener('click', async () => {
+    if (!state.cookieCandidate || !state.cookiePreview) return
+    $('cookie-activate').disabled = true
+    try {
+      await post('/api/cookies/activate', { candidateId: state.cookieCandidate, previewId: state.cookiePreview })
+      state.cookieCandidate = null; state.cookiePreview = null; $('cookie-profiles').hidden = true; $('cookie-review').hidden = true
+      try { renderConnection(await request('/api/cookies/status')) } catch { showNotice(text.loadError); return }
+      showNotice(text.cookieConnected)
+    } catch { $('cookie-review').hidden = true; state.cookiePreview = null; showNotice(text.cookieError) }
+    finally { $('cookie-activate').disabled = false }
+  })
+  $('manual-preview').addEventListener('click', async () => {
+    const epoch = state.cookieEpoch
+    $('manual-preview').disabled = true; $('manual-review').hidden = true
+    try {
+      const preview = await post('/api/cookies/manual/preview', {})
+      if (epoch !== state.cookieEpoch) return
+      state.manualPreview = preview.previewId
+      $('manual-details').textContent = [text.manualHelp, preview.legacyCookieFile ? text.manualFileDelete : '', text.manualExternal, describeChannels(text.cookieContinue, preview.continuing)].filter(Boolean).join('\n\n')
+      $('manual-review').hidden = false; showNotice('')
+    } catch { showNotice(text.cookieError) }
+    finally { $('manual-preview').disabled = false }
+  })
+  $('manual-apply').addEventListener('click', async () => {
+    if (!state.manualPreview) return
+    $('manual-apply').disabled = true
+    try {
+      const result = await post('/api/cookies/manual/apply', { previewId: state.manualPreview })
+      state.manualPreview = null; $('manual-review').hidden = true
+      try { renderConnection(await request('/api/cookies/status')) } catch { showNotice(text.loadError); return }
+      showNotice(result.cleanupPending ? text.manualPending : text.manualDone)
+    } catch { state.manualPreview = null; $('manual-review').hidden = true; showNotice(text.cookieError) }
+    finally { $('manual-apply').disabled = false }
   })
   $('backlog').addEventListener('change', () => { $('backlog-count-label').hidden = $('backlog').value !== 'newest' })
   $('confirm-add').addEventListener('click', async () => {
