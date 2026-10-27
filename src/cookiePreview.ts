@@ -86,7 +86,8 @@ export class CookiePreviewService {
 	private async compareSnapshot(
 		profileId: string, channels: ChannelBellState[],
 	) {
-		if (!Array.isArray(channels) || channels.length > 10_000) {
+		if (!Array.isArray(channels) || !channels.length ||
+				channels.length > 10_000) {
 			throw new Error('Cookie snapshot is invalid.')
 		}
 		const seen = new Set<string>()

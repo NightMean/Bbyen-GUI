@@ -22,7 +22,8 @@ export class CookieConnectionStore {
 
 	async activate(cookieHeader: string, profile: ResolvedCookieProfile,
 		channels: ChannelBellState[]): Promise<string> {
-		if (typeof cookieHeader !== 'string' || cookieHeader.length > 256 * 1024 ||
+		if (!Array.isArray(channels) || !channels.length ||
+				typeof cookieHeader !== 'string' || cookieHeader.length > 256 * 1024 ||
 				!extractSapisidFromCookie(cookieHeader) || !profile.selectable ||
 				!profile.channelId || !isChannelId(profile.channelId) ||
 				typeof profile.name !== 'string' || profile.name.length > 200 ||
@@ -32,6 +33,8 @@ export class CookieConnectionStore {
 		}
 		const generation = randomUUID()
 		const now = new Date().toISOString()
+		const stale = channels.some(channel =>
+			channel.notificationState === 'unknown')
 		await this.db.exec('BEGIN IMMEDIATE')
 		try {
 			await reconcileCookieSnapshot(this.db, {
@@ -43,11 +46,12 @@ export class CookieConnectionStore {
 					handle, selected, stale, lastSuccessfulAt)
 				VALUES (1, ${generation}, ${cookieHeader}, ${profile.channelId},
 					${profile.pageId ?? null}, ${profile.name}, ${profile.handle ?? null},
-					${profile.selected ? 1 : 0}, 0, ${now})
+					${profile.selected ? 1 : 0}, ${stale ? 1 : 0}, ${now})
 				ON CONFLICT(id) DO UPDATE SET generation=excluded.generation,
 					cookieHeader=excluded.cookieHeader, channelId=excluded.channelId,
 					pageId=excluded.pageId, profileName=excluded.profileName,
-					handle=excluded.handle, selected=excluded.selected, stale=0,
+					handle=excluded.handle, selected=excluded.selected,
+					stale=excluded.stale,
 					lastSuccessfulAt=excluded.lastSuccessfulAt;`)
 			await this.db.exec('COMMIT')
 		} catch (err) {
@@ -74,9 +78,37 @@ export class CookieConnectionStore {
 			lastSuccessfulAt: row.lastSuccessfulAt }
 	}
 
-	async markStale(generation: string): Promise<void> {
-		await this.db.run(SQL`UPDATE cookie_connection SET stale=1
+	async markStale(generation: string): Promise<boolean> {
+		const result = await this.db.run(SQL`UPDATE cookie_connection SET stale=1
 			WHERE id=1 AND generation=${generation};`)
+		return !!result.changes
+	}
+
+	async refresh(
+		generation: string, channels: ChannelBellState[],
+	): Promise<boolean> {
+		if (!Array.isArray(channels) || !channels.length) {
+			throw new Error('An empty cookie snapshot cannot be verified.')
+		}
+		await this.db.exec('BEGIN IMMEDIATE')
+		try {
+			const row = await this.db.get(SQL`SELECT channelId FROM cookie_connection
+				WHERE id=1 AND generation=${generation};`)
+			if (!row) { await this.db.exec('ROLLBACK'); return false }
+			await reconcileCookieSnapshot(this.db, { profileKey: row.channelId,
+				complete: true, channels }, { externalTransaction: true })
+			const stale = channels.some(channel =>
+				channel.notificationState === 'unknown')
+			await this.db.run(SQL`UPDATE cookie_connection SET stale=${stale ? 1 : 0},
+				lastSuccessfulAt=CASE WHEN ${stale ? 1 : 0}=0
+				THEN ${new Date().toISOString()} ELSE lastSuccessfulAt END
+				WHERE id=1 AND generation=${generation};`)
+			await this.db.exec('COMMIT')
+			return true
+		} catch (err) {
+			await this.db.exec('ROLLBACK')
+			throw err
+		}
 	}
 
 	async status() {

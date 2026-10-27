@@ -1,5 +1,8 @@
 <table width="600" cellspacing="0" cellpadding="0" border="0" bgcolor="transparent" align="center" style="max-width: 100%;">
 	<tbody>
+		<% if (cookieStale) { %>
+		<tr><td style="font-family: sans-serif; padding: 12px;"><%= messages.cookieStale %></td></tr>
+		<% } %>
 		<tr>
 			<td>
 				<a href="<%= videoURL %>" width="100%">

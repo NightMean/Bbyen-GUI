@@ -48,6 +48,18 @@ test('pauses video checks until SMTP becomes available', async () => {
 	expect(parseFeedsAndNotify).toHaveBeenCalledTimes(1)
 })
 
+test('uses cookie reconciliation without OAuth credentials', async () => {
+	const refreshCookies = vi.fn().mockResolvedValue(success)
+	const loadAuth = vi.fn()
+	const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+		config: { mode: 'cookie', logging: { emailOnError: false } } as Config,
+		logger, loadMailers: vi.fn().mockResolvedValue(mailers), loadAuth,
+		refreshCookies })
+	expect((await tasks.runSubscriptions()).status).toBe('success')
+	expect(refreshCookies).toHaveBeenCalledTimes(1)
+	expect(loadAuth).not.toHaveBeenCalled()
+})
+
 test('defers quota emails until retries are exhausted', async () => {
 	const notify = vi.fn().mockResolvedValue(undefined)
 	const alerts = { notify, clear: vi.fn().mockResolvedValue(undefined) }

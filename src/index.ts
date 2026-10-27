@@ -32,6 +32,8 @@ import { sendTestEmail } from './emailTest'
 import { SubscriptionImportService } from './subscriptionImportService'
 import { RefreshSchedule, saveRefreshIntervals } from './refreshSchedule'
 import { saveGeneralSettings } from './generalSettings'
+import { CookieConnectionStore } from './cookieConnection'
+import { createCookieRefresh } from './cookieRefresh'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -57,6 +59,12 @@ const startService = async (existingServer?: Server) => {
 		db = await database.init(config.database)
 		const databaseConnection = db
 		await recoverPendingVideoEmails(db)
+		const cookieStore = new CookieConnectionStore(db)
+		const cookieStatus = await cookieStore.status()
+		if (cookieStatus) {
+			config.mode = 'cookie'
+			config.cookieStale = cookieStatus.stale
+		}
 
 		// Reject over-long intervals up front: Node's timer delay is a 32-bit
 		// int, so anything larger silently fires every 1 ms.
@@ -70,8 +78,10 @@ const startService = async (existingServer?: Server) => {
 		await jobs.recoverInterrupted()
 		const alerts = new IncidentReporter(db, logger)
 		await alerts.recoverInterrupted()
+		const refreshCookies = createCookieRefresh({ store: cookieStore,
+			config, alerts, logger })
 		const tasks = createServiceTasks({ db, service, config, logger,
-			initialAuth, alerts,
+			initialAuth, alerts, refreshCookies,
 			retryPendingAlerts: (send, enabled) => alerts.retryPending(send, enabled),
 			reportQuotaDurably: options => alerts.notifyDurable('quota',
 				new Error('API quota retry limit reached.'), options),
@@ -79,7 +89,7 @@ const startService = async (existingServer?: Server) => {
 			loadAuth: () => authorize({ interactive: false }),
 		})
 		const quota = new QuotaRunner({ coordinator: jobs,
-			backoff: new QuotaBackoff(db), enabled: config.mode === 'youtube',
+			backoff: new QuotaBackoff(db), enabled: () => config.mode === 'youtube',
 			alertsEnabled: () => config.logging.emailOnError,
 			work: { subscriptions: tasks.runSubscriptions, videos: tasks.runVideos },
 			rssFallback: tasks.runRssVideos,

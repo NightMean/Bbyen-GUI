@@ -31,6 +31,7 @@ interface TaskDependencies {
 	retryPendingAlerts?: (send: Mailers['sendErrorEmail'], enabled: boolean) =>
 		Promise<void>,
 	reportQuotaDurably?: (options: AlertDeps) => Promise<boolean>,
+	refreshCookies?: (mailers?: Mailers) => Promise<RefreshResult>,
 }
 
 const unavailable = (category: 'auth' | 'other'): RefreshResult => ({
@@ -76,7 +77,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 	const getAuth = async (
 		mailers?: Mailers,
 	): Promise<OAuth2Client | undefined> => {
-		if (deps.config.mode === 'whitelist') return undefined
+		if (deps.config.mode !== 'youtube') return undefined
 		if (auth) return auth
 		try {
 			auth = await deps.loadAuth()
@@ -95,8 +96,12 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 	}
 	const runSubscriptions = async (): Promise<RefreshResult> => {
 		const mailers = await getMailers()
+		if (deps.config.mode === 'cookie') {
+			if (!deps.refreshCookies) return unavailable('other')
+			return deps.refreshCookies(mailers)
+		}
 		const currentAuth = await getAuth(mailers)
-		if (deps.config.mode !== 'whitelist' && !currentAuth) {
+		if (deps.config.mode === 'youtube' && !currentAuth) {
 			return unavailable('auth')
 		}
 		const result = await updateSubscriptions({
@@ -114,7 +119,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		const mailers = await getMailers()
 		if (!mailers) return unavailable('other')
 		const currentAuth = await getAuth(mailers)
-		if (deps.config.mode !== 'whitelist' && !currentAuth) {
+		if (deps.config.mode === 'youtube' && !currentAuth) {
 			return unavailable('auth')
 		}
 		const result = await parseFeedsAndNotify({

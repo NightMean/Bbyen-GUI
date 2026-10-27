@@ -8,6 +8,7 @@ import * as sqlite from 'sqlite'
 import sqlite3 from 'sqlite3'
 import { expect, test } from 'vitest'
 import { init } from './database'
+import { CookieConnectionStore } from './cookieConnection'
 
 test('service startup recovers attempts and records jobs', async () => {
 	const probe = createServer()
@@ -350,6 +351,51 @@ test('first-run setup starts the service without restarting', async () => {
 		expect(imported.whitelistedChannelIds).toEqual([{ id: importedId }])
 		expect(JSON.stringify(imported)).not.toContain('fixture-private')
 		expect(child.exitCode).toBeNull()
+	} finally {
+		child.kill(); await exited
+		await fs.rm(dir, { recursive: true, force: true })
+	}
+}, 25000)
+
+test('restores cookie tracking mode from the persistent database', async () => {
+	const probe = createServer()
+	await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve))
+	const port = (probe.address() as AddressInfo).port
+	await new Promise<void>(resolve => probe.close(() => resolve()))
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-cookie-service-'))
+	const config = JSON.parse(await fs.readFile('config.example.json', 'utf8'))
+	config.mode = 'whitelist'
+	config.database.filename = path.join(dir, 'database.sqlite')
+	config.kickoff = { videos: false, subscriptions: false }
+	await fs.writeFile(path.join(dir, 'config.json'), JSON.stringify(config))
+	await fs.writeFile(path.join(dir, 'channels.json'),
+		JSON.stringify({ whitelistedChannelIds: [] }))
+	const db = await init(config.database)
+	await new CookieConnectionStore(db).activate('SAPISID=synthetic-fixture', {
+		name: 'Profile', selected: true, selectable: true,
+		channelId: 'UC0000000000000000000001',
+	}, [{ channelId: 'UC0000000000000000000002', title: 'Channel',
+		notificationState: 'all', isAllNotifications: true }])
+	await db.close()
+	const child = spawn(process.execPath,
+		['-r', 'ts-node/register/transpile-only', 'src/index.ts'], {
+			env: { ...process.env, CONFIG_DIR: dir,
+				BBYEN_DASHBOARD_PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'],
+		})
+	child.stdout.resume(); child.stderr.resume()
+	const exited = new Promise<void>(resolve =>
+		child.once('exit', () => resolve()))
+	try {
+		const deadline = Date.now() + 15000
+		let result: any
+		while (Date.now() < deadline && child.exitCode === null) {
+			try { result = (await axios.get(`http://127.0.0.1:${port}/api/channels`))
+				.data; break
+			} catch { await new Promise(resolve => setTimeout(resolve, 100)) }
+		}
+		expect(result?.manualMode).toBe(false)
+		expect(result?.channels[0].channelId).toBe('UC0000000000000000000002')
+		expect(JSON.stringify(result)).not.toContain('synthetic-fixture')
 	} finally {
 		child.kill(); await exited
 		await fs.rm(dir, { recursive: true, force: true })

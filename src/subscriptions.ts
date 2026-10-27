@@ -394,7 +394,9 @@ export const updateSubscriptions = async (
 	const alerts = args.alerts ?? defaultAlertReporter
 
 	try {
-		if (args.config.mode === 'whitelist') {
+		if (args.config.mode === 'cookie') {
+			throw new Error('Cookie subscriptions require cookie reconciliation.')
+		} else if (args.config.mode === 'whitelist') {
 			await updateSubscriptionsFromWhitelistNoApi({
 				db: args.db, config: args.config, logger,
 			})

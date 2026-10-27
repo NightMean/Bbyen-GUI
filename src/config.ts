@@ -48,7 +48,8 @@ export type RawChannelEntry = string | {
 
 export interface Config {
 	email: Omit<EmailConfig, 'auth'> & { auth?: Partial<EmailConfig['auth']> },
-	mode: 'youtube' | 'whitelist',
+	mode: 'youtube' | 'whitelist' | 'cookie',
+	cookieStale?: boolean,
 	port: number,
 	database: {
 		filename: string,

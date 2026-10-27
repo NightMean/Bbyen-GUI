@@ -57,6 +57,16 @@ describe('video failure recovery', () => {
 		expect(result).toMatchObject({ status: 'failed', failed: 1, total: 1 })
 	})
 
+	test('marks video emails when cookie data is stale', async () => {
+		const result = await parseFeedsAndNotify({ ...args(), auth: undefined,
+			config: { ...config, mode: 'cookie', cookieStale: true } } as never)
+		expect(result.status).toBe('success')
+		expect(list).not.toHaveBeenCalled()
+		expect(sendVideoEmail).toHaveBeenCalledWith(expect.objectContaining({
+			cookieStale: true,
+		}))
+	})
+
 	test('reports partial success when a channel feed fails', async () => {
 		await db.run(`INSERT INTO subscriptions
 			(channelId,channelTitle,channelThumbnail)

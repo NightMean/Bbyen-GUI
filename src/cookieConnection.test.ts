@@ -25,8 +25,12 @@ test('stores the connection and tracking snapshot atomically', async () => {
 			profile, channels)
 		await store.markStale(old)
 		expect((await store.status())?.stale).toBe(false)
+		expect(await store.refresh(old, channels)).toBe(false)
+		await expect(store.refresh(next, [])).rejects.toThrow(/empty/i)
 		await store.markStale(next)
 		expect((await store.status())?.stale).toBe(true)
+		expect(await store.refresh(next, channels)).toBe(true)
+		expect((await store.status())?.stale).toBe(false)
 		expect(await db.get('SELECT deleted FROM subscriptions WHERE channelId=?',
 			channel)).toEqual({ deleted: 0 })
 	} finally { await db.close() }

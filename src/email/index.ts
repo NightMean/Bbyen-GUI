@@ -6,6 +6,7 @@ import nodemailer from 'nodemailer'
 import SMTPTransport from 'nodemailer/lib/smtp-transport'
 
 import { EmailConfig } from '../config'
+import messages from './messages.en.json'
 
 export type SendVideoEmail =
 	(props: ISendVideoEmail) => Promise<SMTPTransport.SentMessageInfo>
@@ -28,6 +29,7 @@ export interface ISendVideoEmail {
 	videoThumbnail: string,
 	videoTitle: string,
 	videoURL: string,
+	cookieStale?: boolean,
 }
 
 export interface ISendErrorEmail {
@@ -45,7 +47,8 @@ export const init = async (config: EmailConfig) => {
 
 	// Send an email about a new upload
 	// Has the video thumbnail, title, length, etc.
-	const sendVideoEmail = ({ channelTitle, date, ...rest }: ISendVideoEmail) =>
+	const sendVideoEmail = ({ channelTitle, date, cookieStale = false,
+		...rest }: ISendVideoEmail) =>
 		transporter.sendMail({
 			from: config.sendingContact,
 			to: config.destination,
@@ -54,7 +57,7 @@ export const init = async (config: EmailConfig) => {
 			headers: {
 				'Date': date.toUTCString(),
 			},
-			html: emailTemplate({ channelTitle, ...rest }),
+			html: emailTemplate({ channelTitle, cookieStale, messages, ...rest }),
 		})
 
 	// Notify about an error with the software

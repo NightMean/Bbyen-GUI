@@ -41,6 +41,13 @@ test('records SMTP test outcomes without replay', async () => {
 			sendingContact: 'sender@example.test', destination: 'to@example.test' })
 		expect(await sendTestEmail(db, email.sendTestEmail)).toBe('sent')
 		expect(messages[0]).toContain('BBYEN test email')
+		await email.sendVideoEmail({ channelId: 'UC0000000000000000000001',
+			channelTitle: 'Channel', channelThumbnail: '', date: new Date(),
+			isLiveStreamOrPremere: false, videoDuration: '', videoId: 'video',
+			videoThumbnail: '', videoTitle: 'Video',
+			videoURL: 'https://www.youtube.com/watch?v=video', cookieStale: true })
+		expect(messages[1].replace(/=\n/g, ''))
+			.toContain('last confirmed channel settings')
 		expect(await sendTestEmail(db, async () => { throw new Error('fixture') }))
 			.toBe('uncertain')
 		const rows = await db.all(

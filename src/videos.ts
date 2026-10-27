@@ -107,7 +107,7 @@ const getChannelsVideos = async ({
 	const videosSent = new Set((await db.all(SQL`
 		SELECT videoId FROM videos WHERE channelId=${channelId};
 	`)).map(v => v.videoId))
-	const useApi = config.mode !== 'whitelist' && !rssOnly
+	const useApi = config.mode === 'youtube' && !rssOnly
 	const limit = Math.min(metadataBudget.remaining,
 		MAX_METADATA_ENRICHMENT_PER_CHANNEL)
 	const pendingMetadata = useApi ? new Set((await db.all(SQL`
@@ -373,6 +373,7 @@ const getChannelsVideos = async ({
 						videoDuration: videoDuration
 							? formatDuration(videoDuration) : '',
 						videoURL: `https://www.youtube.com/watch?v=${videoId}`,
+						cookieStale: config.mode === 'cookie' && !!config.cookieStale,
 					})
 				} catch (err) {
 					const code = (err as { responseCode?: unknown })?.responseCode
@@ -457,7 +458,7 @@ export const parseFeedsAndNotify = async (
 	try {
 
 		logger.info('Checking for new videos...')
-		if (rest.config.mode !== 'whitelist' && !rest.rssOnly && !rest.auth) {
+		if (rest.config.mode === 'youtube' && !rest.rssOnly && !rest.auth) {
 			throw new Error('YouTube authorization is required for API video checks.')
 		}
 		await pruneVideoObservations(db, rest.config.videoRetentionDays ?? null)
