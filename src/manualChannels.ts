@@ -4,12 +4,15 @@ import {
 import { assertChannelId } from './lib/channelId'
 import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
 import { updateJsonFile } from './lib/jsonFile'
+import { BacklogPolicy } from './initialBacklog'
 
 /** Preserve other writers' changes and settings when adding a channel. */
 export const addManualChannel = async (
 	filename: string, config: Config, channelId: string,
+	initialBacklog?: BacklogPolicy,
 ): Promise<void> => {
-	return updateManualChannel(filename, config, channelId, { type: 'add' })
+	return updateManualChannel(filename, config, channelId,
+		{ type: 'add', initialBacklog })
 }
 
 export const setManualChannelNotify = async (
@@ -31,7 +34,8 @@ export const removeManualChannel = async (
 	return updateManualChannel(filename, config, channelId, { type: 'remove' })
 }
 
-type ManualChange = { type: 'add' } | { type: 'remove' } |
+type ManualChange = { type: 'add', initialBacklog?: BacklogPolicy } |
+	{ type: 'remove' } |
 	{ type: 'notify', notify: boolean }
 
 const updateManualChannel = async (
@@ -66,7 +70,10 @@ const updateManualChannel = async (
 				]),
 			}
 		}
-		const update = change.type === 'add' ? { id: channelId } :
+		const update = change.type === 'add' ? { id: channelId,
+			...(change.initialBacklog
+				? { initialBacklog: change.initialBacklog } : {}),
+		} :
 			{ id: channelId, notify: change.notify }
 		return { ...current,
 			whitelistedChannelIds: mergeChannelEntries([...whitelist, update]),

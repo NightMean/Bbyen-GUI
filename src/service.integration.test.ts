@@ -75,12 +75,14 @@ test('service startup recovers attempts and records jobs', async () => {
 			`http://127.0.0.1:${port}/api/channels/resolve`, { input: channelId })
 		expect(preview.data.channelId).toBe(channelId)
 		const added = await axios.post(`http://127.0.0.1:${port}/api/channels`,
-			{ channelId })
+			{ channelId, initialBacklog: { mode: 'newest', count: 3 } })
 		expect(added.status).toBe(202)
 		const saved = JSON.parse(await fs.readFile(
 			path.join(directory, 'channels.json'), 'utf8'))
-		expect(saved.whitelistedChannelIds).toEqual([{ id: channelId }])
-		expect(saved.manualChannelIds).toEqual([{ id: channelId }])
+		const entry = { id: channelId,
+			initialBacklog: { mode: 'newest', count: 3 } }
+		expect(saved.whitelistedChannelIds).toEqual([entry])
+		expect(saved.manualChannelIds).toEqual([entry])
 	} finally {
 		child.kill()
 		await exited

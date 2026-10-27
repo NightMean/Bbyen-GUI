@@ -82,3 +82,18 @@ test('retains channel preferences after removal and re-addition', async () => {
 			initialBacklog: { mode: 'newest', count: 2 } })
 	} finally { await fs.rm(directory, { recursive: true, force: true }) }
 })
+
+test('saves an explicit first-scan preference', async () => {
+	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-backlog-'))
+	const file = path.join(directory, 'channels.json')
+	const id = 'UCabcdefghijklmnopqrstuv'
+	const config = { mode: 'whitelist' } as Config
+	try {
+		await fs.writeFile(file, '{}')
+		await addManualChannel(file, config, id, { mode: 'newest', count: 3 })
+		expect(config.channelSettingsById?.get(id)?.initialBacklog)
+			.toEqual({ mode: 'newest', count: 3 })
+		const saved = JSON.parse(await fs.readFile(file, 'utf8'))
+		expect(saved.whitelistedChannelIds[0].initialBacklog.count).toBe(3)
+	} finally { await fs.rm(directory, { recursive: true, force: true }) }
+})

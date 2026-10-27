@@ -76,6 +76,8 @@ channels, add or remove a manual channel, mute its emails, or request a refresh.
 The dashboard resolves channel inputs before adding them and schedules a
 subscription refresh after saving. Muting does not replay missed videos when
 the channel is unmuted.
+When adding a channel, use the default first-scan policy or choose to skip,
+email all, or email only the newest specified number of existing videos.
 Removing a manual channel preserves its video history and stores its channel
 preferences in `savedChannelSettings` for use if it is added again.
 Manual refresh requests use the same scheduler and quota handling as timed

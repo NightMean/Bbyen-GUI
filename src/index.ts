@@ -65,7 +65,8 @@ const main = async () => {
 			warn: message => logger.warn(message),
 		})
 		const server = createDashboardServer(db, jobs, {
-			add: id => addManualChannel(CHANNELS_FILE, config, id),
+			add: (id, backlog) =>
+				addManualChannel(CHANNELS_FILE, config, id, backlog),
 			resolve: resolveChannelId,
 			setNotify: (id, notify) =>
 				setManualChannelNotify(CHANNELS_FILE, config, id, notify),

@@ -71,6 +71,10 @@ test('validates writes and schedules refresh after saving', async () => {
 		const invalid = await axios.post(`${base}/api/channels`,
 			{ channelId: 'invalid' }, { validateStatus: () => true })
 		expect(invalid.status).toBe(400)
+		const invalidBacklog = await axios.post(`${base}/api/channels`,
+			{ channelId: id, initialBacklog: { mode: 'newest', count: 0 } },
+			{ validateStatus: () => true })
+		expect(invalidBacklog.status).toBe(400)
 		expect(calls).toEqual([])
 		const result = await axios.post(`${base}/api/channels`, { channelId: id })
 		expect(result.status).toBe(202)

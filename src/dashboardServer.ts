@@ -6,9 +6,10 @@ import * as sqlite from 'sqlite'
 import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
 import { listDashboardVideos, parseVideoQuery } from './dashboardVideos'
+import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 
 interface ChannelActions {
-	add: (channelId: string) => Promise<void>,
+	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
 	resolve: (input: string) => Promise<string>,
 	refresh: (kind: RefreshKind) => void,
 	setNotify: (channelId: string, notify: boolean) => Promise<void>,
@@ -69,7 +70,7 @@ export const createDashboardServer = (
 		})
 		request.on('end', () => {
 			let data: { channelId?: unknown, input?: unknown, kind?: unknown,
-				notify?: unknown } = {}
+				notify?: unknown, initialBacklog?: unknown } = {}
 			try { data = JSON.parse(body) ?? {} } catch { /* invalid JSON */ }
 			if (url.pathname === '/api/refresh') {
 				if (data.kind !== 'subscriptions' && data.kind !== 'videos') {
@@ -125,7 +126,16 @@ export const createDashboardServer = (
 					}, () => send(500, { error: 'Could not remove the channel.' }))
 				return
 			}
-			void jobs.maintenance(randomUUID(), () => actions.add(id as string))
+			let backlog: BacklogPolicy | undefined
+			try {
+				if (data.initialBacklog !== undefined) {
+					backlog = parseBacklogPolicy(data.initialBacklog, 'initialBacklog')
+				}
+			} catch {
+				send(400, { error: 'Invalid initial video preference.' })
+				return
+			}
+			void jobs.maintenance(randomUUID(), () => actions.add(id, backlog))
 				.then(() => {
 					actions.refresh('subscriptions')
 					send(202, { channelId: id })
