@@ -22,6 +22,16 @@ describe('classifyError', () => {
 			errors: [ { reason: 'rateLimitExceeded' } ],
 		})).toBe('quota')
 	})
+	test('recognizes HTTP 429 and nested Google quota reasons', () => {
+		expect(classifyError({ response: { status: 429 } })).toBe('quota')
+		expect(classifyError({ response: { status: 403, data: { error: {
+			errors: [{ reason: 'quotaExceeded' }],
+		} } } })).toBe('quota')
+	})
+	test('malformed error fields do not throw', () => {
+		expect(classifyError({ message: 42, errors: [{ reason: {} }] }))
+			.toBe('other')
+	})
 	test('500 status is other', () => {
 		expect(classifyError({ response: { status: 500 } })).toBe('other')
 	})

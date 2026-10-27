@@ -217,8 +217,13 @@ They omit raw exception text and stacks, which may contain credentials.
 Unsent alerts are retried with backoff up to five attempts; exhausted alerts
 remain in SQLite. After an interrupted alert send, a retry may repeat an email
 whose acceptance was not acknowledged. A dashboard view of incidents and a
-manual retry action are not yet available. API quota alerts currently fire on
-the first failure; the planned delayed API retry schedule is not yet wired.
+manual retry action are not yet available. API quota alerts fire once after
+retries at 30 minutes, one hour, two hours, and four hours have failed.
+Further retries continue at four-hour intervals without
+repeating the alert. Retry state survives restart; the scheduler checks for
+due retries approximately once per minute.
+API-mode video checks are deferred during their quota backoff; an independent
+RSS fallback for that period is not yet available.
 
 The service stores refresh run times, outcomes, and bounded channel IDs in
 SQLite. Runs still marked in progress when the service starts are recorded as

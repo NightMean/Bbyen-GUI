@@ -30,7 +30,9 @@ const sanitizeResult = (value: unknown): RefreshResult => {
 		...(safeIds.length !== ids.length || safeIds.length > MAX_FAILED_CHANNELS ||
 			data.failedChannelsTruncated === true
 			? { failedChannelsTruncated: true } : {}),
-		...(category ? { errorCategory: category } : {}) }
+		...(category ? { errorCategory: category } : {}),
+		...(typeof data.apiChecked === 'boolean'
+			? { apiChecked: data.apiChecked } : {}) }
 }
 
 export class RefreshCoordinator {
@@ -64,7 +66,7 @@ export class RefreshCoordinator {
 			SET status='interrupted', finishedAt=${now} WHERE status='running';`))
 	}
 
-	maintenance(key: string, work: () => Promise<void>): Promise<void> {
+	maintenance<T>(key: string, work: () => Promise<T>): Promise<T> {
 		return this.jobs.run(`maintenance:${key}`, work)
 	}
 

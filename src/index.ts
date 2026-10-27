@@ -9,6 +9,8 @@ import setIntervalInstant from './lib/setIntervalInstant'
 import { RefreshCoordinator } from './refreshCoordinator'
 import { createServiceTasks } from './serviceTasks'
 import { IncidentReporter } from './incidentReporter'
+import { QuotaBackoff } from './quotaBackoff'
+import { QuotaRunner } from './quotaRunner'
 import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
 
@@ -42,18 +44,27 @@ const main = async () => {
 		const tasks = createServiceTasks({ db, service, config, logger,
 			initialAuth, alerts,
 			retryPendingAlerts: (send, enabled) => alerts.retryPending(send, enabled),
+			reportQuotaDurably: options => alerts.notifyDurable('quota',
+				new Error('API quota retry limit reached.'), options),
 			loadMailers: async () => mailer.init(await loadEmailConfig()),
 			loadAuth: () => authorize({ interactive: false }),
 		})
+		const quota = new QuotaRunner({ coordinator: jobs,
+			backoff: new QuotaBackoff(db), enabled: config.mode === 'youtube',
+			alertsEnabled: () => config.logging.emailOnError,
+			work: { subscriptions: tasks.runSubscriptions, videos: tasks.runVideos },
+			reportQuota: tasks.reportQuota, clearQuota: tasks.clearQuota,
+			warn: message => logger.warn(message),
+		})
 		setIntervalInstant(
-			() => jobs.run('subscriptions', tasks.runSubscriptions)
+			() => quota.run('subscriptions')
 				.catch(() => logger.error('Subscription refresh failed unexpectedly.')),
 			subscriptionsTimer,
 			config.kickoff.subscriptions,
 		)
 
 		setIntervalInstant(
-			() => jobs.run('videos', tasks.runVideos)
+			() => quota.run('videos')
 				.catch(() => logger.error('Video refresh failed unexpectedly.')),
 			videosTimer,
 			config.kickoff.videos,
@@ -66,6 +77,11 @@ const main = async () => {
 				.catch(() => logger.warn('Could not retry incident alerts.')),
 			60_000,
 			false,
+		)
+		setIntervalInstant(
+			() => quota.tick().catch(() => logger.warn('Quota retry check failed.')),
+			60_000,
+			true,
 		)
 
 	} catch {

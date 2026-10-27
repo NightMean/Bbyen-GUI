@@ -398,12 +398,14 @@ export const parseFeedsAndNotify = async (
 	let failed = 0
 	let activeChannel: string | undefined
 	let category: ErrorCategory | undefined
+	let checkedYouTube = false
 	const failedChannels: string[] = []
 	const result = (): RefreshResult => ({
 		status: failed ? succeeded ? 'partial' : 'failed' : 'success',
 		total, succeeded, failed,
 		skipped: total === null ? 0 : total - succeeded - failed,
-		failedChannels, ...(category ? { errorCategory: category } : {}),
+		failedChannels, apiChecked: checkedYouTube,
+		...(category ? { errorCategory: category } : {}),
 	})
 
 	try {
@@ -435,7 +437,6 @@ export const parseFeedsAndNotify = async (
 		`)
 		total = channels.length
 
-		let checkedYouTube = false
 		for (const [i, channel] of channels.entries()) {
 			activeChannel = channel.channelId
 			logger.verbose([

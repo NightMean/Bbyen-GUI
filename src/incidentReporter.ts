@@ -60,6 +60,12 @@ export class IncidentReporter {
 	async notify(
 		category: ErrorCategory, err: unknown, deps: AlertDeps,
 	): Promise<void> {
+		await this.notifyDurable(category, err, deps)
+	}
+
+	async notifyDurable(
+		category: ErrorCategory, err: unknown, deps: AlertDeps,
+	): Promise<boolean> {
 		const source = SOURCES.includes(deps.source as IncidentSource)
 			? deps.source as IncidentSource : 'service'
 		const channelId = deps.channelId && isChannelId(deps.channelId)
@@ -73,9 +79,11 @@ export class IncidentReporter {
 				this.warn('Could not log the incident.')
 			}
 			if (deps.emailOnError) await this.send(incident, deps.sendErrorEmail)
+			return true
 		} catch {
 			this.warn('Could not record an incident; using fallback alerts.')
 			await notifyError(category, err, deps)
+			return false
 		}
 	}
 

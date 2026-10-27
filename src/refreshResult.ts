@@ -9,4 +9,5 @@ export interface RefreshResult {
 	failedChannels: string[],
 	failedChannelsTruncated?: boolean,
 	errorCategory?: ErrorCategory,
+	apiChecked?: boolean,
 }

@@ -410,7 +410,9 @@ export const updateSubscriptions = async (
 			await alerts.clear([ 'auth', 'quota' ], 'subscriptions')
 		}
 		return { status: 'success', total: 1, succeeded: 1, failed: 0,
-			skipped: 0, failedChannels: [] }
+			skipped: 0, failedChannels: [], apiChecked: args.config.mode === 'youtube'
+				&& (!!args.config.emailSelectionPolicy ||
+					!Array.isArray(args.config.whitelistedChannelIds)) }
 
 	} catch (err) {
 		await alerts.notify(classifyError(err), err, {

@@ -47,3 +47,23 @@ test('pauses video checks until SMTP becomes available', async () => {
 	expect((await tasks.runVideos()).status).toBe('success')
 	expect(parseFeedsAndNotify).toHaveBeenCalledTimes(1)
 })
+
+test('defers quota emails until retries are exhausted', async () => {
+	const notify = vi.fn().mockResolvedValue(undefined)
+	const alerts = { notify, clear: vi.fn().mockResolvedValue(undefined) }
+	vi.mocked(updateSubscriptions).mockImplementation(async args => {
+		await args.alerts!.notify('quota', new Error('fixture'), {
+			source: 'subscriptions', emailOnError: true, logger,
+			sendErrorEmail: mailers.sendErrorEmail,
+		})
+		return { ...authFailure, errorCategory: 'quota' }
+	})
+	const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+		config: { mode: 'youtube', logging: { emailOnError: true } } as Config,
+		logger, alerts, loadMailers: vi.fn().mockResolvedValue(mailers),
+		loadAuth: vi.fn().mockResolvedValue({}) })
+	await tasks.runSubscriptions()
+	expect(notify.mock.calls[0][2].emailOnError).toBe(false)
+	await tasks.reportQuota()
+	expect(notify.mock.calls[1][2].emailOnError).toBe(true)
+})

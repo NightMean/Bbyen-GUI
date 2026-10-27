@@ -5,7 +5,8 @@ const AUTH_REASONS = [
 ]
 const QUOTA_REASONS = [
 	'quotaexceeded', 'ratelimitexceeded', 'dailylimitexceeded',
-	'userratelimitexceeded',
+	'userratelimitexceeded', 'quota exceeded', 'rate limit exceeded',
+	'resource_exhausted',
 ]
 
 // Classify an unknown thrown value into a coarse category so the alerting
@@ -17,24 +18,32 @@ export const classifyError = (err: unknown): ErrorCategory => {
 	}
 
 	const anyErr = err as {
-		code?: number | string,
-		response?: { status?: number },
-		errors?: Array<{ reason?: string }>,
-		message?: string,
+		code?: unknown,
+		response?: { status?: unknown, data?: { error?: {
+			errors?: unknown, message?: unknown, status?: unknown,
+		} } },
+		errors?: unknown,
+		message?: unknown,
 	}
 
 	const status = anyErr.response?.status ??
 		(typeof anyErr.code === 'number' ? anyErr.code : undefined)
-	const reason = anyErr.errors?.[0]?.reason?.toLowerCase() ?? ''
-	const message = anyErr.message?.toLowerCase() ?? ''
+	const nested = anyErr.response?.data?.error
+	const reasons = (value: unknown): string[] => Array.isArray(value)
+		? value.slice(0, 10).map(item =>
+			typeof item?.reason === 'string' ? item.reason.toLowerCase() : '') : []
+	const text = [anyErr.message, nested?.message, nested?.status,
+		...reasons(anyErr.errors), ...reasons(nested?.errors)]
+		.filter((value): value is string => typeof value === 'string')
+		.map(value => value.toLowerCase())
 
 	const mentions = (list: string[]) =>
-		list.some(needle => reason.includes(needle) || message.includes(needle))
+		list.some(needle => text.some(value => value.includes(needle)))
 
 	if (status === 401 || mentions(AUTH_REASONS)) {
 		return 'auth'
 	}
-	if (status === 403 && mentions(QUOTA_REASONS)) {
+	if (status === 429 || (status === 403 && mentions(QUOTA_REASONS))) {
 		return 'quota'
 	}
 	return 'other'

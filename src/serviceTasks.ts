@@ -3,7 +3,9 @@ import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
 import { Config } from './config'
 import { ISendErrorEmail, SendVideoEmail } from './email'
-import { AlertReporter, defaultAlertReporter } from './lib/alertState'
+import {
+	AlertDeps, AlertReporter, defaultAlertReporter,
+} from './lib/alertState'
 import { RefreshResult } from './refreshResult'
 import { updateSubscriptions } from './subscriptions'
 import { parseFeedsAndNotify } from './videos'
@@ -28,6 +30,7 @@ interface TaskDependencies {
 	alerts?: AlertReporter,
 	retryPendingAlerts?: (send: Mailers['sendErrorEmail'], enabled: boolean) =>
 		Promise<void>,
+	reportQuotaDurably?: (options: AlertDeps) => Promise<boolean>,
 }
 
 const unavailable = (category: 'auth' | 'other'): RefreshResult => ({
@@ -40,6 +43,12 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 	let auth: OAuth2Client | undefined = deps.initialAuth
 	let smtpAvailable: boolean | undefined
 	const alerts = deps.alerts ?? defaultAlertReporter
+	const jobAlerts: AlertReporter = {
+		notify: (category, err, options) => alerts.notify(category, err,
+			category === 'quota' ? { ...options, emailOnError: false } : options),
+		clear: (categories, source, channelId) =>
+			alerts.clear(categories, source, channelId),
+	}
 	const missingAlert = async (): Promise<never> => {
 		throw new Error('SMTP configuration is unavailable.')
 	}
@@ -94,7 +103,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 			db: deps.db, service: deps.service, auth: currentAuth,
 			config: deps.config,
 			sendErrorEmail: mailers?.sendErrorEmail ?? missingAlert,
-			alerts,
+			alerts: jobAlerts,
 		})
 		if (result.errorCategory === 'auth' && auth === currentAuth) {
 			auth = undefined
@@ -113,7 +122,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 			config: deps.config,
 			sendVideoEmail: mailers.sendVideoEmail,
 			sendErrorEmail: mailers.sendErrorEmail,
-			alerts,
+			alerts: jobAlerts,
 		})
 		if (result.errorCategory === 'auth' && auth === currentAuth) {
 			auth = undefined
@@ -127,5 +136,18 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 				mailers.sendErrorEmail, deps.config.logging.emailOnError)
 		}
 	}
-	return { runSubscriptions, runVideos, retryAlerts }
+	const reportQuota = async (): Promise<boolean> => {
+		const mailers = await getMailers()
+		const options: AlertDeps = {
+			source: 'service', emailOnError: deps.config.logging.emailOnError,
+			logger: deps.logger,
+			sendErrorEmail: mailers?.sendErrorEmail ?? missingAlert,
+		}
+		if (deps.reportQuotaDurably) return deps.reportQuotaDurably(options)
+		await alerts.notify('quota', new Error('API quota retry limit reached.'),
+			options)
+		return false
+	}
+	const clearQuota = () => alerts.clear(['quota'], 'service')
+	return { runSubscriptions, runVideos, retryAlerts, reportQuota, clearQuota }
 }
