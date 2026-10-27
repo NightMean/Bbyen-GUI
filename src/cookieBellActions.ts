@@ -66,7 +66,8 @@ export class CookieBellActions {
 			AND channelId=${channelId} AND state IN ('pending', 'uncertain');`)
 	}
 
-	async change(channelId: string, target: BellNotificationPreference)
+	async change(channelId: string, target: BellNotificationPreference,
+		allowUndo = false)
 		: Promise<BellOutcome> {
 		assertChannelId(channelId)
 		if (!['all', 'personalized', 'none'].includes(target)) {
@@ -74,6 +75,12 @@ export class CookieBellActions {
 		}
 		const observed = await this.observe(channelId)
 		const profileKey = observed.connection.profile.channelId!
+		const incompleteUndo = await this.db.get(SQL`SELECT id
+			FROM cookie_unsubscribe_undos WHERE profileKey=${profileKey}
+			AND channelId=${channelId} AND state IN ('pending', 'partial') LIMIT 1;`)
+		if (incompleteUndo && !allowUndo) {
+			throw new Error('Review the incomplete undo first.')
+		}
 		const pendingSubscription = await this.db.get(SQL`SELECT id
 			FROM cookie_subscription_actions WHERE profileKey=${profileKey}
 			AND channelId=${channelId} AND state IN ('pending', 'uncertain')

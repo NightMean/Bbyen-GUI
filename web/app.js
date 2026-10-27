@@ -152,6 +152,30 @@
     if (channel.deleted) info.append(element('div', 'channel-detail', channel.deletedReason === 'terminated' ? text.terminatedChannel : text.deleted))
     if (cookieMode && channel.cookieSubscribed && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
     row.append(img, info)
+    if (cookieMode && channel.undoIncomplete) {
+      info.append(element('div', 'channel-detail', text.undoIncomplete))
+      if (text['bell_' + channel.undoPriorBell]) info.append(element('div', 'channel-detail', `${text.undoPreviousBell}: ${text['bell_' + channel.undoPriorBell]}`))
+      const acknowledge = element('button', 'outline', text.undoAcknowledge)
+      acknowledge.type = 'button'; acknowledge.addEventListener('click', async () => {
+        if (!window.confirm(text.undoAcknowledgeConfirm)) return
+        acknowledge.disabled = true
+        try { await post('/api/channels/subscription/undo/acknowledge', { channelId: channel.channelId }); showNotice(text.undoAcknowledged); load() }
+        catch { showNotice(text.undoReviewError); load() }
+        finally { acknowledge.disabled = false }
+      }); row.append(acknowledge)
+    }
+    if (cookieMode && channel.undoAvailable && !channel.undoIncomplete && !channel.cookieSubscribed && !channel.subscriptionUncertain) {
+      const undo = element('button', 'outline', text.undoUnsubscribe)
+      undo.type = 'button'; undo.addEventListener('click', async () => {
+        undo.disabled = true
+        try {
+          const result = await post('/api/channels/subscription/undo', { channelId: channel.channelId })
+          const complete = result.subscription === 'confirmed' && ['confirmed', 'unchanged'].includes(result.bell)
+          showNotice(complete ? text.undoComplete : result.subscription === 'uncertain' ? text.subscriptionUncertain : text.undoPartial); load()
+        } catch { showNotice(text.undoError); load() }
+        finally { undo.disabled = false }
+      }); row.append(undo)
+    }
     if (cookieMode && channel.subscriptionUncertain) {
       const review = element('button', 'outline', text.subscriptionReview)
       review.type = 'button'; review.addEventListener('click', () => reviewSubscription(channel.channelId)); row.append(review)
@@ -168,7 +192,7 @@
         } catch { showNotice(text.bellError) } finally { review.disabled = false }
       }); row.append(review)
     }
-    if (cookieMode && channel.cookieSubscribed && !channel.subscriptionUncertain && !channel.bellUncertain && ['all', 'personalized', 'none'].includes(channel.bellState)) {
+    if (cookieMode && channel.cookieSubscribed && !channel.undoIncomplete && !channel.subscriptionUncertain && !channel.bellUncertain && ['all', 'personalized', 'none'].includes(channel.bellState)) {
       const label = element('label', 'channel-bell')
       label.append(element('span', '', text.bellSelect))
       const select = element('select')
@@ -187,7 +211,7 @@
         finally { apply.disabled = false; select.disabled = false }
       }); row.append(apply)
     }
-    if (cookieMode && channel.cookieSubscribed && !channel.subscriptionUncertain && !channel.bellUncertain) {
+    if (cookieMode && channel.cookieSubscribed && !channel.undoIncomplete && !channel.subscriptionUncertain && !channel.bellUncertain) {
       const remove = element('button', 'quiet', text.unsubscribe)
       remove.type = 'button'; remove.addEventListener('click', async () => {
         remove.disabled = true

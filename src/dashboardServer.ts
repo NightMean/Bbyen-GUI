@@ -81,6 +81,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/channels/bell/acknowledge' ||
 			url.pathname === '/api/channels/subscription' ||
 			url.pathname === '/api/channels/subscription/review' ||
+			url.pathname === '/api/channels/subscription/undo' ||
+			url.pathname === '/api/channels/subscription/undo/acknowledge' ||
 			url.pathname === '/api/channels/subscription/acknowledge' ||
 			url.pathname === '/api/email/settings' ||
 			url.pathname === '/api/email/credentials' ||
@@ -360,6 +362,23 @@ export const createDashboardHandler = (
 					}))
 				return
 			}
+			if (url.pathname === '/api/channels/subscription/undo/acknowledge') {
+				void jobs.maintenance(randomUUID(), () =>
+					actions.subscriptionActions.acknowledgeUndo(id)).then(() =>
+					send(200, { acknowledged: true }), () => send(409, {
+					error: 'Review unresolved YouTube requests first.',
+				}))
+				return
+			}
+			if (url.pathname === '/api/channels/subscription/undo') {
+				void jobs.maintenance(randomUUID(), () =>
+					actions.subscriptionActions.undo(id, (channelId, preference) =>
+						actions.bellActions.change(channelId, preference, true)))
+					.then(outcome => send(200, outcome), () => send(409, {
+						error: 'Could not undo the YouTube unsubscribe.',
+					}))
+				return
+			}
 			if (url.pathname === '/api/channels/subscription/review') {
 				void jobs.maintenance(randomUUID(), () =>
 					actions.subscriptionActions.review(id)).then(result =>
@@ -568,6 +587,20 @@ export const createDashboardHandler = (
 				JOIN cookie_connection c ON c.channelId=a.profileKey
 				WHERE a.channelId=subscriptions.channelId AND c.id=1
 				AND a.state IN ('pending', 'uncertain')) AS subscriptionUncertain
+				, EXISTS(SELECT 1 FROM cookie_unsubscribe_undos u
+				JOIN cookie_connection c ON c.channelId=u.profileKey WHERE c.id=1
+				AND u.channelId=subscriptions.channelId
+				AND u.state IN ('pending', 'partial')) AS undoIncomplete
+				, (SELECT u.priorBell FROM cookie_unsubscribe_undos u
+				JOIN cookie_connection c ON c.channelId=u.profileKey WHERE c.id=1
+				AND u.channelId=subscriptions.channelId
+				AND u.state IN ('pending', 'partial')
+				ORDER BY u.startedAt DESC, u.rowid DESC LIMIT 1) AS undoPriorBell
+				, COALESCE((SELECT a.target=0 AND a.state='confirmed'
+				FROM cookie_subscription_actions a JOIN cookie_connection c
+				ON c.channelId=a.profileKey WHERE c.id=1
+				AND a.channelId=subscriptions.channelId
+				ORDER BY a.startedAt DESC, a.rowid DESC LIMIT 1), 0) AS undoAvailable
 				, EXISTS(SELECT 1 FROM cookie_channel_state s
 				JOIN cookie_connection c ON c.channelId=s.profileKey
 				WHERE s.channelId=subscriptions.channelId AND c.id=1

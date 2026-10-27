@@ -75,6 +75,16 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		startedAt TEXT NOT NULL,
 		finishedAt TEXT
 	);
+	CREATE TABLE IF NOT EXISTS cookie_unsubscribe_undos (
+		id TEXT PRIMARY KEY,
+		profileKey TEXT NOT NULL,
+		channelId TEXT NOT NULL,
+		priorBell TEXT,
+		state TEXT NOT NULL CHECK (state IN
+			('pending', 'partial', 'completed', 'acknowledged')),
+		startedAt TEXT NOT NULL,
+		finishedAt TEXT
+	);
 	CREATE TABLE IF NOT EXISTS channel_added_batches (
 		id TEXT PRIMARY KEY,
 		observedAt TEXT NOT NULL,
@@ -90,6 +100,12 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 	`)
 	await db.exec('BEGIN IMMEDIATE')
 	try {
+		const subscriptionColumns = await db.all(
+			'PRAGMA table_info(cookie_subscription_actions)')
+		if (!subscriptionColumns.some(column => column.name === 'priorBell')) {
+			await db.exec(`ALTER TABLE cookie_subscription_actions
+				ADD COLUMN priorBell TEXT`)
+		}
 		const columns = await db.all('PRAGMA table_info(channel_title_events)')
 		if (!columns.some(column => column.name === 'emailState')) {
 			await db.exec(`ALTER TABLE channel_title_events ADD COLUMN emailState TEXT

@@ -116,9 +116,11 @@ test('validates writes and schedules refresh after saving', async () => {
 		bellActions: new CookieBellActions(db, config, cookieStore, async () => {
 			const connection = await cookieStore.read()
 			if (!connection) throw new Error('No fixture connection.')
-			await cookieStore.refresh(connection.generation, [{ channelId: id,
-				title: 'Channel', notificationState: bell,
-				isAllNotifications: bell === 'all' }])
+			const channels = [{ channelId: id, title: 'Channel',
+				notificationState: bell, isAllNotifications: bell === 'all' }]
+			if (subscribed) channels.push({ channelId: other, title: 'Other',
+				notificationState: 'all', isAllNotifications: true })
+			await cookieStore.refresh(connection.generation, channels)
 			return { status: 'success', total: 1, succeeded: 1, failed: 0,
 				skipped: 0, failedChannels: [] }
 		}, async () => { bell = 'personalized' }, async () => 'fixture-action'),
@@ -244,6 +246,11 @@ test('validates writes and schedules refresh after saving', async () => {
 			subscribed: true })).data.outcome).toBe('confirmed')
 		expect((await axios.post(subscription, { channelId: other,
 			subscribed: false })).data.outcome).toBe('confirmed')
+		const removed = (await axios.get(`${base}/api/channels`)).data.channels
+			.find((item: any) => item.channelId === other)
+		expect(removed.undoAvailable).toBe(1)
+		const undo = await axios.post(`${subscription}/undo`, { channelId: other })
+		expect(undo.data).toEqual({ subscription: 'confirmed', bell: 'unchanged' })
 		config.cookieStale = true
 		expect((await axios.get(`${base}/api/channels`)).data.cookieStale)
 			.toBe(true)

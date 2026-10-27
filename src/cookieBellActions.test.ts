@@ -137,3 +137,20 @@ test('does not send an action after cookie renewal', async () => {
 			.toEqual({ count: 0 })
 	} finally { await db.close() }
 })
+
+test('blocks bell changes while an unsubscribe undo needs review', async () => {
+	const db = await init({ filename: ':memory:' })
+	const store = new CookieConnectionStore(db)
+	const config = { mode: 'cookie' } as Config
+	const mutate = vi.fn()
+	try {
+		await store.activate('SAPISID=fixture', profile, [channel('all')])
+		await db.run(`INSERT INTO cookie_unsubscribe_undos
+			(id, profileKey, channelId, state, startedAt)
+			VALUES ('undo', ?, ?, 'pending', '2026')`, profile.channelId, id)
+		const actions = new CookieBellActions(db, config, store,
+			async () => success, mutate, async () => 'fixture-action')
+		await expect(actions.change(id, 'personalized')).rejects.toThrow(/undo/i)
+		expect(mutate).not.toHaveBeenCalled()
+	} finally { await db.close() }
+})

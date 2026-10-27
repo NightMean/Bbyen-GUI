@@ -353,7 +353,14 @@ Each subscription request is checked against a fresh account snapshot before
 and after the mutation. If the result is uncertain, review the current state
 before allowing another attempt; a delayed request can still take effect.
 Unsubscribe asks for confirmation by default. The dialog can turn off future
-prompts, and Settings can restore them.
+prompts, and Settings can restore them. After a confirmed unsubscribe,
+Undo attempts to resubscribe and restore the previous bell. These are separate
+YouTube requests: if either is uncertain or unavailable, the channel shows an
+incomplete undo for review rather than automatically replaying it. Resolve any
+uncertain subscription or bell request, check YouTube, and acknowledge the
+remaining incomplete undo before retrying. Activity retention removes completed
+undo records; incomplete records remain until acknowledged.
+
 Cookie exports are snapshots of browser credentials: the service cannot export
 them from the browser itself. When a stored cookie is rejected, BBYEN tries an
 updated `CONFIG_DIR/cookies.txt`, verifies the same selected profile, and

@@ -54,6 +54,8 @@ export const pruneActivity = async (
 		await db.run(SQL`DELETE FROM cookie_bell_actions
 			WHERE finishedAt < ${cutoff}
 			AND state IN ('confirmed', 'acknowledged');`)
+		await db.run(SQL`DELETE FROM cookie_unsubscribe_undos
+			WHERE finishedAt < ${cutoff} AND state IN ('completed', 'acknowledged');`)
 		await db.run(SQL`DELETE FROM cookie_subscription_actions
 			WHERE finishedAt < ${cutoff} AND state IN ('confirmed', 'acknowledged');`)
 		await db.exec('COMMIT')
