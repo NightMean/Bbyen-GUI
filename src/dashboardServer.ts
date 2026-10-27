@@ -1,7 +1,5 @@
 import { randomUUID } from 'crypto'
-import { createServer, Server } from 'http'
-import fs from 'fs/promises'
-import path from 'path'
+import { createServer, RequestListener, Server } from 'http'
 import * as sqlite from 'sqlite'
 import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
@@ -10,6 +8,7 @@ import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 import {
 	PublicEmailSettings, parseEmailCredentials, parseEmailSettings,
 } from './emailSettings'
+import { serveDashboardAsset } from './dashboardAssets'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -27,9 +26,9 @@ interface ChannelActions {
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
-export const createDashboardServer = (
+export const createDashboardHandler = (
 	db: sqlite.Database, jobs: RefreshCoordinator, actions?: ChannelActions,
-): Server => createServer((request, response) => {
+): RequestListener => (request, response) => {
 	response.setHeader('Content-Type', 'application/json; charset=utf-8')
 	response.setHeader('Cache-Control', 'no-store')
 	response.setHeader('X-Content-Type-Options', 'nosniff')
@@ -42,21 +41,7 @@ export const createDashboardServer = (
 		send(400, { error: 'Invalid request.' })
 		return
 	}
-	const assets: Record<string, [string, string]> = {
-		'/': ['index.html', 'text/html; charset=utf-8'],
-		'/app.js': ['app.js', 'application/javascript; charset=utf-8'],
-		'/style.css': ['style.css', 'text/css; charset=utf-8'],
-		'/en.json': ['en.json', 'application/json; charset=utf-8'],
-	}
-	const asset = assets[url.pathname]
-	if (request.method === 'GET' && asset && !url.search) {
-		void fs.readFile(path.join(__dirname, '../web', asset[0])).then(data => {
-			response.setHeader('Content-Type', asset[1])
-			response.writeHead(200)
-			response.end(data)
-		}, () => send(500, { error: 'Dashboard files are unavailable.' }))
-		return
-	}
+	if (serveDashboardAsset(request, response, url)) return
 	if (request.method === 'POST' && !url.search && actions &&
 			(url.pathname === '/api/channels' ||
 			url.pathname === '/api/channels/resolve' ||
@@ -253,7 +238,11 @@ export const createDashboardServer = (
 	}).then(result => send(200, result), () => {
 		send(500, { error: 'Dashboard data is temporarily unavailable.' })
 	})
-})
+}
+
+export const createDashboardServer = (
+	db: sqlite.Database, jobs: RefreshCoordinator, actions?: ChannelActions,
+): Server => createServer(createDashboardHandler(db, jobs, actions))
 
 export const dashboardPort = (value: string | undefined): number => {
 	if (value === undefined) return 3031
