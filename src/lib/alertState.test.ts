@@ -52,6 +52,20 @@ describe('alertState', () => {
 			.resolves.toBeUndefined()
 	})
 
+	test('does not send or log untrusted exception text', async () => {
+		const deps = makeDeps()
+		deps.sendErrorEmail.mockRejectedValueOnce(new Error('smtp secret fixture'))
+		await notifyError('other', new Error('cookie secret fixture'), {
+			...deps, source: 'videos', channelId: 'UC0000000000000000000000',
+		})
+		expect(deps.sendErrorEmail.mock.calls[0][0].message)
+			.toContain('UC0000000000000000000000')
+		expect(JSON.stringify(deps.sendErrorEmail.mock.calls))
+			.not.toContain('cookie secret fixture')
+		expect(JSON.stringify(deps.logger.error.mock.calls))
+			.not.toContain('secret fixture')
+	})
+
 	test('coalesces concurrent notifications for the same outage', async () => {
 		const deps = makeDeps()
 		await Promise.all([

@@ -43,20 +43,20 @@ const main = async () => {
 		})
 		setIntervalInstant(
 			() => jobs.run('subscriptions', tasks.runSubscriptions)
-				.catch(err => logger.error(err)),
+				.catch(() => logger.error('Subscription refresh failed unexpectedly.')),
 			subscriptionsTimer,
 			config.kickoff.subscriptions,
 		)
 
 		setIntervalInstant(
 			() => jobs.run('videos', tasks.runVideos)
-				.catch(err => logger.error(err)),
+				.catch(() => logger.error('Video refresh failed unexpectedly.')),
 			videosTimer,
 			config.kickoff.videos,
 		)
 
-	} catch (err) {
-		logger.error(err)
+	} catch {
+		logger.error('Service startup failed. Check configuration and storage.')
 		process.exit(1)
 	}
 }

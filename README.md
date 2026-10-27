@@ -211,6 +211,9 @@ problem clears and recurs). This is gated by `logging.emailOnError` in
 Video API, RSS, and email delivery failures participate in this reporting.
 A successful unrelated task does not reset suppression: affected tasks must
 recover before a recurrence triggers another alert.
+Alert emails include the operation category and, when known, the channel ID.
+They omit raw exception text and stacks, which may contain credentials.
+Detailed persistent incident diagnostics are not yet available.
 
 The service stores refresh run times, outcomes, and bounded channel IDs in
 SQLite. Runs still marked in progress when the service starts are recorded as

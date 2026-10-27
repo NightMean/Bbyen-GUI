@@ -1,7 +1,9 @@
 import { ErrorCategory } from './classifyError'
+import { isChannelId } from './channelId'
 
 export interface AlertDeps {
 	source?: string,
+	channelId?: string,
 	sendErrorEmail: (error: {
 		stack: string,
 		message: string,
@@ -19,6 +21,19 @@ const SUBJECTS: Record<ErrorCategory, string> = {
 	auth: 'BBYEN: YouTube authentication failed',
 	quota: 'BBYEN: YouTube API quota exceeded',
 	other: 'BBYEN encountered an error',
+}
+
+const ACTIONS: Record<ErrorCategory, string> = {
+	auth: 'Reconnect the YouTube account and retry the affected refresh.',
+	quota: 'Check the YouTube API quota and retry after it resets.',
+	other: 'Check the affected refresh and service status, then retry.',
+}
+
+const SOURCES: Record<string, string> = {
+	videos: 'Video refresh',
+	subscriptions: 'Subscription refresh',
+	'service-auth': 'YouTube authorization',
+	service: 'Service',
 }
 
 // In-memory record of which categories have already alerted this episode.
@@ -41,18 +56,23 @@ export const notifyError = async (
 	err: unknown,
 	deps: AlertDeps,
 ): Promise<void> => {
-	const asError = err instanceof Error ? err : new Error(String(err))
+	// External exception text and stacks may contain cookies or tokens.
+	void err
+	const source = SOURCES[deps.source ?? 'service'] ?? 'Service'
+	const channel = deps.channelId && isChannelId(deps.channelId)
+		? ` Channel: ${deps.channelId}.` : ''
+	const message = `${source} failed.${channel} ${ACTIONS[category]}`
 	const episode = alerted[category]
 	episode.sources.add(deps.source ?? 'service')
 
 	if (!deps.emailOnError) {
-		deps.logger.error(asError)
+		deps.logger.error(message)
 		return
 	}
 	if (episode.sent || episode.pending) {
 		deps.logger.warn(
 			`Suppressing repeat ${category} alert email for current episode.`)
-		deps.logger.error(asError)
+		deps.logger.error(message)
 		await episode.pending
 		return
 	}
@@ -60,20 +80,20 @@ export const notifyError = async (
 	episode.pending = (async () => {
 		try {
 			await deps.sendErrorEmail({
-				stack: asError.stack ?? '',
-				message: asError.message,
+				stack: '',
+				message,
 				subject: SUBJECTS[category],
 			})
 			episode.sent = true
 			deps.logger.info(`Sent ${category} alert email.`)
-		} catch (sendErr) {
+		} catch {
 			deps.logger.warn('Failed to send alert email about a previous error.')
-			deps.logger.error(sendErr)
+			deps.logger.error('Check SMTP settings and retry the alert.')
 		}
 	})()
 	await episode.pending
 	episode.pending = undefined
-	deps.logger.error(asError)
+	deps.logger.error(message)
 }
 
 // Clear alert flags for the given categories after a successful task run so a

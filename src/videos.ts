@@ -90,7 +90,7 @@ const getChannelsVideos = async ({
 		outcome.failed = true
 		outcome.category ??= classifyError(err)
 		await notifyError(classifyError(err), err, {
-			source: 'videos', sendErrorEmail,
+			source: 'videos', channelId, sendErrorEmail,
 			emailOnError: config.logging.emailOnError, logger,
 		})
 	}
@@ -109,7 +109,7 @@ const getChannelsVideos = async ({
 	const feed = await parser.parseURL(url)
 		.catch((err) => {
 			feedError = err
-			logger.warn(`Error parsing videos from '${url}': ${err.message}`)
+			logger.warn(`Could not read the video feed for channel ${channelId}.`)
 			return { items: [], title: undefined }
 		})
 
@@ -334,8 +334,8 @@ const getChannelsVideos = async ({
 					try {
 						await db.run(SQL`UPDATE video_observations
 							SET emailOutcome=${result} WHERE videoId=${videoId};`)
-					} catch (recordError) {
-						logger.error('Could not record video email outcome.', recordError)
+					} catch {
+						logger.error('Could not record video email outcome.')
 					}
 					throw err
 				}
