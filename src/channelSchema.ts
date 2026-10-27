@@ -65,6 +65,16 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		startedAt TEXT NOT NULL,
 		finishedAt TEXT
 	);
+	CREATE TABLE IF NOT EXISTS cookie_subscription_actions (
+		id TEXT PRIMARY KEY,
+		profileKey TEXT NOT NULL,
+		channelId TEXT NOT NULL,
+		target INTEGER NOT NULL CHECK (target IN (0, 1)),
+		state TEXT NOT NULL CHECK (state IN
+			('pending', 'confirmed', 'uncertain', 'acknowledged')),
+		startedAt TEXT NOT NULL,
+		finishedAt TEXT
+	);
 	CREATE TRIGGER IF NOT EXISTS record_channel_title_change
 	AFTER UPDATE OF channelTitle ON subscriptions
 	WHEN OLD.channelTitle <> NEW.channelTitle

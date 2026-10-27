@@ -71,6 +71,11 @@ export class CookieBellActions {
 		}
 		const observed = await this.observe(channelId)
 		const profileKey = observed.connection.profile.channelId!
+		const pendingSubscription = await this.db.get(SQL`SELECT id
+			FROM cookie_subscription_actions WHERE profileKey=${profileKey}
+			AND channelId=${channelId} AND state IN ('pending', 'uncertain')
+			LIMIT 1;`)
+		if (pendingSubscription) return 'uncertain'
 		const unresolved = await this.db.get(SQL`SELECT id, target
 			FROM cookie_bell_actions WHERE profileKey=${profileKey}
 			AND channelId=${channelId} AND state IN ('pending', 'uncertain')

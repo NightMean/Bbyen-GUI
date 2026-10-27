@@ -10,6 +10,7 @@ import { CookiePreviewService } from './cookiePreview'
 import { CookieConnectionStore } from './cookieConnection'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
+import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -64,10 +65,12 @@ test('validates writes and schedules refresh after saving', async () => {
 	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
 	const calls: string[] = []
 	const id = 'UCabcdefghijklmnopqrstuv'
+	const other = 'UC0000000000000000000002'
 	const config = { mode: 'whitelist', whitelistedChannelIds: [{ id }],
 		email: { auth: { pass: 'fixture' } } } as Config
 	const cookieStore = new CookieConnectionStore(db)
 	let bell: 'all' | 'personalized' = 'all'
+	let subscribed = false
 	const cookiePreviews = new CookiePreviewService(db, {
 		discover: async () => ({ cookieHeader: 'SAPISID=synthetic-fixture',
 			profiles: [{ name: 'Profile', selected: true, selectable: true,
@@ -92,6 +95,19 @@ test('validates writes and schedules refresh after saving', async () => {
 			return { status: 'success', total: 1, succeeded: 1, failed: 0,
 				skipped: 0, failedChannels: [] }
 		}, async () => { bell = 'personalized' }),
+		subscriptionActions: new CookieSubscriptionActions(db, config, cookieStore,
+			async () => {
+				const connection = await cookieStore.read()
+				if (!connection) throw new Error('No fixture connection.')
+				const channels = [{ channelId: id, title: 'Channel',
+					notificationState: bell, isAllNotifications: bell === 'all' }]
+				if (subscribed) channels.push({ channelId: other, title: 'Other',
+					notificationState: 'all', isAllNotifications: true })
+				await cookieStore.refresh(connection.generation, channels)
+				return { status: 'success', total: 1, succeeded: 1, failed: 0,
+					skipped: 0, failedChannels: [] }
+			}, { subscribe: async () => { subscribed = true },
+				unsubscribe: async () => { subscribed = false } }),
 		activateCookie: async (candidate, preview) => {
 			const confirmed = await cookiePreviews.confirm(candidate, preview)
 			await cookieStore.activate(confirmed.cookieHeader, confirmed.profile,
@@ -193,6 +209,11 @@ test('validates writes and schedules refresh after saving', async () => {
 		const titles = (await axios.get(`${base}/api/title-events`)).data.events
 		expect(titles).toMatchObject([{ previousTitle: 'Channel',
 			currentTitle: 'Renamed' }])
+		const subscription = `${base}/api/channels/subscription`
+		expect((await axios.post(subscription, { channelId: other,
+			subscribed: true })).data.outcome).toBe('confirmed')
+		expect((await axios.post(subscription, { channelId: other,
+			subscribed: false })).data.outcome).toBe('confirmed')
 		config.cookieStale = true
 		expect((await axios.get(`${base}/api/channels`)).data.cookieStale)
 			.toBe(true)

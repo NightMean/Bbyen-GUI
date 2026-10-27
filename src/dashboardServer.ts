@@ -23,6 +23,7 @@ import {
 import { CookiePreviewService } from './cookiePreview'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
+import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { BellNotificationPreference } from './lib/innertubeChannels'
 
 interface ChannelActions {
@@ -48,6 +49,7 @@ interface ChannelActions {
 	manualSwitch: ManualSourceSwitch,
 	cookieCleanupPending: () => Promise<boolean>,
 	bellActions: CookieBellActions,
+	subscriptionActions: CookieSubscriptionActions,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -75,6 +77,9 @@ export const createDashboardHandler = (
 			url.pathname === '/api/channels/bell' ||
 			url.pathname === '/api/channels/bell/review' ||
 			url.pathname === '/api/channels/bell/acknowledge' ||
+			url.pathname === '/api/channels/subscription' ||
+			url.pathname === '/api/channels/subscription/review' ||
+			url.pathname === '/api/channels/subscription/acknowledge' ||
 			url.pathname === '/api/email/settings' ||
 			url.pathname === '/api/email/credentials' ||
 			url.pathname === '/api/email/test' ||
@@ -111,7 +116,7 @@ export const createDashboardHandler = (
 				credentials?: unknown, importData?: unknown, previewId?: unknown,
 				conflictChoice?: unknown, acceptPartial?: unknown,
 				intervals?: unknown, cookie?: unknown, candidateId?: unknown,
-				profileId?: unknown, preference?: unknown } = {}
+				profileId?: unknown, preference?: unknown, subscribed?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -319,6 +324,35 @@ export const createDashboardHandler = (
 					}))
 				return
 			}
+			if (url.pathname === '/api/channels/subscription/review') {
+				void jobs.maintenance(randomUUID(), () =>
+					actions.subscriptionActions.review(id)).then(result =>
+					send(200, result), () => send(409, {
+					error: 'Could not verify the account and subscription.',
+				}))
+				return
+			}
+			if (url.pathname === '/api/channels/subscription' ||
+					url.pathname === '/api/channels/subscription/acknowledge') {
+				if (typeof data.subscribed !== 'boolean') {
+					send(400, { error: 'Choose a valid subscription action.' }); return
+				}
+				const subscribed = data.subscribed
+				if (url.pathname.endsWith('/acknowledge')) {
+					void jobs.maintenance(randomUUID(), () =>
+						actions.subscriptionActions.acknowledge(id, subscribed)).then(() =>
+						send(200, { acknowledged: true }), () => send(409, {
+						error: 'Could not verify the account and subscription.',
+					}))
+					return
+				}
+				void jobs.maintenance(randomUUID(), () =>
+					actions.subscriptionActions.change(id, subscribed)).then(outcome =>
+					send(200, { outcome }), () => send(409, {
+					error: 'Could not verify the account and subscription.',
+				}))
+				return
+			}
 			if (url.pathname === '/api/channels/bell' ||
 					url.pathname === '/api/channels/bell/acknowledge') {
 				if (data.preference !== 'all' && data.preference !== 'personalized' &&
@@ -474,6 +508,14 @@ export const createDashboardHandler = (
 				JOIN cookie_connection c ON c.channelId=a.profileKey
 				WHERE a.channelId=subscriptions.channelId AND c.id=1
 				AND a.state IN ('pending', 'uncertain')) AS bellUncertain
+				, EXISTS(SELECT 1 FROM cookie_subscription_actions a
+				JOIN cookie_connection c ON c.channelId=a.profileKey
+				WHERE a.channelId=subscriptions.channelId AND c.id=1
+				AND a.state IN ('pending', 'uncertain')) AS subscriptionUncertain
+				, EXISTS(SELECT 1 FROM cookie_channel_state s
+				JOIN cookie_connection c ON c.channelId=s.profileKey
+				WHERE s.channelId=subscriptions.channelId AND c.id=1
+				AND s.subscribed=1) AS cookieSubscribed
 				FROM subscriptions ORDER BY channelTitle, channelId
 				LIMIT 500`)
 			const manualMode = actions?.manualMode() ?? false

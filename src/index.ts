@@ -39,6 +39,7 @@ import { activateConfirmedCookie } from './activateCookie'
 import { recoverCookieCleanup } from './cookieCleanup'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
+import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -123,6 +124,8 @@ const startService = async (existingServer?: Server) => {
 			manualSwitch,
 			bellActions: new CookieBellActions(db, config, cookieStore,
 				tasks.runSubscriptions),
+			subscriptionActions: new CookieSubscriptionActions(db, config,
+				cookieStore, tasks.runSubscriptions),
 			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
 				config, cookieStore, cookiePreviews, candidateId, previewId),
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),

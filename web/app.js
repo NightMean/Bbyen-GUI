@@ -3,7 +3,7 @@
   let text
   try { text = await (await fetch('/en.json')).json() } catch { return }
   document.querySelectorAll('[data-text]').forEach(el => { el.textContent = text[el.dataset.text] })
-  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null, cookieCandidate: null, cookiePreview: null, manualPreview: null, cookieEpoch: 0 }
+  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null, cookieCandidate: null, cookiePreview: null, manualPreview: null, cookieEpoch: 0, cookieMode: false }
   const size = 30
   const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const today = new Date()
@@ -98,6 +98,15 @@
     $('manual-switch').hidden = !active
   }
   const describeChannels = (heading, channels) => `${heading} (${channels.length})\n${channels.map(channel => `  ${channel.title || channel.channelId}${channel.unconfirmed ? ` · ${text.cookieUnconfirmed}` : ''}`).join('\n')}`
+  const reviewSubscription = async channelId => {
+    try {
+      const data = await post('/api/channels/subscription/review', { channelId })
+      if (data.previousTarget !== null && window.confirm(`${text.subscriptionReviewConfirm}\n\n${text.bellCurrent}: ${data.current ? text.subscriptionOn : text.subscriptionOff}\n${text.bellRequested}: ${data.previousTarget ? text.subscriptionOn : text.subscriptionOff}`)) {
+        await post('/api/channels/subscription/acknowledge', { channelId, subscribed: data.current }); showNotice(text.bellReviewed)
+      }
+      load()
+    } catch { showNotice(text.subscriptionError) }
+  }
   const renderVideo = (video, channels) => {
     const row = element('article', 'result')
     const videoId = /^[a-zA-Z0-9_-]+$/.test(video.videoId) ? video.videoId : ''
@@ -132,9 +141,12 @@
     })
     info.append(name)
     if (channel.deleted) info.append(element('div', 'channel-detail', text.deleted))
-    if (cookieMode && channel.deletedReason !== 'unsubscribed' && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
+    if (cookieMode && channel.cookieSubscribed && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
     row.append(img, info)
-    if (cookieMode && channel.bellUncertain) {
+    if (cookieMode && channel.subscriptionUncertain) {
+      const review = element('button', 'outline', text.subscriptionReview)
+      review.type = 'button'; review.addEventListener('click', () => reviewSubscription(channel.channelId)); row.append(review)
+    } else if (cookieMode && channel.bellUncertain) {
       const review = element('button', 'outline', text.bellReview)
       review.type = 'button'; review.addEventListener('click', async () => {
         review.disabled = true
@@ -146,7 +158,7 @@
           load()
         } catch { showNotice(text.bellError) } finally { review.disabled = false }
       }); row.append(review)
-    } else if (cookieMode && ['all', 'personalized', 'none'].includes(channel.bellState) && channel.deletedReason !== 'unsubscribed' && channel.deletedReason !== 'terminated') {
+    } else if (cookieMode && channel.cookieSubscribed && ['all', 'personalized', 'none'].includes(channel.bellState) && channel.deletedReason !== 'terminated') {
       const select = element('select', 'channel-bell'); select.setAttribute('aria-label', `${text.bellSelect}: ${channel.channelTitle || channel.channelId}`)
       for (const preference of ['all', 'personalized', 'none']) {
         const option = element('option', '', text['bell_' + preference]); option.value = preference; option.selected = preference === channel.bellState; select.append(option)
@@ -158,6 +170,17 @@
           showNotice(result.outcome === 'uncertain' ? text.bellUncertain : text.bellSaved); load()
         } catch { showNotice(text.bellError); load() } finally { select.disabled = false }
       }); row.append(select)
+    }
+    if (cookieMode && channel.cookieSubscribed && !channel.subscriptionUncertain && !channel.bellUncertain) {
+      const remove = element('button', 'quiet', text.unsubscribe)
+      remove.type = 'button'; remove.addEventListener('click', async () => {
+        if (!window.confirm(text.unsubscribeConfirm)) return
+        remove.disabled = true
+        try {
+          const result = await post('/api/channels/subscription', { channelId: channel.channelId, subscribed: false })
+          showNotice(result.outcome === 'uncertain' ? text.subscriptionUncertain : text.unsubscribed); load()
+        } catch { showNotice(text.subscriptionError); load() } finally { remove.disabled = false }
+      }); row.append(remove)
     }
     if (typeof channel.notify === 'boolean' && !channel.deleted) {
       const mute = element('button', 'outline channel-mute', channel.notify ? text.mute : text.unmute)
@@ -246,8 +269,12 @@
       }
       const all = await request('/api/channels')
       if (sequence !== state.sequence) return
-      $('add').disabled = !all.manualMode
-      $('add').textContent = all.manualMode ? text.add : text.addManualOnly
+      state.cookieMode = all.cookieMode
+      $('add').disabled = !all.manualMode && !all.cookieMode
+      $('add').textContent = all.manualMode || all.cookieMode ? text.add : text.addManualOnly
+      $('cookie-add-help').hidden = !all.cookieMode
+      $('backlog-label').hidden = $('backlog').hidden = all.cookieMode
+      $('backlog-count-label').hidden = all.cookieMode || $('backlog').value !== 'newest'
       if (state.page === 'channels') {
         const term = $('search').value.toLocaleLowerCase()
         const found = all.channels.filter(c => (c.channelTitle || c.channelId).toLocaleLowerCase().includes(term))
@@ -483,6 +510,21 @@
   $('backlog').addEventListener('change', () => { $('backlog-count-label').hidden = $('backlog').value !== 'newest' })
   $('confirm-add').addEventListener('click', async () => {
     const body = { channelId: $('resolved-id').textContent }
+    if (state.cookieMode) {
+      if (!window.confirm(text.subscribeConfirm)) return
+      $('confirm-add').disabled = true; $('review-add-subscription').hidden = true
+      try {
+        const result = await post('/api/channels/subscription', { ...body, subscribed: true })
+        if (result.outcome === 'uncertain') { $('review-add-subscription').hidden = false; showNotice(text.subscriptionUncertain); return }
+        try {
+          const bell = await post('/api/channels/bell', { ...body, preference: 'all' })
+          showNotice(bell.outcome === 'uncertain' ? text.subscriptionPartial : text.subscriptionSaved)
+        } catch { showNotice(text.subscriptionPartial) }
+        $('add-panel').hidden = true; $('channel-input').value = ''; load()
+      } catch { $('review-add-subscription').hidden = false; showNotice(text.subscriptionError) }
+      finally { $('confirm-add').disabled = false }
+      return
+    }
     const mode = $('backlog').value
     if (mode === 'newest') {
       const count = Number($('backlog-count').value)
@@ -493,6 +535,7 @@
     try { await post('/api/channels', body); $('add-panel').hidden = true; $('channel-input').value = ''; showNotice(text.added) }
     catch { showNotice(text.addError) } finally { $('confirm-add').disabled = false }
   })
+  $('review-add-subscription').addEventListener('click', () => reviewSubscription($('resolved-id').textContent))
   $('refresh').addEventListener('click', async () => {
     try { await post('/api/refresh', { kind: state.page === 'videos' ? 'videos' : 'subscriptions' }); showNotice(text.refreshRequested); poll() }
     catch { showNotice(text.refreshError) }
