@@ -424,6 +424,17 @@ test('restores cookie tracking mode from the persistent database', async () => {
 		expect(result?.channels[0].channelId).toBe('UC0000000000000000000002')
 		expect(JSON.stringify(result)).not.toContain('synthetic-fixture')
 		const base = `http://127.0.0.1:${port}`
+		const channelId = 'UC0000000000000000000002'
+		expect(result.channels[0].notify).toBe(true)
+		await axios.post(`${base}/api/channels/notify`,
+			{ channelId, notify: false })
+		expect((await axios.get(`${base}/api/channels`)).data.channels[0].notify)
+			.toBe(false)
+		const saved = JSON.parse(await fs.readFile(path.join(dir, 'channels.json'),
+			'utf8'))
+		expect(saved.savedChannelSettings).toEqual([
+			{ id: channelId, notify: false },
+		])
 		const preview = (await axios.post(`${base}/api/cookies/manual/preview`, {}))
 			.data
 		expect(preview.continuing).toHaveLength(1)

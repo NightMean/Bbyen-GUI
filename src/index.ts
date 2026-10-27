@@ -40,6 +40,7 @@ import { recoverCookieCleanup } from './cookieCleanup'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
+import { setCookieChannelNotify } from './cookieChannelPreferences'
 import { saveUnsubscribePreference } from './unsubscribePreference'
 import { TitleAlerts } from './titleAlerts'
 import { ChannelAddedAlerts } from './channelAddedAlerts'
@@ -166,11 +167,14 @@ const startService = async (existingServer?: Server) => {
 			add: (id, backlog) =>
 				addManualChannel(CHANNELS_FILE, config, id, backlog),
 			resolve: resolveChannelId,
-			setNotify: (id, notify) =>
-				setManualChannelNotify(CHANNELS_FILE, config, id, notify),
+			setNotify: (id, notify) => config.mode === 'cookie'
+				? setCookieChannelNotify(databaseConnection, CHANNELS_FILE, config,
+					id, notify)
+				: setManualChannelNotify(CHANNELS_FILE, config, id, notify),
 			remove: id => removeManualChannel(CHANNELS_FILE, config, id),
 			manualMode: () => config.mode === 'whitelist',
-			manualNotify: id => config.whitelistedChannelIds?.some(c => c.id === id)
+			manualNotify: id => config.mode === 'cookie' ||
+				config.whitelistedChannelIds?.some(c => c.id === id)
 				? config.channelSettingsById?.get(id)?.notify !== false : null,
 			emailSettings: () => ({ settings: publicEmailSettings(config),
 				userFromEnvironment: process.env.BBYEN_EMAIL_USER !== undefined,

@@ -324,6 +324,10 @@ currently monitored channels and deleting the stored connection and the matching
 after preview is retained and must be removed separately before reconnecting.
 Environment variables and copies or backups of cookies are not deleted.
 API-to-cookie and combined mode remain unavailable.
+In cookie mode, channel mute controls affect BBYEN email only; they do not
+change the YouTube subscription or bell. Preferences are kept across source
+switches, and unmuting does not resend videos discovered while muted.
+
 In cookie mode, adding a channel subscribes on YouTube and the Channels page can
 unsubscribe. Set the bell to All on YouTube to start monitoring; dashboard bell
 changes are unavailable because YouTube rejected the mutation in live testing.

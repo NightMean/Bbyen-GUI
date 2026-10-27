@@ -341,7 +341,8 @@ export const createDashboardHandler = (
 				return
 			}
 			if (url.pathname === '/api/channels/notify') {
-				if (!actions.manualMode() || typeof data.notify !== 'boolean') {
+				if ((!actions.manualMode() && actions.config.mode !== 'cookie') ||
+						typeof data.notify !== 'boolean') {
 					send(400, { error: 'Notification setting is unavailable.' })
 					return
 				}
@@ -574,7 +575,9 @@ export const createDashboardHandler = (
 				confirmUnsubscribe: actions?.config.confirmUnsubscribe !== false,
 				cookieStale: !!actions?.config.cookieStale,
 				channels: channels.map(channel => ({ ...channel,
-					...(manualMode ? { notify: actions?.manualNotify(channel.channelId) }
+					...(manualMode || (actions?.config.mode === 'cookie' &&
+						channel.cookieSubscribed)
+						? { notify: actions?.manualNotify(channel.channelId) }
 						: {}),
 				})) }
 		}

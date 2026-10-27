@@ -183,13 +183,15 @@
         } catch { showNotice(text.subscriptionError); load() } finally { remove.disabled = false }
       }); row.append(remove)
     }
-    if (typeof channel.notify === 'boolean' && !channel.deleted) {
+    if (typeof channel.notify === 'boolean' && (!channel.deleted || (cookieMode && channel.cookieSubscribed))) {
       const mute = element('button', 'outline channel-mute', channel.notify ? text.mute : text.unmute)
       mute.type = 'button'; mute.addEventListener('click', async () => {
         mute.disabled = true
         try { await post('/api/channels/notify', { channelId: channel.channelId, notify: !channel.notify }); showNotice(text.saved); load() }
         catch { showNotice(text.settingError) } finally { mute.disabled = false }
       }); row.append(mute)
+    }
+    if (!cookieMode && typeof channel.notify === 'boolean' && !channel.deleted) {
       const remove = element('button', 'quiet', text.remove)
       remove.type = 'button'; remove.addEventListener('click', async () => {
         if (!window.confirm(text.removeConfirm)) return

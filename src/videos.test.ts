@@ -342,23 +342,24 @@ describe('video failure recovery', () => {
 			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'sent' })
 	})
 
-	test('unmuting does not replay muted videos', async () => {
-		const muted = { ...config, mode: 'whitelist', channelSettingsById:
+	test.each(['whitelist', 'cookie'] as const)(
+		'unmuting does not replay muted videos in %s mode', async mode => {
+			const muted = { ...config, mode, channelSettingsById:
 			new Map([['UCfixture', { id: 'UCfixture', notify: false }]]) }
-		await parseFeedsAndNotify({ ...args(), config: muted } as never)
-		vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({ items: [
-			{ videoId: 'new-video', title: 'Video',
-				isoDate: '2026-01-01T00:00:00Z' },
-			{ videoId: 'later', title: 'Later',
-				isoDate: '2026-01-02T00:00:00Z' },
-		] } as never)
-		await parseFeedsAndNotify({ ...args(), config:
+			await parseFeedsAndNotify({ ...args(), config: muted } as never)
+			vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({ items: [
+				{ videoId: 'new-video', title: 'Video',
+					isoDate: '2026-01-01T00:00:00Z' },
+				{ videoId: 'later', title: 'Later',
+					isoDate: '2026-01-02T00:00:00Z' },
+			] } as never)
+			await parseFeedsAndNotify({ ...args(), config:
 			{ ...muted, channelSettingsById: new Map() } } as never)
-		expect(sendVideoEmail.mock.calls.map(call => call[0].videoId))
-			.toEqual(['later'])
-		expect(await db.get(`SELECT emailOutcome FROM video_observations
+			expect(sendVideoEmail.mock.calls.map(call => call[0].videoId))
+				.toEqual(['later'])
+			expect(await db.get(`SELECT emailOutcome FROM video_observations
 			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'muted' })
-	})
+		})
 
 	test('retention does not cause video emails to be resent', async () => {
 		const manual = { ...config, mode: 'whitelist', videoRetentionDays: 1 }
