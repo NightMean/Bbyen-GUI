@@ -87,6 +87,14 @@
     info.append(name)
     if (channel.deleted) info.append(element('div', 'channel-detail', text.deleted))
     row.append(img, info)
+    if (typeof channel.notify === 'boolean' && !channel.deleted) {
+      const mute = element('button', 'outline channel-mute', channel.notify ? text.mute : text.unmute)
+      mute.type = 'button'; mute.addEventListener('click', async () => {
+        mute.disabled = true
+        try { await post('/api/channels/notify', { channelId: channel.channelId, notify: !channel.notify }); showNotice(text.saved); load() }
+        catch { showNotice(text.settingError) } finally { mute.disabled = false }
+      }); row.append(mute)
+    }
     if (/^UC[\w-]{22}$/.test(channel.channelId)) {
       const link = makeLink(text.openChannel, `https://www.youtube.com/channel/${channel.channelId}`)
       link.className = 'channel-link'; row.append(link)

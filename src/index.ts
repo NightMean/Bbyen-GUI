@@ -16,7 +16,7 @@ import { QuotaRunner } from './quotaRunner'
 import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
-import { addManualChannel } from './manualChannels'
+import { addManualChannel, setManualChannelNotify } from './manualChannels'
 import { resolveChannelId } from './lib/resolveChannelId'
 
 const main = async () => {
@@ -65,6 +65,11 @@ const main = async () => {
 		const server = createDashboardServer(db, jobs, {
 			add: id => addManualChannel(CHANNELS_FILE, config, id),
 			resolve: resolveChannelId,
+			setNotify: (id, notify) =>
+				setManualChannelNotify(CHANNELS_FILE, config, id, notify),
+			manualMode: () => config.mode === 'whitelist',
+			manualNotify: id => config.whitelistedChannelIds?.some(c => c.id === id)
+				? config.channelSettingsById?.get(id)?.notify !== false : null,
 			refresh: kind => { void quota.run(kind).catch(() =>
 				logger.error('Manual refresh failed unexpectedly.')) },
 		})

@@ -9,6 +9,24 @@ import { updateJsonFile } from './lib/jsonFile'
 export const addManualChannel = async (
 	filename: string, config: Config, channelId: string,
 ): Promise<void> => {
+	return updateManualChannel(filename, config, channelId, { type: 'add' })
+}
+
+export const setManualChannelNotify = async (
+	filename: string, config: Config, channelId: string, notify: boolean,
+): Promise<void> => {
+	if (config.mode !== 'whitelist') {
+		throw new Error('Manual notification controls require whitelist mode.')
+	}
+	return updateManualChannel(filename, config, channelId,
+		{ type: 'notify', notify })
+}
+
+type ManualChange = { type: 'add' } | { type: 'notify', notify: boolean }
+
+const updateManualChannel = async (
+	filename: string, config: Config, channelId: string, change: ManualChange,
+): Promise<void> => {
 	assertChannelId(channelId)
 	const lists = await updateJsonFile(filename, async value => {
 		const current = parseChannelLists(value)
@@ -20,10 +38,17 @@ export const addManualChannel = async (
 			current.blacklistedChannelIds)
 		const manual = await normalizeChannelEntries(normalize,
 			current.manualChannelIds) ?? []
+		if (change.type === 'notify' && !whitelist.some(c => c.id === channelId)) {
+			throw new Error('The channel is not in the manual whitelist.')
+		}
+		const update = change.type === 'add' ? { id: channelId } :
+			{ id: channelId, notify: change.notify }
 		return { ...current,
-			whitelistedChannelIds: mergeChannelEntries([...whitelist, channelId]),
+			whitelistedChannelIds: mergeChannelEntries([...whitelist, update]),
 			blacklistedChannelIds: blacklist,
-			manualChannelIds: mergeChannelEntries([...manual, channelId]),
+			manualChannelIds: change.type === 'add' ||
+				manual.some(c => c.id === channelId)
+				? mergeChannelEntries([...manual, update]) : manual,
 		}
 	})
 	config.whitelistedChannelIds = lists.whitelistedChannelIds

@@ -11,7 +11,7 @@
   "addError": "Could not save the channel. Try again.", "added": "Channel saved. Channel details will appear after refresh.",
   "refreshRequested": "Refresh requested. The list will update when it finishes.", "refreshError": "Could not start the refresh.",
   "invalidDates": "Choose a valid date range that does not include a future day.",
-  "allChannels": "All channels", "showAll": "Show all", "unknownTitle": "Untitled video", "unknownChannel": "Unknown channel",
+  "mute": "Mute email", "unmute": "Unmute email", "saved": "Notification setting saved.", "settingError": "Could not save the notification setting.", "allChannels": "All channels", "showAll": "Show all", "unknownTitle": "Untitled video", "unknownChannel": "Unknown channel",
   "unknownDate": "Date unavailable", "openChannel": "Open channel", "openVideo": "Watch on YouTube", "deleted": "Not currently tracked",
   "idle": "Idle", "queued": "Queued", "running": "Refreshing", "refresh_success": "Last refresh succeeded", "refresh_partial": "Last refresh was partial", "refresh_failed": "Last refresh failed", "refresh_interrupted": "Last refresh interrupted", "sent": "Email sent", "muted": "Email muted", "excluded": "Email excluded",
   "backlog_skipped": "Existing video skipped", "failed": "Email failed", "uncertain": "Delivery uncertain", "pending": "Sending", "discovered": "Discovered", "unknown": "Outcome unavailable"

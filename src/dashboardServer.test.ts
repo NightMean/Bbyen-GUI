@@ -54,6 +54,9 @@ test('validates writes and schedules refresh after saving', async () => {
 	const server = createDashboardServer(db, jobs, {
 		add: async id => { calls.push(id) },
 		resolve: async input => input,
+		setNotify: async (id, notify) => { calls.push(`${id}:${notify}`) },
+		manualMode: () => true,
+		manualNotify: () => true,
 		refresh: kind => { calls.push(kind) },
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -80,6 +83,10 @@ test('validates writes and schedules refresh after saving', async () => {
 		const invalidRefresh = await axios.post(`${base}/api/refresh`,
 			{ kind: 'other' }, { validateStatus: () => true })
 		expect(invalidRefresh.status).toBe(400)
+		const muted = await axios.post(`${base}/api/channels/notify`,
+			{ channelId: id, notify: false })
+		expect(muted.data.notify).toBe(false)
+		expect(calls).toContain(`${id}:false`)
 		let finish!: () => void
 		const hold = new Promise<void>(resolve => { finish = resolve })
 		const work = jobs.run('videos', async () => {

@@ -11,6 +11,9 @@ interface ChannelActions {
 	add: (channelId: string) => Promise<void>,
 	resolve: (input: string) => Promise<string>,
 	refresh: (kind: RefreshKind) => void,
+	setNotify: (channelId: string, notify: boolean) => Promise<void>,
+	manualMode: () => boolean,
+	manualNotify: (channelId: string) => boolean | null,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -47,6 +50,7 @@ export const createDashboardServer = (
 	if (request.method === 'POST' && !url.search && actions &&
 			(url.pathname === '/api/channels' ||
 			url.pathname === '/api/channels/resolve' ||
+			url.pathname === '/api/channels/notify' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -62,7 +66,8 @@ export const createDashboardServer = (
 			if (body.length > 4096) request.destroy()
 		})
 		request.on('end', () => {
-			let data: { channelId?: unknown, input?: unknown, kind?: unknown } = {}
+			let data: { channelId?: unknown, input?: unknown, kind?: unknown,
+				notify?: unknown } = {}
 			try { data = JSON.parse(body) ?? {} } catch { /* invalid JSON */ }
 			if (url.pathname === '/api/refresh') {
 				if (data.kind !== 'subscriptions' && data.kind !== 'videos') {
@@ -93,6 +98,17 @@ export const createDashboardServer = (
 			const id = data.channelId
 			if (typeof id !== 'string' || !isChannelId(id)) {
 				send(400, { error: 'A valid channel ID is required.' })
+				return
+			}
+			if (url.pathname === '/api/channels/notify') {
+				if (!actions.manualMode() || typeof data.notify !== 'boolean') {
+					send(400, { error: 'Notification setting is unavailable.' })
+					return
+				}
+				void jobs.maintenance(randomUUID(), () =>
+					actions.setNotify(id, data.notify as boolean)).then(() =>
+					send(200, { channelId: id, notify: data.notify }),
+				() => send(500, { error: 'Could not save notification setting.' }))
 				return
 			}
 			void jobs.maintenance(randomUUID(), () => actions.add(id as string))
@@ -133,10 +149,15 @@ export const createDashboardServer = (
 	}
 	void jobs.maintenance(randomUUID(), async () => {
 		if (url.pathname === '/api/channels') {
-			return { channels: await db.all(`SELECT channelId, channelTitle,
+			const channels = await db.all(`SELECT channelId, channelTitle,
 				channelThumbnail, deleted, deletedReason, firstObservedAt, bellState,
 				bellUpdatedAt FROM subscriptions ORDER BY channelTitle, channelId
-				LIMIT 500`) }
+				LIMIT 500`)
+			const manualMode = actions?.manualMode() ?? false
+			return { manualMode, channels: channels.map(channel => ({ ...channel,
+				...(manualMode ? { notify: actions?.manualNotify(channel.channelId) }
+					: {}),
+			})) }
 		}
 		return listDashboardVideos(db, query)
 	}).then(result => send(200, result), () => {
