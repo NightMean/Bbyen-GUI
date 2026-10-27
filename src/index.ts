@@ -29,6 +29,7 @@ import {
 	publicEmailSettings, saveEmailCredentials, saveEmailSettings,
 } from './emailSettings'
 import { sendTestEmail } from './emailTest'
+import { SubscriptionImportService } from './subscriptionImportService'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -84,6 +85,7 @@ const startService = async (existingServer?: Server) => {
 		})
 		const handler = createDashboardHandler(db, jobs, {
 			config,
+			imports: new SubscriptionImportService(CHANNELS_FILE, config),
 			add: (id, backlog) =>
 				addManualChannel(CHANNELS_FILE, config, id, backlog),
 			resolve: resolveChannelId,

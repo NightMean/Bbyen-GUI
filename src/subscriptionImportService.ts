@@ -44,6 +44,7 @@ interface Preview {
 }
 
 export class ImportChangedError extends Error {}
+export class ImportConfirmationError extends Error {}
 
 export class SubscriptionImportService {
 	private readonly previews = new Map<string, Preview>()
@@ -103,10 +104,10 @@ export class SubscriptionImportService {
 			throw new ImportChangedError('Import preview expired.')
 		}
 		if (choice !== 'keep' && choice !== 'replace') {
-			throw new Error('Choose how to handle conflicts.')
+			throw new ImportConfirmationError('Choose how to handle conflicts.')
 		}
 		if (preview.input.problems.length && partial !== true) {
-			throw new Error('Partial import must be confirmed.')
+			throw new ImportConfirmationError('Partial import must be confirmed.')
 		}
 		const updated = await updateJsonFile(this.filename, value => {
 			const current = currentLists(value)

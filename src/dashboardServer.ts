@@ -11,6 +11,10 @@ import {
 import { serveDashboardAsset } from './dashboardAssets'
 import { exportSubscriptions } from './subscriptionExport'
 import type { Config } from './config'
+import { parseSubscriptionImport } from './subscriptionImport'
+import {
+	ImportChangedError, ImportConfirmationError, SubscriptionImportService,
+} from './subscriptionImportService'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -26,6 +30,7 @@ interface ChannelActions {
 	saveCredentials: (value: unknown) => Promise<void>,
 	testEmail: () => Promise<'sent' | 'uncertain'>,
 	config: Config,
+	imports: SubscriptionImportService,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -53,6 +58,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/email/settings' ||
 			url.pathname === '/api/email/credentials' ||
 			url.pathname === '/api/email/test' ||
+			url.pathname === '/api/subscriptions/import/preview' ||
+			url.pathname === '/api/subscriptions/import/apply' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -65,12 +72,15 @@ export const createDashboardHandler = (
 		request.setEncoding('utf8')
 		request.on('data', chunk => {
 			body += chunk
-			if (body.length > 8192) request.destroy()
+			const limit = url.pathname === '/api/subscriptions/import/preview'
+				? 2 * 1024 * 1024 : 8192
+			if (body.length > limit) request.destroy()
 		})
 		request.on('end', () => {
 			let data: { channelId?: unknown, input?: unknown, kind?: unknown,
 				notify?: unknown, initialBacklog?: unknown, settings?: unknown,
-				credentials?: unknown } = {}
+				credentials?: unknown, importData?: unknown, previewId?: unknown,
+				conflictChoice?: unknown, acceptPartial?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -78,6 +88,36 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname === '/api/subscriptions/import/preview') {
+				try { parseSubscriptionImport(data.importData) } catch {
+					send(400, { error: 'Subscription file is invalid.' }); return
+				}
+				void jobs.maintenance(randomUUID(), () =>
+					actions.imports.preview(data.importData)).then(result =>
+					send(200, result), () => send(500, {
+					error: 'Could not preview the current channel configuration.',
+				}))
+				return
+			}
+			if (url.pathname === '/api/subscriptions/import/apply') {
+				const id = data.previewId
+				const choice = data.conflictChoice
+				if (typeof id !== 'string' ||
+						(choice !== 'keep' && choice !== 'replace') ||
+						typeof data.acceptPartial !== 'boolean') {
+					send(400, { error: 'Invalid import confirmation.' }); return
+				}
+				void jobs.maintenance(randomUUID(), () =>
+					actions.imports.apply(id, choice, data.acceptPartial as boolean))
+					.then(() => {
+						actions.refresh('subscriptions'); send(200, { applied: true })
+					}, err => {
+						const status = err instanceof ImportChangedError ? 409 :
+							err instanceof ImportConfirmationError ? 400 : 500
+						send(status, { error: 'Import failed. Review the preview again.' })
+					})
+				return
+			}
 			if (url.pathname === '/api/email/test') {
 				void jobs.maintenance(randomUUID(), actions.testEmail).then(
 					outcome => send(200, { outcome }),

@@ -94,6 +94,8 @@ one is active or recovered. It does not yet contain channel change history.
 Settings can export a versioned JSON file of channel lists and preferences.
 It excludes credentials, videos, and incidents; `null` lists represent lists
 that were absent, which differs from an explicitly empty list in legacy setups.
+The subscription import API previews conflicts and invalid entries, requires
+confirmation for partial imports, and rejects previews if channel data changes.
 Dashboard Settings can save SMTP settings and write-only credentials separately.
 Environment-supplied credentials take precedence and cannot be changed through
 the API. Updated values are read for subsequent jobs without restarting.

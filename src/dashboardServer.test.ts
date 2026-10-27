@@ -5,6 +5,7 @@ import { init } from './database'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
 import { RefreshCoordinator } from './refreshCoordinator'
 import { Config } from './config'
+import { SubscriptionImportService } from './subscriptionImportService'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -62,6 +63,7 @@ test('validates writes and schedules refresh after saving', async () => {
 	const server = createDashboardServer(db, jobs, {
 		config: { whitelistedChannelIds: [{ id }],
 			email: { auth: { pass: 'fixture' } } } as Config,
+		imports: new SubscriptionImportService('unused', {} as Config),
 		add: async id => { calls.push(id) },
 		resolve: async input => input,
 		setNotify: async (id, notify) => { calls.push(`${id}:${notify}`) },

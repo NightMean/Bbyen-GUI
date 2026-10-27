@@ -306,6 +306,25 @@ test('first-run setup starts the service without restarting', async () => {
 		expect(config.mode).toBe('whitelist')
 		expect(config.notifyOnFirstScan).toBe(false)
 		expect(config.database.filename).toBe(path.join(dir, 'database.sqlite'))
+		const importedId = 'UCabcdefghijklmnopqrstuv'
+		const preview = await axios.post(
+			`${url}/api/subscriptions/import/preview`, {
+				importData: { whitelistedChannelIds: [importedId, 'invalid'],
+					email: { auth: { pass: 'fixture-private' } } },
+			})
+		expect(preview.data.problems).toHaveLength(1)
+		expect(JSON.stringify(preview.data)).not.toContain('fixture-private')
+		const refused = await axios.post(`${url}/api/subscriptions/import/apply`, {
+			previewId: preview.data.id, conflictChoice: 'keep', acceptPartial: false,
+		}, { validateStatus: () => true })
+		expect(refused.status).toBe(400)
+		await axios.post(`${url}/api/subscriptions/import/apply`, {
+			previewId: preview.data.id, conflictChoice: 'keep', acceptPartial: true,
+		})
+		const imported = JSON.parse(await fs.readFile(
+			path.join(dir, 'channels.json'), 'utf8'))
+		expect(imported.whitelistedChannelIds).toEqual([{ id: importedId }])
+		expect(JSON.stringify(imported)).not.toContain('fixture-private')
 		expect(child.exitCode).toBeNull()
 	} finally {
 		child.kill(); await exited
