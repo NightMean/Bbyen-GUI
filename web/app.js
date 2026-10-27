@@ -140,13 +140,15 @@
     $('results').replaceChildren(element('p', 'empty', text.loading))
     try {
       if (state.page === 'settings') {
-        const [data, history] = await Promise.all([request('/api/email/settings'), request('/api/email/tests')])
+        const [data, history, schedule] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule')])
         if (sequence !== state.sequence) return
         const email = data.settings
         $('smtp-host').value = email.host; $('smtp-port').value = email.port
         $('smtp-secure').checked = email.secure
         $('smtp-sender').value = email.sendingContact
         $('smtp-destination').value = email.destination
+        $('schedule-channels').value = schedule.intervals.subscriptions
+        $('schedule-videos').value = schedule.intervals.videos
         $('email-user').disabled = data.userFromEnvironment
         $('email-password').disabled = data.passFromEnvironment
         $('user-source').textContent = data.userFromEnvironment ? text.environmentOwned : ''
@@ -245,6 +247,12 @@
     if (!$('email-password').disabled && $('email-password').value) credentials.pass = $('email-password').value
     try { await post('/api/email/credentials', { credentials }); $('email-user').value = ''; $('email-password').value = ''; showNotice(text.credentialsSaved) }
     catch { showNotice(text.credentialsError) }
+  })
+  $('schedule-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const intervals = { subscriptions: $('schedule-channels').value, videos: $('schedule-videos').value }
+    try { const saved = await post('/api/schedule', { intervals }); $('schedule-channels').value = saved.intervals.subscriptions; $('schedule-videos').value = saved.intervals.videos; showNotice(text.scheduleSaved) }
+    catch { showNotice(text.scheduleError) }
   })
   $('test-email').addEventListener('click', async () => {
     $('test-email').disabled = true; $('test-email-result').textContent = text.testSending

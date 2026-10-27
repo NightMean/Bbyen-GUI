@@ -86,6 +86,12 @@
           <label><span data-text="emailPassword"></span><input id="email-password" type="password" autocomplete="new-password" maxlength="4096"><small id="password-source"></small></label>
           <button id="save-credentials" class="outline" type="submit" data-text="saveCredentials"></button>
         </form>
+        <h2 data-text="scheduleTitle"></h2><p data-text="scheduleHelp"></p>
+        <form id="schedule-form" class="settings-form">
+          <label><span data-text="scheduleChannels"></span><input id="schedule-channels" required maxlength="64"></label>
+          <label><span data-text="scheduleVideos"></span><input id="schedule-videos" required maxlength="64"></label>
+          <button class="outline" type="submit" data-text="saveSchedule"></button>
+        </form>
         <h2 data-text="subscriptionTransfer"></h2><p data-text="exportHelp"></p>
         <a class="outline export-link" href="/api/subscriptions/export" download data-text="exportSubscriptions"></a>
         <div class="import-panel">
