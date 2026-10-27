@@ -55,7 +55,8 @@ export const parseVideoQuery = (params: URLSearchParams): VideoQuery => {
 export const listDashboardVideos = async (
 	db: sqlite.Database, query: VideoQuery,
 ) => {
-	const filters: string[] = []
+	const filters: string[] = [`EXISTS (SELECT 1 FROM subscriptions s
+		WHERE s.channelId = video_observations.channelId AND s.deleted=0)`]
 	const values: (string | number)[] = []
 	if (query.from) {
 		filters.push('COALESCE(publishedAt, observedAt) >= ?')

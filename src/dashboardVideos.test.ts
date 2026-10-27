@@ -5,6 +5,9 @@ import { listDashboardVideos, parseVideoQuery } from './dashboardVideos'
 test('filters by date and title and paginates deterministically', async () => {
 	const db = await init({ filename: ':memory:' })
 	try {
+		await db.run(`INSERT INTO subscriptions
+			(channelId, channelThumbnail, channelTitle)
+			VALUES ('channel', '', 'Channel')`)
 		for (const [id, date] of [['a', '2026-01-01T12:00:00.000Z'],
 			['b', '2026-01-02T12:00:00.000Z'],
 			['c', '2026-01-03T12:00:00.000Z']]) {
@@ -20,6 +23,12 @@ test('filters by date and title and paginates deterministically', async () => {
 		params.set('offset', '1')
 		const second = await listDashboardVideos(db, parseVideoQuery(params))
 		expect(second.videos[0].videoId).toBe('b')
+		await db.run('UPDATE subscriptions SET deleted=1 WHERE channelId=?',
+			'channel')
+		const inactive = await listDashboardVideos(db, parseVideoQuery(params))
+		expect(inactive.total).toBe(0)
+		expect((await db.get('SELECT COUNT(*) AS count FROM video_observations'))
+			.count).toBe(3)
 	} finally { await db.close() }
 })
 
