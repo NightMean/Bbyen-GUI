@@ -167,7 +167,26 @@
           load()
         } catch { showNotice(text.bellError) } finally { review.disabled = false }
       }); row.append(review)
-    } else if (cookieMode && channel.cookieSubscribed) info.append(element('div', 'channel-detail', text.bellUnavailable))
+    }
+    if (cookieMode && channel.cookieSubscribed && !channel.subscriptionUncertain && !channel.bellUncertain && ['all', 'personalized', 'none'].includes(channel.bellState)) {
+      const label = element('label', 'channel-bell')
+      label.append(element('span', '', text.bellSelect))
+      const select = element('select')
+      for (const choice of ['all', 'personalized', 'none']) {
+        const option = element('option', '', text['bell_' + choice]); option.value = choice
+        select.append(option)
+      }
+      select.value = channel.bellState; label.append(select); row.append(label)
+      const apply = element('button', 'outline', text.bellApply)
+      apply.type = 'button'; apply.addEventListener('click', async () => {
+        apply.disabled = true; select.disabled = true
+        try {
+          const result = await post('/api/channels/bell', { channelId: channel.channelId, preference: select.value })
+          showNotice(result.outcome === 'uncertain' ? text.bellUncertain : text.bellSaved); load()
+        } catch { showNotice(text.bellError); load() }
+        finally { apply.disabled = false; select.disabled = false }
+      }); row.append(apply)
+    }
     if (cookieMode && channel.cookieSubscribed && !channel.subscriptionUncertain && !channel.bellUncertain) {
       const remove = element('button', 'quiet', text.unsubscribe)
       remove.type = 'button'; remove.addEventListener('click', async () => {

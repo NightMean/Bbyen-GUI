@@ -9,6 +9,7 @@ import {
 	setChannelNotificationPreference,
 } from './lib/innertubeChannels'
 import { RefreshResult } from './refreshResult'
+import { fetchCookieBellAction } from './lib/cookieDiscovery'
 
 type Mutation = typeof setChannelNotificationPreference
 type BellOutcome = 'confirmed' | 'unchanged' | 'uncertain'
@@ -19,7 +20,8 @@ export class CookieBellActions {
 		private readonly config: Config,
 		private readonly store: CookieConnectionStore,
 		private readonly sync: () => Promise<RefreshResult>,
-		private readonly mutate: Mutation = setChannelNotificationPreference) {}
+		private readonly mutate: Mutation = setChannelNotificationPreference,
+		private readonly fetchAction = fetchCookieBellAction) {}
 
 	private async observe(channelId: string) {
 		if (this.config.mode !== 'cookie') throw new Error('Cookie mode required.')
@@ -27,7 +29,8 @@ export class CookieBellActions {
 		if (!before) throw new Error('Cookie connection unavailable.')
 		const result = await this.sync()
 		const after = await this.store.read()
-		if (result.status !== 'success' || !after ||
+		if ((result.status !== 'success' && result.status !== 'partial') ||
+				result.failedChannels.includes(channelId) || !after ||
 				after.generation !== before.generation ||
 				this.config.mode !== 'cookie') {
 			throw new Error('Could not confirm the current YouTube state.')
@@ -88,6 +91,16 @@ export class CookieBellActions {
 		if (observed.bell === target) return 'unchanged'
 		const sapisid = extractSapisidFromCookie(observed.connection.cookieHeader)
 		if (!sapisid) throw new Error('Cookie connection is invalid.')
+		const params = await this.fetchAction({
+			cookie: observed.connection.cookieHeader,
+			targetProfile: observed.connection.profile,
+			onProgress: () => undefined,
+		}, channelId, target)
+		const current = await this.store.read()
+		if (!current || current.generation !== observed.connection.generation ||
+				this.config.mode !== 'cookie') {
+			throw new Error('Cookie connection changed before the bell request.')
+		}
 		const id = randomUUID()
 		await this.db.run(SQL`INSERT INTO cookie_bell_actions
 			(id, profileKey, channelId, target, state, startedAt)
@@ -95,7 +108,7 @@ export class CookieBellActions {
 				${new Date().toISOString()});`)
 		try {
 			await this.mutate(observed.connection.cookieHeader, sapisid, channelId,
-				target, observed.connection.profile.pageId)
+				target, observed.connection.profile.pageId, params)
 		} catch {
 			// The request may have succeeded even if its acknowledgement was lost.
 		}

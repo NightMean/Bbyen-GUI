@@ -382,6 +382,46 @@ export const buildModifyChannelPreferenceParams = (
 	return Buffer.concat([field1, field2, field3, field4]).toString('base64')
 }
 
+/** Find YouTube's current action for one channel, without storing its token. */
+export const extractBellActionParams = (data: unknown, channelId: string,
+	preference: BellNotificationPreference): string | null => {
+	assertChannelId(channelId)
+	const expected = Buffer.from(buildModifyChannelPreferenceParams(channelId,
+		preference), 'base64')
+	const icon = { all: 'NOTIFICATIONS_ACTIVE',
+		personalized: 'NOTIFICATIONS_NONE', none: 'NOTIFICATIONS_OFF' }[preference]
+	const matches = new Set<string>()
+	const walk = (value: any, inTarget: boolean) => {
+		if (!value || typeof value !== 'object') return
+		if (value.channelRenderer) {
+			if (value.channelRenderer.channelId === channelId) {
+				walk(value.channelRenderer, true)
+			}
+			return
+		}
+		const item = value.menuServiceItemRenderer
+		if (inTarget && item?.icon?.iconType === icon) {
+			const params = item.serviceEndpoint
+				?.modifyChannelNotificationPreferenceEndpoint?.params
+			if (typeof params === 'string' && params.length <= 4096) {
+				try {
+					const decoded = decodeURIComponent(params)
+					if (/^[A-Za-z0-9+/]+={0,2}$/.test(decoded)) {
+						const bytes = Buffer.from(decoded, 'base64')
+						if (bytes.subarray(0, expected.length).equals(expected)) {
+							matches.add(params)
+						}
+					}
+				} catch { /* Ignore malformed opaque actions. */ }
+			}
+		}
+		for (const child of Object.values(value)) walk(child, inTarget)
+	}
+	walk(data, false)
+	if (matches.size > 1) throw new Error('Conflicting YouTube bell actions.')
+	return matches.values().next().value ?? null
+}
+
 /**
  * Subscribes to a YouTube channel via InnerTube API.
  * Supports Brand Account delegation via pageId.
@@ -490,6 +530,7 @@ export const setChannelNotificationPreference = async (
 	channelId: string,
 	preference: BellNotificationPreference,
 	pageId?: string,
+	actionParams?: string,
 ): Promise<any> => {
 	const authHeader = generateSapisidHash(sapisid)
 	const headers: Record<string, string> = {
@@ -510,7 +551,8 @@ export const setChannelNotificationPreference = async (
 		contextUser.onBehalfOfUser = pageId
 	}
 
-	const params = buildModifyChannelPreferenceParams(channelId, preference)
+	const params = actionParams ??
+		buildModifyChannelPreferenceParams(channelId, preference)
 
 	const res = await axios.post(
 		MODIFY_CHANNEL_PREFERENCE_URL,

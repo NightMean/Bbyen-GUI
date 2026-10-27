@@ -2,7 +2,7 @@ import axios from 'axios'
 import {
 	generateSapisidHash, extractSapisidFromCookie, normalizeCookieHeader,
 	extractChannelsFromInnerTube, fetchAccountsList, YouTubeProfile,
-	ChannelBellState,
+	ChannelBellState, BellNotificationPreference, extractBellActionParams,
 } from './innertubeChannels'
 import { loadConfigRaw } from '../config'
 import { CookieSessionError } from './cookieSessionError'
@@ -22,6 +22,7 @@ export interface CookieFetchOptions {
 	pageId?: string
 	targetProfile?: ResolvedCookieProfile
 	onProgress?: (message: string) => void
+	onPage?: (data: unknown) => void
 }
 
 export const fetchAccountName = async (
@@ -260,6 +261,7 @@ export const fetchCookieChannels = async (
 			throw new CookieSessionError(
 				'YouTube rejected the session; update cookies.txt.')
 		}
+		options.onPage?.(response.data)
 		const extracted = extractChannelsFromInnerTube(response.data)
 		if (extracted.invalidChannels) {
 			throw new Error('Subscription response contains invalid channels; ' +
@@ -294,4 +296,20 @@ export const fetchCookieChannels = async (
 		`\nTotal channels with "All" notifications: ${allBellChannels.length}`,
 	)
 	return [...observed.values()]
+}
+
+/** Fetch a fresh, profile-bound action and reject incomplete snapshots. */
+export const fetchCookieBellAction = async (options: CookieFetchOptions,
+	channelId: string, preference: BellNotificationPreference,
+): Promise<string> => {
+	const matches = new Set<string>()
+	const channels = await fetchCookieChannels({ ...options, onPage: data => {
+		const token = extractBellActionParams(data, channelId, preference)
+		if (token) matches.add(token)
+	} })
+	if (!channels.some(channel => channel.channelId === channelId) ||
+			matches.size !== 1) {
+		throw new Error('YouTube did not offer this bell action for the channel.')
+	}
+	return [...matches][0]
 }

@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { expect, test, vi } from 'vitest'
-import { fetchCookieChannels } from './cookieDiscovery'
+import { fetchCookieBellAction, fetchCookieChannels } from './cookieDiscovery'
+import { buildModifyChannelPreferenceParams } from './innertubeChannels'
 import { discoverCookieProfiles } from './cookieProfiles'
 
 vi.mock('axios')
@@ -37,4 +38,45 @@ test('rejects a changed profile before fetching subscriptions', async () => {
 			channelId: 'UC0000000000000000000001', selectable: true },
 		onProgress: () => undefined })).rejects.toThrow(/profile changed/i)
 	expect(axios.post).not.toHaveBeenCalled()
+})
+
+test('fetches an account-bound bell action', async () => {
+	vi.mocked(axios.post).mockReset()
+	const channelId = 'UC0000000000000000000002'
+	const profile = { name: 'Brand', pageId: 'brand-page', selected: false,
+		channelId: 'UC0000000000000000000001', selectable: true }
+	vi.mocked(discoverCookieProfiles).mockResolvedValue({ cookieHeader: 'fixture',
+		profiles: [profile] })
+	const token = encodeURIComponent(Buffer.concat([
+		Buffer.from(buildModifyChannelPreferenceParams(channelId, 'all'), 'base64'),
+		Buffer.from([0x2a, 0]),
+	]).toString('base64'))
+	vi.mocked(axios.post).mockResolvedValueOnce({ data: { channelRenderer: {
+		channelId, nested: { menuServiceItemRenderer: {
+			icon: { iconType: 'NOTIFICATIONS_ACTIVE' }, serviceEndpoint: {
+				modifyChannelNotificationPreferenceEndpoint: { params: token },
+			},
+		} },
+	} } } as any)
+	expect(await fetchCookieBellAction({ cookie: 'SAPISID=synthetic-fixture',
+		targetProfile: profile, onProgress: () => undefined }, channelId, 'all'))
+		.toBe(token)
+	const [, body, request] = vi.mocked(axios.post).mock.calls[0]
+	expect((body as any).context.user.onBehalfOfUser).toBe('brand-page')
+	expect((request as any).headers['X-Goog-PageId']).toBe('brand-page')
+})
+
+test('refuses a missing bell action', async () => {
+	vi.mocked(axios.post).mockReset()
+	const channelId = 'UC0000000000000000000002'
+	const profile = { name: 'Profile', selected: true, selectable: true,
+		channelId: 'UC0000000000000000000001' }
+	vi.mocked(discoverCookieProfiles).mockResolvedValue({ cookieHeader: 'fixture',
+		profiles: [profile] })
+	vi.mocked(axios.post).mockResolvedValueOnce({ data: { channelRenderer: {
+		channelId, subscriptionButton: { disabled: true },
+	} } } as any)
+	await expect(fetchCookieBellAction({ cookie: 'SAPISID=synthetic-fixture',
+		targetProfile: profile, onProgress: () => undefined }, channelId, 'all'))
+		.rejects.toThrow(/did not offer/i)
 })

@@ -344,8 +344,11 @@ change the YouTube subscription or bell. Preferences are kept across source
 switches, and unmuting does not resend videos discovered while muted.
 
 In cookie mode, adding a channel subscribes on YouTube and the Channels page can
-unsubscribe. Set the bell to All on YouTube to start monitoring; dashboard bell
-changes are unavailable because YouTube rejected the mutation in live testing.
+unsubscribe. The Channels page can request available YouTube bell options;
+monitoring starts when All is confirmed. Some channels do not offer a changeable
+bell. The app uses the action supplied by YouTube for the selected profile and
+channel, and refuses a missing or ambiguous action. If confirmation is delayed,
+review the uncertain request before trying another change.
 Each subscription request is checked against a fresh account snapshot before
 and after the mutation. If the result is uncertain, review the current state
 before allowing another attempt; a delayed request can still take effect.

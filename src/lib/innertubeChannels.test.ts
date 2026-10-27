@@ -8,6 +8,7 @@ import {
 	extractChannelsFromInnerTube,
 	parseAccountsListResponse,
 	buildModifyChannelPreferenceParams,
+	extractBellActionParams,
 	subscribeToChannel,
 	unsubscribeFromChannel,
 	setChannelNotificationPreference,
@@ -474,7 +475,61 @@ describe('subscribeToChannel & unsubscribeFromChannel', () => {
 	})
 })
 
+describe('YouTube bell actions', () => {
+	const channelId = 'UC0000000000000000000002'
+	const action = (id: string, pref: 'all' | 'none') => {
+		const prefix = Buffer.from(buildModifyChannelPreferenceParams(id, pref),
+			'base64')
+		return encodeURIComponent(Buffer.concat([prefix, Buffer.from([0x2a, 0])])
+			.toString('base64'))
+	}
+	const renderer = (id: string, token: string) => ({ channelRenderer: {
+		channelId: id, nested: { menuServiceItemRenderer: {
+			icon: { iconType: 'NOTIFICATIONS_ACTIVE' },
+			serviceEndpoint: { modifyChannelNotificationPreferenceEndpoint: {
+				params: token,
+			} },
+		} },
+	} })
+	test('uses only the requested channel and matching preference', () => {
+		const token = action(channelId, 'all')
+		const other = 'UC0000000000000000000003'
+		const data = [renderer(other, action(other, 'all')),
+			renderer(channelId, token)]
+		expect(extractBellActionParams(data, channelId, 'all')).toBe(token)
+		expect(extractBellActionParams(data, channelId, 'none')).toBeNull()
+		expect(extractBellActionParams(renderer(channelId, action(other, 'all')),
+			channelId, 'all')).toBeNull()
+		expect(extractBellActionParams(renderer(channelId, '%invalid'),
+			channelId, 'all')).toBeNull()
+	})
+	test('rejects conflicting tokens and a disabled bell', () => {
+		const first = action(channelId, 'all')
+		const second = encodeURIComponent(Buffer.concat([
+			Buffer.from(decodeURIComponent(first), 'base64'), Buffer.from([1]),
+		]).toString('base64'))
+		expect(() => extractBellActionParams([
+			renderer(channelId, first), renderer(channelId, second),
+		], channelId, 'all')).toThrow(/conflicting/i)
+		expect(extractBellActionParams({ channelRenderer: {
+			channelId, subscriptionButton: { disabled: true },
+		} }, channelId, 'all')).toBeNull()
+	})
+})
+
 describe('setChannelNotificationPreference', () => {
+	test('sends the profile-bound action unchanged', async () => {
+		const post = vi.spyOn(axios, 'post').mockResolvedValueOnce({ data: {} })
+		try {
+			await setChannelNotificationPreference('SAPISID=fixture', 'fixture',
+				'UC0000000000000000000002', 'all', 'brand', 'opaque-action')
+			const [, body, options] = post.mock.calls[0]
+			expect((body as any).params).toBe('opaque-action')
+			expect((body as any).context.user.onBehalfOfUser).toBe('brand')
+			expect((options as any).headers['X-Goog-PageId']).toBe('brand')
+		} finally { post.mockRestore() }
+	})
+
 	test(
 		'sends modify_channel_preference request with encoded params',
 		async () => {

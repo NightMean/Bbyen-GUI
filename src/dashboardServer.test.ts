@@ -121,7 +121,7 @@ test('validates writes and schedules refresh after saving', async () => {
 				isAllNotifications: bell === 'all' }])
 			return { status: 'success', total: 1, succeeded: 1, failed: 0,
 				skipped: 0, failedChannels: [] }
-		}, async () => { bell = 'personalized' }),
+		}, async () => { bell = 'personalized' }, async () => 'fixture-action'),
 		subscriptionActions: new CookieSubscriptionActions(db, config, cookieStore,
 			async () => {
 				const connection = await cookieStore.read()
@@ -222,11 +222,13 @@ test('validates writes and schedules refresh after saving', async () => {
 		const changedBell = await axios.post(`${base}/api/channels/bell`,
 			{ channelId: id, preference: 'personalized' },
 			{ validateStatus: () => true })
-		expect(changedBell.status).toBe(503)
+		expect(changedBell.status).toBe(200)
+		expect(changedBell.data.outcome).toBe('confirmed')
 		expect(cookieChannels.cookieStale).toBe(false)
 		expect(cookieChannels.channels[0].bellState).toBe('all')
 		const events = (await axios.get(`${base}/api/channel-events`)).data.events
 		expect(events).toMatchObject([
+			{ channelId: id, previousState: 'all', currentState: 'personalized' },
 			{ channelId: id, previousState: null, currentState: 'all' },
 		])
 		await db.run('UPDATE subscriptions SET channelTitle=? WHERE channelId=?',

@@ -404,8 +404,11 @@ export const createDashboardHandler = (
 					}))
 					return
 				}
-				// YouTube currently rejects the mutation; reads remain available.
-				send(503, { error: 'Change the bell on YouTube for now.' })
+				void jobs.maintenance(randomUUID(), () =>
+					actions.bellActions.change(id, preference)).then(outcome =>
+					send(200, { outcome }), () => send(409, {
+					error: 'Could not verify or change this YouTube bell.',
+				}))
 				return
 			}
 			if (url.pathname === '/api/channels/remove') {
