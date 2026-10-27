@@ -11,8 +11,19 @@ const HEADERS = {
 		'X3AwGgJzayACGgYIgJfnuwY',
 }
 
-const CHANNEL_ID_FROM_URL_RE =
-	/youtube\.com\/channel\/(UC[0-9A-Za-z_-]{22})(?:[/?&#]|$)/i
+const YOUTUBE_HOSTS = new Set([
+	'youtube.com', 'www.youtube.com', 'm.youtube.com',
+	'music.youtube.com', 'youtu.be',
+])
+
+const checkedUrl = (value: string): URL => {
+	const url = new URL(value)
+	if (url.protocol !== 'https:' || !YOUTUBE_HOSTS.has(url.hostname) ||
+			url.username || url.password || url.port) {
+		throw new Error('Enter a supported HTTPS YouTube URL or channel handle.')
+	}
+	return url
+}
 
 // Extract a 24-character YouTube Channel ID from raw HTML.
 export const extractChannelIdFromHtml = (html: string): string | null => {
@@ -87,31 +98,48 @@ export const resolveChannelId = async (input: string): Promise<string> => {
 		return trimmed
 	}
 
-	// 2. Fast path: URL with channel ID already in the path
-	const urlMatch = trimmed.match(CHANNEL_ID_FROM_URL_RE)
-	if (urlMatch && isChannelId(urlMatch[1])) {
-		return urlMatch[1]
+	// Validate before extracting IDs or following redirects; this resolver also
+	// accepts input from the local dashboard and must not fetch arbitrary hosts.
+	const targetUrl = checkedUrl(toLookupUrl(trimmed))
+	const pathMatch = targetUrl.pathname.match(/^\/channel\/(UC[\w-]{22})\/?$/)
+	if (pathMatch && isChannelId(pathMatch[1])) return pathMatch[1]
+	if (targetUrl.pathname === '/feeds/videos.xml') {
+		const id = targetUrl.searchParams.get('channel_id')
+		if (id && isChannelId(id) &&
+				targetUrl.searchParams.getAll('channel_id').length === 1) return id
+		throw new Error('The YouTube feed URL needs a valid channel_id.')
 	}
 
-	// 3. Network resolution: fetch public page and extract ID
-	const targetUrl = toLookupUrl(trimmed)
+	// Follow only validated YouTube redirects, with a bounded response size.
 	let html: string
 	try {
-		const response = await axios.get<string>(targetUrl, {
-			headers: HEADERS,
-			timeout: 10000,
-			responseType: 'text',
-		})
-		html = response.data
+		let current = targetUrl
+		let redirects = 0
+		for (;;) {
+			const response = await axios.get<string>(current.href, {
+				headers: HEADERS, timeout: 10000, responseType: 'text',
+				maxRedirects: 0, maxContentLength: 8 * 1024 * 1024,
+				validateStatus: status => status >= 200 && status < 400,
+			})
+			if (response.status >= 300 && response.status < 400) {
+				if (!response.headers.location || ++redirects > 5) {
+					throw new Error('YouTube redirect limit reached.')
+				}
+				current = checkedUrl(new URL(response.headers.location, current).href)
+				continue
+			}
+			html = response.data
+			break
+		}
 	} catch (err: any) {
 		const status = err?.response?.status
 		if (status === 404) {
 			throw new Error(
-				`YouTube channel or page not found (HTTP 404) at '${targetUrl}'.`,
+				'YouTube channel or page not found (HTTP 404).',
 			)
 		}
 		throw new Error(
-			`Failed to fetch YouTube page for '${trimmed}': ${err.message}`,
+			'Failed to fetch the YouTube page.',
 		)
 	}
 
@@ -121,6 +149,6 @@ export const resolveChannelId = async (input: string): Promise<string> => {
 	}
 
 	throw new Error(
-		`Could not extract channel ID from YouTube page '${targetUrl}'.`,
+		'Could not extract channel ID from the YouTube page.',
 	)
 }

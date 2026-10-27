@@ -115,6 +115,24 @@ describe('resolveChannelId', () => {
 		expect(axios.get).not.toHaveBeenCalled()
 	})
 
+	test('accepts a validated YouTube RSS feed without fetching it', async () => {
+		const id = 'UCcUNYFu8wNDncymesUOtPrg'
+		expect(await resolveChannelId(
+			`https://www.youtube.com/feeds/videos.xml?channel_id=${id}`)).toBe(id)
+		expect(axios.get).not.toHaveBeenCalled()
+	})
+
+	test('rejects non-YouTube URLs and unsafe redirects', async () => {
+		await expect(resolveChannelId('https://youtube.com.evil.test/channel/' +
+			'UCcUNYFu8wNDncymesUOtPrg')).rejects.toThrow()
+		await expect(resolveChannelId('http://localhost/private')).rejects.toThrow()
+		expect(axios.get).not.toHaveBeenCalled()
+		vi.mocked(axios.get).mockResolvedValueOnce({ status: 302,
+			headers: { location: 'http://localhost/private' } } as any)
+		await expect(resolveChannelId('@example')).rejects.toThrow()
+		expect(axios.get).toHaveBeenCalledTimes(1)
+	})
+
 	test('fetches page and resolves handle to channel ID', async () => {
 		vi.mocked(axios.get).mockResolvedValueOnce({
 			data: '<link rel="alternate" type="application/rss+xml" ' +
