@@ -41,7 +41,10 @@
     state.page = page; state.offset = 0
     $('videos-nav').classList.toggle('active', page === 'videos')
     $('channels-nav').classList.toggle('active', page === 'channels')
+    $('activity-nav').classList.toggle('active', page === 'activity')
     $('heading').textContent = text[page]
+    $('refresh').hidden = page === 'activity'
+    $('toolbar').hidden = page === 'activity'
     $('dates').hidden = page !== 'videos'
     $('filter-label').hidden = page !== 'videos' || !state.channel
     load(); poll()
@@ -112,6 +115,25 @@
     const sequence = ++state.sequence
     $('results').replaceChildren(element('p', 'empty', text.loading))
     try {
+      if (state.page === 'activity') {
+        const data = await request('/api/incidents')
+        if (sequence !== state.sequence) return
+        $('list-label').textContent = `${data.incidents.length} ${text.recentIncidents}`
+        $('paging').hidden = true
+        $('results').replaceChildren(...(data.incidents.length ? data.incidents.map(incident => {
+          const row = element('article', 'incident-row')
+          const title = element('h3', '', text['incident_' + incident.category] || text.incident_other)
+          const description = element('p', 'meta', `${text['source_' + incident.source] || text.source_service} · ${displayDate(incident.lastObservedAt)}`)
+          const status = element('span', 'incident-state', incident.resolvedAt ? text.resolvedIncident : text.activeIncident)
+          row.append(title, description, status)
+          if (!incident.resolvedAt) {
+            const guidance = incident.source === 'smtp' ? text.help_smtp : incident.source === 'cookie' ? text.help_cookie : text['help_' + incident.category] || text.help_other
+            row.append(element('p', 'incident-help', guidance))
+          }
+          return row
+        }) : [element('p', 'empty', text.emptyActivity)]))
+        return
+      }
       const all = await request('/api/channels')
       if (state.page === 'channels') {
         const term = $('search').value.toLocaleLowerCase()
@@ -151,6 +173,7 @@
   }
   $('videos-nav').addEventListener('click', () => setPage('videos'))
   $('channels-nav').addEventListener('click', () => setPage('channels'))
+  $('activity-nav').addEventListener('click', () => setPage('activity'))
   for (const id of ['search','from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
   $('previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset-size); load() })
   $('next').addEventListener('click', () => { state.offset += size; load() })
@@ -179,8 +202,10 @@
     catch { showNotice(text.refreshError) }
   })
   const poll = async () => {
+    if (state.page === 'activity') { $('refresh-state').textContent = ''; return }
     try {
       const data = await request('/api/refresh')
+      if (state.page === 'activity') return
       const kind = state.page === 'videos' ? 'videos' : 'subscriptions'
       const refresh = data[kind]
       const current = refresh.state

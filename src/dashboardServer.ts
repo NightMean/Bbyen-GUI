@@ -151,7 +151,7 @@ export const createDashboardServer = (
 	}
 	if ((url.search && url.pathname !== '/api/videos') ||
 			!['/api/health', '/api/channels', '/api/videos',
-				'/api/refresh'].includes(url.pathname)) {
+				'/api/refresh', '/api/incidents'].includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
 	}
@@ -172,6 +172,12 @@ export const createDashboardServer = (
 		return
 	}
 	void jobs.maintenance(randomUUID(), async () => {
+		if (url.pathname === '/api/incidents') {
+			return { incidents: await db.all(`SELECT id, source, category, channelId,
+				openedAt, lastObservedAt, resolvedAt, occurrences, emailState
+				FROM incidents ORDER BY resolvedAt IS NULL DESC, lastObservedAt DESC
+				LIMIT 100`) }
+		}
 		if (url.pathname === '/api/channels') {
 			const channels = await db.all(`SELECT channelId, channelTitle,
 				channelThumbnail, deleted, deletedReason, firstObservedAt, bellState,

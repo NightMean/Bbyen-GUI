@@ -12,6 +12,10 @@ test('serves persisted data and rejects unsupported requests', async () => {
 	await db.run(`INSERT INTO video_observations
 		(videoId, channelId, title, emailOutcome)
 		VALUES ('video', 'channel', 'Example', 'sent')`)
+	await db.run(`INSERT INTO incidents (id, source, category, openedAt,
+		lastObservedAt, occurrences, emailState)
+		VALUES ('incident', 'smtp', 'other', '2026-01-01',
+			'2026-01-01', 1, 'sent')`)
 	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
 	const server = createDashboardServer(db, jobs)
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -28,6 +32,8 @@ test('serves persisted data and rejects unsupported requests', async () => {
 			{ validateStatus: () => true })).status).toBe(400)
 		expect((await axios.get(`${base}/api/refresh`)).data.videos.state)
 			.toBe('idle')
+		expect((await axios.get(`${base}/api/incidents`)).data.incidents[0].source)
+			.toBe('smtp')
 		expect((await axios.post(`${base}/api/channels`, null,
 			{ validateStatus: () => true })).status)
 			.toBe(405)
