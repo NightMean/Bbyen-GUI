@@ -31,6 +31,28 @@ const BELL_PREFERENCES: Record<BellNotificationPreference, number> = {
 	personalized: 1, all: 2, none: 3,
 }
 
+const youtubeCookieDomain = (domain: unknown): boolean => {
+	if (domain === undefined) return true
+	if (typeof domain !== 'string') return false
+	return ['youtube.com', 'www.youtube.com']
+		.includes(domain.toLowerCase().replace(/^\./, ''))
+}
+
+const youtubeCookiePath = (cookiePath: unknown): boolean => {
+	if (cookiePath === undefined) return true
+	if (typeof cookiePath !== 'string' || !cookiePath.startsWith('/')) {
+		return false
+	}
+	return cookiePath === '/' || '/youtubei/v1/browse'.startsWith(
+		cookiePath.endsWith('/') ? cookiePath : `${cookiePath}/`)
+}
+
+const cookiePair = (name: unknown, value: unknown): string | null => {
+	if (typeof name !== 'string' || !/^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/.test(name) ||
+			typeof value !== 'string' || /[;\r\n\0]/.test(value)) return null
+	return `${name}=${value}`
+}
+
 /**
  * Normalizes cookies from any format (JSON array from browser extensions,
  * Netscape cookies.txt, or raw header string) into a standard Cookie header.
@@ -41,33 +63,36 @@ export const normalizeCookieHeader = (rawCookie: string): string => {
 
 	// 1. JSON array format (e.g. from Cookie-Editor / EditThisCookie)
 	if (trimmed.startsWith('[')) {
-		try {
-			const parsed = JSON.parse(trimmed)
-			if (Array.isArray(parsed)) {
-				return parsed
-					.filter(c => c && c.name && c.value !== undefined)
-					.map(c => `${c.name}=${c.value}`)
-					.join('; ')
-			}
-		} catch {
-			// Fallback to raw string
+		let parsed: unknown
+		try { parsed = JSON.parse(trimmed) } catch {
+			throw new Error('Cookie JSON is invalid.')
 		}
+		if (!Array.isArray(parsed)) throw new Error('Cookie JSON must be an array.')
+		return parsed.flatMap(c => {
+			if (!c || typeof c !== 'object' || !youtubeCookieDomain(c.domain) ||
+					!youtubeCookiePath(c.path)) return []
+			const pair = cookiePair(c.name, c.value)
+			return pair ? [pair] : []
+		}).join('; ')
 	}
 
 	// 2. Netscape cookies.txt format
 	if (trimmed.includes('\t') && !trimmed.includes(';')) {
 		const pairs: string[] = []
 		for (const line of trimmed.split('\n')) {
-			const clean = line.trim()
+			const clean = line.trim().replace(/^#HttpOnly_/, '')
 			if (!clean || clean.startsWith('#')) continue
 			const parts = clean.split('\t')
-			if (parts.length >= 7) {
-				pairs.push(`${parts[5]}=${parts[6]}`)
+			if (parts.length >= 7 && youtubeCookieDomain(parts[0]) &&
+					youtubeCookiePath(parts[2])) {
+				const pair = cookiePair(parts[5], parts[6])
+				if (pair) pairs.push(pair)
 			}
 		}
-		if (pairs.length) return pairs.join('; ')
+		return pairs.join('; ')
 	}
 
+	if (/[\r\n\0]/.test(trimmed)) throw new Error('Cookie header is invalid.')
 	return trimmed
 }
 

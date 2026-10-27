@@ -62,6 +62,26 @@ describe('normalizeCookieHeader', () => {
 		const header = 'SAPISID=sap123; SID=sid456'
 		expect(normalizeCookieHeader(header)).toBe(header)
 	})
+
+	test('filters domains and handles HttpOnly Netscape entries', () => {
+		const json = JSON.stringify([
+			{ domain: '.youtube.com', path: '/', name: 'SID', value: 'fixture' },
+			{ domain: '.other.test', path: '/', name: 'PRIVATE', value: 'fixture' },
+			{ domain: 'youtube.com.other.test', path: '/', name: 'BAD',
+				value: 'fixture' },
+			{ domain: '.youtube.com', path: '/other', name: 'PATH',
+				value: 'fixture' },
+		])
+		expect(normalizeCookieHeader(json)).toBe('SID=fixture')
+		const file = '#HttpOnly_.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tfixture\n' +
+			'.other.test\tTRUE\t/\tTRUE\t0\tPRIVATE\tfixture\n'
+		expect(normalizeCookieHeader(file)).toBe('SID=fixture')
+	})
+
+	test('rejects malformed JSON and header injection', () => {
+		expect(() => normalizeCookieHeader('[invalid')).toThrow()
+		expect(() => normalizeCookieHeader('SID=fixture\r\nOther: value')).toThrow()
+	})
 })
 
 describe('extractSapisidFromCookie', () => {

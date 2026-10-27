@@ -278,7 +278,13 @@ While the official YouTube Data API does not expose notification bell preference
 
 #### Auto-Syncing "All" Bell Channels (`sync-channels`)
 
-Export your session cookies from your browser (via Cookie-Editor or Netscape format) to `cookies.txt` in the `bbyen` directory, then run:
+Export your session cookies from your browser (via Cookie-Editor or Netscape format) to `cookies.txt` in the `bbyen` directory.
+
+Cookie exports with domain metadata are restricted to YouTube cookies usable
+for the InnerTube request path. A raw Cookie header has no domain metadata,
+so include only cookies intended for YouTube when supplying that format.
+
+Then run:
 
 ```bash
 # Preview channels with "All" notification bell
