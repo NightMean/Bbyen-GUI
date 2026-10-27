@@ -52,6 +52,16 @@ describe('alertState', () => {
 			.resolves.toBeUndefined()
 	})
 
+	test('logging failures do not escape alert handling', async () => {
+		const deps = makeDeps()
+		deps.sendErrorEmail.mockRejectedValueOnce(new Error('offline'))
+		for (const log of Object.values(deps.logger)) {
+			log.mockImplementation(() => { throw new Error('logger offline') })
+		}
+		await expect(notifyError('other', new Error('original'), deps))
+			.resolves.toBeUndefined()
+	})
+
 	test('does not send or log untrusted exception text', async () => {
 		const deps = makeDeps()
 		deps.sendErrorEmail.mockRejectedValueOnce(new Error('smtp secret fixture'))

@@ -10,7 +10,7 @@ import { Config, ChannelEntry } from './config'
 import setupLogger from './lib/logger'
 import { subscriptionIterator } from './google/iterators'
 import { classifyError } from './lib/classifyError'
-import { notifyError, clearErrorState } from './lib/alertState'
+import { AlertReporter, defaultAlertReporter } from './lib/alertState'
 import { assertChannelId, isChannelId } from './lib/channelId'
 import { ISendErrorEmail } from './email'
 import { DEFAULT_CHANNEL_THUMBNAIL } from './database'
@@ -48,6 +48,7 @@ interface IUpdateSubscriptions {
 	auth?: OAuth2Client,
 	config: Config,
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
+	alerts?: AlertReporter,
 }
 
 // Read all known subs from the database
@@ -171,7 +172,6 @@ export const updateSubscriptionsFromAPI = async (
 ) => {
 	if (!auth) throw new Error('YouTube authorization is required for API sync.')
 	const logger = await setupLogger({ label: 'subscriptions' })
-
 	logger.info('Checking subscriptions...')
 
 	// Read all known subs from the database
@@ -391,6 +391,7 @@ export const updateSubscriptions = async (
 	args: IUpdateSubscriptions,
 ): Promise<RefreshResult> => {
 	const logger = await setupLogger({ label: 'subscriptions' })
+	const alerts = args.alerts ?? defaultAlertReporter
 
 	try {
 		if (args.config.mode === 'whitelist') {
@@ -404,15 +405,15 @@ export const updateSubscriptions = async (
 			await updateSubscriptionsFromAPI(args)
 		}
 
-		clearErrorState([ 'other' ], 'subscriptions')
+		await alerts.clear([ 'other' ], 'subscriptions')
 		if (args.config.mode !== 'whitelist') {
-			clearErrorState([ 'auth', 'quota' ], 'subscriptions')
+			await alerts.clear([ 'auth', 'quota' ], 'subscriptions')
 		}
 		return { status: 'success', total: 1, succeeded: 1, failed: 0,
 			skipped: 0, failedChannels: [] }
 
 	} catch (err) {
-		await notifyError(classifyError(err), err, {
+		await alerts.notify(classifyError(err), err, {
 			source: 'subscriptions',
 			sendErrorEmail: args.sendErrorEmail,
 			emailOnError: args.config.logging.emailOnError,

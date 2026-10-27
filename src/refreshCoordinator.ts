@@ -43,12 +43,18 @@ export class RefreshCoordinator {
 		private readonly logger: { warn: (message: string) => void },
 	) {}
 
+	private warn(message: string): void {
+		try { this.logger.warn(message) } catch {
+			// A broken diagnostics backend must not stop the refresh.
+		}
+	}
+
 	private async record(operation: () => Promise<unknown>): Promise<void> {
 		try {
 			await operation()
 		} catch {
 			// Diagnostic storage must never mask or stop the original work.
-			this.logger.warn('Could not record refresh history.')
+			this.warn('Could not record refresh history.')
 		}
 	}
 
@@ -56,6 +62,10 @@ export class RefreshCoordinator {
 		const now = new Date().toISOString()
 		await this.record(() => this.db.run(SQL`UPDATE refresh_runs
 			SET status='interrupted', finishedAt=${now} WHERE status='running';`))
+	}
+
+	maintenance(key: string, work: () => Promise<void>): Promise<void> {
+		return this.jobs.run(`maintenance:${key}`, work)
 	}
 
 	run(
@@ -75,7 +85,7 @@ export class RefreshCoordinator {
 			try {
 				result = await work()
 			} catch (err) {
-				this.logger.warn('A refresh stopped unexpectedly.')
+				this.warn('A refresh stopped unexpectedly.')
 				result = { status: 'failed', total: null, succeeded: 0, failed: 0,
 					skipped: 0, failedChannels: [], errorCategory: classifyError(err) }
 			}
@@ -112,7 +122,7 @@ export class RefreshCoordinator {
 		let result: RefreshResult | null = null
 		if (row?.resultJson) {
 			try { result = sanitizeResult(JSON.parse(row.resultJson)) } catch {
-				this.logger.warn('Stored refresh result is unreadable.')
+				this.warn('Stored refresh result is unreadable.')
 			}
 		}
 		return { state: this.live.get(kind) ?? 'idle',

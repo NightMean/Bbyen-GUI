@@ -205,15 +205,20 @@ Changes to other configuration and channel lists still require a restart.
 ## Failure alerts
 
 When a backend run fails — YouTube authentication, API quota, or any other
-error — the app emails you once per issue (repeats are suppressed until the
-problem clears and recurs). This is gated by `logging.emailOnError` in
-`config.json`.
+error — the app records an incident and emails once per issue. Active incidents
+are separated by source, category, and, where known, channel. Repeats are
+suppressed until that issue clears and recurs. Email is gated by
+`logging.emailOnError` in `config.json`.
 Video API, RSS, and email delivery failures participate in this reporting.
 A successful unrelated task does not reset suppression: affected tasks must
 recover before a recurrence triggers another alert.
 Alert emails include the operation category and, when known, the channel ID.
 They omit raw exception text and stacks, which may contain credentials.
-Detailed persistent incident diagnostics are not yet available.
+Unsent alerts are retried with backoff up to five attempts; exhausted alerts
+remain in SQLite. After an interrupted alert send, a retry may repeat an email
+whose acceptance was not acknowledged. A dashboard view of incidents and a
+manual retry action are not yet available. API quota alerts currently fire on
+the first failure; the planned delayed API retry schedule is not yet wired.
 
 The service stores refresh run times, outcomes, and bounded channel IDs in
 SQLite. Runs still marked in progress when the service starts are recorded as

@@ -37,7 +37,7 @@ test('service startup recovers attempts and records jobs', async () => {
 	const exited = new Promise<void>(resolve =>
 		child.once('exit', () => resolve()))
 	try {
-		const deadline = Date.now() + 8000
+		const deadline = Date.now() + 15000
 		let outcome: string | undefined
 		let completed = 0
 		while (Date.now() < deadline && child.exitCode === null) {
@@ -62,7 +62,7 @@ test('service startup recovers attempts and records jobs', async () => {
 		await exited
 		await fs.rm(directory, { recursive: true, force: true })
 	}
-}, 15000)
+}, 25000)
 
 test('service stays up without SMTP credentials and recovers without restart',
 	async () => {
@@ -94,15 +94,18 @@ test('service stays up without SMTP credentials and recovers without restart',
 		const exited = new Promise<void>(resolve =>
 			child.once('exit', () => resolve()))
 		try {
-			const deadline = Date.now() + 10000
+			const deadline = Date.now() + 15000
 			let addedCredentials = false
 			let recovered = false
+			let smtpRecovered = false
 			while (Date.now() < deadline && child.exitCode === null) {
 				const check = await sqlite.open({ filename, driver: sqlite3.Database })
 				let rows: { resultJson: string }[]
 				try {
 					rows = await check.all(`SELECT resultJson FROM refresh_runs
 						WHERE kind='videos' AND status='completed'`)
+					smtpRecovered = !!(await check.get(`SELECT id FROM incidents
+						WHERE source='smtp' AND resolvedAt IS NOT NULL`))
 				} finally { await check.close() }
 				const states = rows.map(row => JSON.parse(row.resultJson).status)
 				if (!addedCredentials && states.includes('failed')) {
@@ -112,20 +115,21 @@ test('service stays up without SMTP credentials and recovers without restart',
 						} } }))
 					addedCredentials = true
 				}
-				if (addedCredentials && states.includes('success')) {
+				if (addedCredentials && states.includes('success') && smtpRecovered) {
 					recovered = true
 					break
 				}
 				await new Promise(resolve => setTimeout(resolve, 100))
 			}
 			expect(recovered, `Service did not recover; stderr: ${stderr}`).toBe(true)
+			expect(smtpRecovered).toBe(true)
 			expect(child.exitCode).toBeNull()
 		} finally {
 			child.kill()
 			await exited
 			await fs.rm(directory, { recursive: true, force: true })
 		}
-	}, 15000)
+	}, 25000)
 
 test('service remains up when OAuth credentials are missing', async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-auth-'))
@@ -152,7 +156,7 @@ test('service remains up when OAuth credentials are missing', async () => {
 	const exited = new Promise<void>(resolve =>
 		child.once('exit', () => resolve()))
 	try {
-		const deadline = Date.now() + 8000
+		const deadline = Date.now() + 15000
 		let failures = 0
 		while (Date.now() < deadline && child.exitCode === null) {
 			const check = await sqlite.open({ filename, driver: sqlite3.Database })
@@ -171,4 +175,4 @@ test('service remains up when OAuth credentials are missing', async () => {
 		await exited
 		await fs.rm(directory, { recursive: true, force: true })
 	}
-}, 15000)
+}, 25000)

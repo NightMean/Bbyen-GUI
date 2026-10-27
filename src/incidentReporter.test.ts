@@ -122,3 +122,43 @@ test('storage failure does not mask the original operation', async () => {
 			.not.toContain('private fixture')
 	} finally { await db.close() }
 })
+
+test('logger failure does not mask an incident alert', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.exec(`CREATE TRIGGER reject_incident BEFORE INSERT ON incidents
+			BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;`)
+		const brokenLogger = {
+			info: () => { throw new Error('logger offline') },
+			warn: () => { throw new Error('logger offline') },
+			error: () => { throw new Error('logger offline') },
+		}
+		const reporter = new IncidentReporter(db, brokenLogger)
+		const sendErrorEmail = vi.fn().mockRejectedValue(new Error('offline'))
+		await expect(reporter.notify('quota', new Error('fixture'), {
+			source: 'videos', emailOnError: true,
+			logger: brokenLogger, sendErrorEmail,
+		})).resolves.toBeUndefined()
+	} finally { await db.close() }
+})
+
+test('recovers interrupted updates without a restart', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.exec(`CREATE TRIGGER reject_completion BEFORE UPDATE ON incidents
+			WHEN NEW.emailState='sent'
+			BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;`)
+		const reporter = new IncidentReporter(db, logger)
+		const sendErrorEmail = vi.fn().mockResolvedValue(undefined)
+		await reporter.notify('other', new Error('fixture'), {
+			source: 'videos', emailOnError: true, logger, sendErrorEmail,
+		})
+		expect(await db.get('SELECT emailState FROM incidents'))
+			.toEqual({ emailState: 'sending' })
+		await db.exec('DROP TRIGGER reject_completion')
+		await reporter.recoverInterrupted()
+		await reporter.retryPending(sendErrorEmail, true)
+		expect(await db.get('SELECT emailState FROM incidents'))
+			.toEqual({ emailState: 'sent' })
+	} finally { await db.close() }
+})

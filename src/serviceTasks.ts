@@ -3,7 +3,7 @@ import { youtube_v3 } from 'googleapis'
 import { OAuth2Client } from 'google-auth-library'
 import { Config } from './config'
 import { ISendErrorEmail, SendVideoEmail } from './email'
-import { clearErrorState, notifyError } from './lib/alertState'
+import { AlertReporter, defaultAlertReporter } from './lib/alertState'
 import { RefreshResult } from './refreshResult'
 import { updateSubscriptions } from './subscriptions'
 import { parseFeedsAndNotify } from './videos'
@@ -25,6 +25,9 @@ interface TaskDependencies {
 	loadMailers: () => Promise<Mailers>,
 	loadAuth: () => Promise<OAuth2Client>,
 	initialAuth?: OAuth2Client,
+	alerts?: AlertReporter,
+	retryPendingAlerts?: (send: Mailers['sendErrorEmail'], enabled: boolean) =>
+		Promise<void>,
 }
 
 const unavailable = (category: 'auth' | 'other'): RefreshResult => ({
@@ -36,24 +39,30 @@ const unavailable = (category: 'auth' | 'other'): RefreshResult => ({
 export const createServiceTasks = (deps: TaskDependencies) => {
 	let auth: OAuth2Client | undefined = deps.initialAuth
 	let smtpAvailable: boolean | undefined
+	const alerts = deps.alerts ?? defaultAlertReporter
+	const missingAlert = async (): Promise<never> => {
+		throw new Error('SMTP configuration is unavailable.')
+	}
 	const getMailers = async (): Promise<Mailers | undefined> => {
 		try {
 			const mailers = await deps.loadMailers()
 			if (smtpAvailable === false) {
 				deps.logger.info('SMTP settings are available.')
+				await alerts.clear(['other'], 'smtp')
 			}
 			smtpAvailable = true
 			return mailers
 		} catch {
 			if (smtpAvailable !== false) {
 				deps.logger.warn('SMTP configuration unavailable; video checks paused.')
+				await alerts.notify('other', new Error('SMTP unavailable'), {
+					source: 'smtp', emailOnError: deps.config.logging.emailOnError,
+					logger: deps.logger, sendErrorEmail: missingAlert,
+				})
 			}
 			smtpAvailable = false
 			return undefined
 		}
-	}
-	const missingAlert = async (): Promise<never> => {
-		throw new Error('SMTP configuration is unavailable.')
 	}
 	const getAuth = async (
 		mailers?: Mailers,
@@ -62,10 +71,10 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		if (auth) return auth
 		try {
 			auth = await deps.loadAuth()
-			clearErrorState(['auth'], 'service-auth')
+			await alerts.clear(['auth'], 'service-auth')
 			return auth
 		} catch {
-			await notifyError('auth', new Error(
+			await alerts.notify('auth', new Error(
 				'YouTube authorization unavailable; reconnect the account.'), {
 				source: 'service-auth',
 				sendErrorEmail: mailers?.sendErrorEmail ?? missingAlert,
@@ -85,6 +94,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 			db: deps.db, service: deps.service, auth: currentAuth,
 			config: deps.config,
 			sendErrorEmail: mailers?.sendErrorEmail ?? missingAlert,
+			alerts,
 		})
 		if (result.errorCategory === 'auth' && auth === currentAuth) {
 			auth = undefined
@@ -103,11 +113,19 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 			config: deps.config,
 			sendVideoEmail: mailers.sendVideoEmail,
 			sendErrorEmail: mailers.sendErrorEmail,
+			alerts,
 		})
 		if (result.errorCategory === 'auth' && auth === currentAuth) {
 			auth = undefined
 		}
 		return result
 	}
-	return { runSubscriptions, runVideos }
+	const retryAlerts = async (): Promise<void> => {
+		const mailers = await getMailers()
+		if (mailers && deps.retryPendingAlerts) {
+			await deps.retryPendingAlerts(
+				mailers.sendErrorEmail, deps.config.logging.emailOnError)
+		}
+	}
+	return { runSubscriptions, runVideos, retryAlerts }
 }

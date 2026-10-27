@@ -17,6 +17,13 @@ export interface AlertDeps {
 	},
 }
 
+export interface AlertReporter {
+	notify: (category: ErrorCategory, err: unknown, deps: AlertDeps) =>
+		Promise<void>,
+	clear: (categories: ErrorCategory[], source: string,
+		channelId?: string) => Promise<void>,
+}
+
 const SUBJECTS: Record<ErrorCategory, string> = {
 	auth: 'BBYEN: YouTube authentication failed',
 	quota: 'BBYEN: YouTube API quota exceeded',
@@ -73,17 +80,22 @@ export const notifyError = async (
 	void err
 	const safe = buildSafeAlert(category, deps.source, deps.channelId)
 	const { message } = safe
+	const log = (level: 'info' | 'warn' | 'error', text: string) => {
+		try { deps.logger[level](text) } catch {
+			// Diagnostics must not replace the failure being reported.
+		}
+	}
 	const episode = alerted[category]
 	episode.sources.add(deps.source ?? 'service')
 
 	if (!deps.emailOnError) {
-		deps.logger.error(message)
+		log('error', message)
 		return
 	}
 	if (episode.sent || episode.pending) {
-		deps.logger.warn(
+		log('warn',
 			`Suppressing repeat ${category} alert email for current episode.`)
-		deps.logger.error(message)
+		log('error', message)
 		await episode.pending
 		return
 	}
@@ -92,15 +104,15 @@ export const notifyError = async (
 		try {
 			await deps.sendErrorEmail(safe)
 			episode.sent = true
-			deps.logger.info(`Sent ${category} alert email.`)
+			log('info', `Sent ${category} alert email.`)
 		} catch {
-			deps.logger.warn('Failed to send alert email about a previous error.')
-			deps.logger.error('Check SMTP settings and retry the alert.')
+			log('warn', 'Failed to send alert email about a previous error.')
+			log('error', 'Check SMTP settings and retry the alert.')
 		}
 	})()
 	await episode.pending
 	episode.pending = undefined
-	deps.logger.error(message)
+	log('error', message)
 }
 
 // Clear alert flags for the given categories after a successful task run so a
@@ -121,4 +133,9 @@ export const _resetAlertState = (): void => {
 	alerted.auth = newEpisode()
 	alerted.quota = newEpisode()
 	alerted.other = newEpisode()
+}
+
+export const defaultAlertReporter: AlertReporter = {
+	notify: notifyError,
+	clear: async (categories, source) => { clearErrorState(categories, source) },
 }

@@ -24,6 +24,12 @@ export class IncidentReporter {
 		this.store = new IncidentStore(db, clock)
 	}
 
+	private warn(message: string): void {
+		try { this.logger.warn(message) } catch {
+			// A broken diagnostics backend must not mask the original failure.
+		}
+	}
+
 	private async send(
 		incident: Incident,
 		sendEmail: AlertDeps['sendErrorEmail'],
@@ -41,13 +47,13 @@ export class IncidentReporter {
 				await sendEmail(alert)
 				delivered = true
 			} catch {
-				this.logger.warn(claimed.attemptCount >= MAX_EMAIL_ATTEMPTS
+				this.warn(claimed.attemptCount >= MAX_EMAIL_ATTEMPTS
 					? 'Incident alert delivery failed; retry limit reached.'
 					: 'Incident alert delivery failed; retry is scheduled.')
 			}
 			await this.store.complete(claimed.id, delivered, claimed.attemptCount)
 		} catch {
-			this.logger.warn('Could not update incident alert delivery state.')
+			this.warn('Could not update incident alert delivery state.')
 		}
 	}
 
@@ -61,21 +67,28 @@ export class IncidentReporter {
 		try {
 			const incident = await this.store.record({ source, category, channelId,
 				emailEnabled: deps.emailOnError })
-			deps.logger.error(buildSafeAlert(category, source, channelId).message)
+			try {
+				deps.logger.error(buildSafeAlert(category, source, channelId).message)
+			} catch {
+				this.warn('Could not log the incident.')
+			}
 			if (deps.emailOnError) await this.send(incident, deps.sendErrorEmail)
 		} catch {
-			this.logger.warn('Could not record an incident; using fallback alerts.')
+			this.warn('Could not record an incident; using fallback alerts.')
 			await notifyError(category, err, deps)
 		}
 	}
 
 	async clear(
-		categories: ErrorCategory[], source: IncidentSource,
+		categories: ErrorCategory[], source: string, channelId?: string,
 	): Promise<void> {
 		try {
-			await this.store.resolve(source, categories)
+			if (!SOURCES.includes(source as IncidentSource)) {
+				throw new Error('Invalid incident source.')
+			}
+			await this.store.resolve(source as IncidentSource, categories, channelId)
 		} catch {
-			this.logger.warn('Could not mark incidents as recovered.')
+			this.warn('Could not mark incidents as recovered.')
 		}
 		clearErrorState(categories, source)
 	}
@@ -89,7 +102,7 @@ export class IncidentReporter {
 				await this.send(incident, sendEmail)
 			}
 		} catch {
-			this.logger.warn('Could not inspect pending incident alerts.')
+			this.warn('Could not inspect pending incident alerts.')
 		}
 	}
 
@@ -97,7 +110,7 @@ export class IncidentReporter {
 		try {
 			await this.store.recoverSending()
 		} catch {
-			this.logger.warn('Could not recover interrupted incident alerts.')
+			this.warn('Could not recover interrupted incident alerts.')
 		}
 	}
 }

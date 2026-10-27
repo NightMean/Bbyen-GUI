@@ -69,12 +69,52 @@ test('exposes queued and running jobs sharing the database', async () => {
 	} finally { await db.close() }
 })
 
+test('serializes alert maintenance with refresh database work', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		const coordinator = new RefreshCoordinator(db, logger)
+		let release!: () => void
+		const gate = new Promise<void>(resolve => { release = resolve })
+		let started!: () => void
+		const ready = new Promise<void>(resolve => { started = resolve })
+		const events: string[] = []
+		const refresh = coordinator.run('videos', async () => {
+			events.push('start')
+			started()
+			await gate
+			events.push('finish')
+			return success
+		})
+		const maintenance = coordinator.maintenance('alerts', async () => {
+			events.push('alerts')
+		})
+		await ready
+		expect(events).toEqual(['start'])
+		release()
+		await Promise.all([refresh, maintenance])
+		expect(events).toEqual(['start', 'finish', 'alerts'])
+	} finally { await db.close() }
+})
+
 test('diagnostic storage failure does not prevent the refresh', async () => {
 	const db = await init({ filename: ':memory:' })
 	try {
 		await db.exec(`CREATE TRIGGER reject_refresh BEFORE INSERT ON refresh_runs
 			BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;`)
 		const coordinator = new RefreshCoordinator(db, logger)
+		expect(await coordinator.run('videos', async () => success))
+			.toEqual(success)
+	} finally { await db.close() }
+})
+
+test('a failing logger cannot stop refresh work', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.exec(`CREATE TRIGGER reject_refresh BEFORE INSERT ON refresh_runs
+			BEGIN SELECT RAISE(ABORT, 'fixture failure'); END;`)
+		const coordinator = new RefreshCoordinator(db, {
+			warn: () => { throw new Error('logger offline') },
+		})
 		expect(await coordinator.run('videos', async () => success))
 			.toEqual(success)
 	} finally { await db.close() }

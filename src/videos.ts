@@ -18,7 +18,7 @@ import { ChannelEntry, Config } from './config'
 import findNullishValues from './lib/findNullishValues'
 import { classifyError, ErrorCategory } from './lib/classifyError'
 import { RefreshResult } from './refreshResult'
-import { notifyError, clearErrorState } from './lib/alertState'
+import { AlertReporter, defaultAlertReporter } from './lib/alertState'
 import {
 	isChannelTerminatedOnYouTube,
 	handleTerminatedChannel,
@@ -66,6 +66,7 @@ interface IGetChannelsVideos {
 	db: sqlite.Database,
 	config: Config,
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
+	alerts: AlertReporter,
 	getEligibility: (id: string, entry?: ChannelEntry) =>
 		EmailEligibility,
 }
@@ -80,6 +81,7 @@ const getChannelsVideos = async ({
 	config,
 	sendErrorEmail,
 	getEligibility,
+	alerts,
 }: IGetChannelsVideos) => {
 	const { channelId, channelThumbnail } = channel
 	const outcome: { failed: boolean; stop: boolean; checkedYouTube: boolean;
@@ -89,7 +91,7 @@ const getChannelsVideos = async ({
 	const alert = async (err: unknown) => {
 		outcome.failed = true
 		outcome.category ??= classifyError(err)
-		await notifyError(classifyError(err), err, {
+		await alerts.notify(classifyError(err), err, {
 			source: 'videos', channelId, sendErrorEmail,
 			emailOnError: config.logging.emailOnError, logger,
 		})
@@ -384,11 +386,13 @@ interface IParseFeedsAndNotify {
 	sendVideoEmail: SendVideoEmail,
 	config: Config,
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
+	alerts?: AlertReporter,
 }
 export const parseFeedsAndNotify = async (
 	{ db, ...rest }: IParseFeedsAndNotify,
 ): Promise<RefreshResult> => {
 	const logger = await setupLogger({ label: 'videos' })
+	const alerts = rest.alerts ?? defaultAlertReporter
 	let total: number | null = null
 	let succeeded = 0
 	let failed = 0
@@ -445,7 +449,8 @@ export const parseFeedsAndNotify = async (
 				logger,
 				db,
 				getEligibility,
-				...rest
+				...rest,
+				alerts,
 			})
 
 			if (channelResult.failed) {
@@ -454,6 +459,10 @@ export const parseFeedsAndNotify = async (
 				category ??= channelResult.category
 			} else {
 				succeeded++
+				await alerts.clear(['other'], 'videos', channel.channelId)
+				if (channelResult.checkedYouTube) {
+					await alerts.clear(['auth', 'quota'], 'videos', channel.channelId)
+				}
 			}
 			activeChannel = undefined
 			checkedYouTube ||= channelResult.checkedYouTube
@@ -462,9 +471,9 @@ export const parseFeedsAndNotify = async (
 			}
 		}
 
-		if (!failed) {
-			clearErrorState([ 'other' ], 'videos')
-			if (checkedYouTube) clearErrorState([ 'auth', 'quota' ], 'videos')
+		if (!failed && channels.length > 0) {
+			await alerts.clear([ 'other' ], 'videos')
+			if (checkedYouTube) await alerts.clear([ 'auth', 'quota' ], 'videos')
 		}
 
 		logger.info('Finished checking for new videos')
@@ -475,7 +484,7 @@ export const parseFeedsAndNotify = async (
 			failed++
 			failedChannels.push(activeChannel)
 		}
-		await notifyError(classifyError(err), err, {
+		await alerts.notify(classifyError(err), err, {
 			source: 'videos',
 			sendErrorEmail: rest.sendErrorEmail,
 			emailOnError: rest.config.logging.emailOnError,

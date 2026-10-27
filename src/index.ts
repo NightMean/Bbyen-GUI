@@ -8,6 +8,7 @@ import * as mailer from './email'
 import setIntervalInstant from './lib/setIntervalInstant'
 import { RefreshCoordinator } from './refreshCoordinator'
 import { createServiceTasks } from './serviceTasks'
+import { IncidentReporter } from './incidentReporter'
 import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
 
@@ -36,8 +37,11 @@ const main = async () => {
 		// Both jobs share one SQLite connection and may open transactions.
 		const jobs = new RefreshCoordinator(db, logger)
 		await jobs.recoverInterrupted()
+		const alerts = new IncidentReporter(db, logger)
+		await alerts.recoverInterrupted()
 		const tasks = createServiceTasks({ db, service, config, logger,
-			initialAuth,
+			initialAuth, alerts,
+			retryPendingAlerts: (send, enabled) => alerts.retryPending(send, enabled),
 			loadMailers: async () => mailer.init(await loadEmailConfig()),
 			loadAuth: () => authorize({ interactive: false }),
 		})
@@ -53,6 +57,15 @@ const main = async () => {
 				.catch(() => logger.error('Video refresh failed unexpectedly.')),
 			videosTimer,
 			config.kickoff.videos,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('alerts', async () => {
+				await alerts.recoverInterrupted()
+				await tasks.retryAlerts()
+			})
+				.catch(() => logger.warn('Could not retry incident alerts.')),
+			60_000,
+			false,
 		)
 
 	} catch {
