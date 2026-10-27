@@ -13,6 +13,7 @@ import { QuotaBackoff } from './quotaBackoff'
 import { QuotaRunner } from './quotaRunner'
 import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
+import { createDashboardServer, dashboardPort } from './dashboardServer'
 
 const main = async () => {
 	const logger = await setupLogger({ label: 'main' })
@@ -57,6 +58,13 @@ const main = async () => {
 			reportQuota: tasks.reportQuota, clearQuota: tasks.clearQuota,
 			warn: message => logger.warn(message),
 		})
+		const server = createDashboardServer(db, jobs)
+		await new Promise<void>((resolve, reject) => {
+			server.once('error', reject)
+			server.listen(dashboardPort(process.env.BBYEN_DASHBOARD_PORT),
+				'0.0.0.0', () => { server.removeListener('error', reject); resolve() })
+		})
+		server.on('error', () => logger.error('Dashboard server failed.'))
 		setIntervalInstant(
 			() => quota.run('subscriptions')
 				.catch(() => logger.error('Subscription refresh failed unexpectedly.')),

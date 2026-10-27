@@ -11,4 +11,5 @@ services:
       - ./data:/var/lib/bbyen
     ports:
       - 3030:3030
+      - 3031:3031
     restart: unless-stopped

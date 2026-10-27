@@ -13,5 +13,5 @@ RUN npm ci --omit=dev
 # Copy app source
 COPY . .
 
-EXPOSE 3030
+EXPOSE 3030 3031
 CMD [ "npm", "run", "start" ]
