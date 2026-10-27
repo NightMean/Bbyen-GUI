@@ -94,8 +94,10 @@ one is active or recovered. It does not yet contain channel change history.
 Settings can export a versioned JSON file of channel lists and preferences.
 It excludes credentials, videos, and incidents; `null` lists represent lists
 that were absent, which differs from an explicitly empty list in legacy setups.
-The subscription import API previews conflicts and invalid entries, requires
-confirmation for partial imports, and rejects previews if channel data changes.
+Settings also previews subscription imports, including additions, conflicts,
+and invalid entries. Partial imports require confirmation; if channel data
+changes after a preview, make a new preview before applying it. Import does not
+subscribe to channels or change YouTube bell settings.
 Dashboard Settings can save SMTP settings and write-only credentials separately.
 Environment-supplied credentials take precedence and cannot be changed through
 the API. Updated values are read for subsequent jobs without restarting.

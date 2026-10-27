@@ -88,6 +88,17 @@
         </form>
         <h2 data-text="subscriptionTransfer"></h2><p data-text="exportHelp"></p>
         <a class="outline export-link" href="/api/subscriptions/export" download data-text="exportSubscriptions"></a>
+        <div class="import-panel">
+          <h3 data-text="importSubscriptions"></h3><p data-text="importHelp"></p>
+          <label><span data-text="importFile"></span> <input id="import-file" type="file" accept=".json,application/json"></label>
+          <button id="import-preview" class="outline" type="button" data-text="previewImport"></button>
+          <div id="import-review" hidden>
+            <p id="import-summary"></p><pre id="import-details"></pre>
+            <label><span data-text="conflictChoice"></span> <select id="import-choice"><option value="keep" data-text="keepExisting"></option><option value="replace" data-text="useImported"></option></select></label>
+            <label id="partial-label" class="check" hidden><input id="accept-partial" type="checkbox"><span data-text="acceptPartial"></span></label>
+            <button id="import-apply" class="primary" type="button" data-text="applyImport"></button>
+          </div>
+        </div>
       </section>
       <div id="list-heading" class="list-heading"><span id="list-label"></span><span id="refresh-state"></span></div>
       <section id="results" aria-live="polite"></section>

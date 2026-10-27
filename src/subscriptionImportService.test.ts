@@ -19,6 +19,8 @@ test('previews conflicts and requires consent for partial import', async () => {
 			blacklistedChannelIds: [] }
 		const preview = await service.preview(input)
 		expect(preview.added).toBe(1)
+		expect(preview.additions[0].channelId).toBe(added)
+		expect(preview.changes[0]).toMatchObject({ channelId: id, field: 'notify' })
 		expect(preview.problems).toHaveLength(1)
 		expect(preview.createdLists).toContain('blacklistedChannelIds')
 		expect(preview.conflicts[0]).toMatchObject({ field: 'notify',

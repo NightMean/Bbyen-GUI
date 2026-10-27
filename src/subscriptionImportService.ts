@@ -59,6 +59,8 @@ export class SubscriptionImportService {
 			'utf8')))
 		const conflicts: { list: string, channelId: string, field: string,
 			existing: unknown, incoming: unknown }[] = []
+		const changes: typeof conflicts = []
+		const additions: { list: string, channelId: string }[] = []
 		const effective = effectiveSettings(existing)
 		const createdLists: string[] = []
 		let added = 0
@@ -70,11 +72,16 @@ export class SubscriptionImportService {
 			const previous = new Map((existing[list] ?? []).map(c => [c.id, c]))
 			for (const entry of input.lists[list] ?? []) {
 				const prior = previous.get(entry.id)
-				if (!prior) added++
+				if (!prior) { added++; additions.push({ list, channelId: entry.id }) }
 				else existingCount++
 				for (const field of FIELDS) {
 					const current = prior?.[field] ?? (list === 'blacklistedChannelIds'
 						? undefined : effective.get(entry.id)?.[field])
+					if (entry[field] !== undefined &&
+							JSON.stringify(entry[field]) !== JSON.stringify(current)) {
+						changes.push({ list, channelId: entry.id, field,
+							existing: current ?? null, incoming: entry[field] })
+					}
 					if (entry[field] !== undefined && current !== undefined &&
 							JSON.stringify(entry[field]) !== JSON.stringify(current)) {
 						conflicts.push({ list, channelId: entry.id, field,
@@ -93,8 +100,8 @@ export class SubscriptionImportService {
 		const id = randomUUID()
 		this.previews.set(id, { input, revision: revision(existing),
 			expiresAt: this.clock() + PREVIEW_LIFETIME_MS })
-		return { id, added, existing: existingCount, conflicts, createdLists,
-			problems: input.problems }
+		return { id, added, existing: existingCount, additions, changes,
+			conflicts, createdLists, problems: input.problems }
 	}
 
 	async apply(id: string, choice: 'keep' | 'replace', partial: boolean) {

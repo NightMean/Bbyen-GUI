@@ -3,7 +3,7 @@
   let text
   try { text = await (await fetch('/en.json')).json() } catch { return }
   document.querySelectorAll('[data-text]').forEach(el => { el.textContent = text[el.dataset.text] })
-  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0 }
+  const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null }
   const size = 30
   const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const today = new Date()
@@ -59,6 +59,7 @@
     $('add').hidden = page === 'settings'
     $('add-panel').hidden = true
     $('email-user').value = ''; $('email-password').value = ''
+    $('import-file').value = ''; $('import-review').hidden = true; state.importPreview = null
     showNotice('')
     $('toolbar').hidden = page === 'activity' || page === 'settings'
     $('video-options').hidden = page !== 'videos'
@@ -250,6 +251,69 @@
     try { const result = await post('/api/email/test', {}); $('test-email-result').textContent = result.outcome === 'sent' ? text.testSent : text.testUncertain }
     catch { $('test-email-result').textContent = text.testUncertain }
     finally { $('test-email').disabled = false }
+  })
+  const safeImport = source => {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) throw new Error('invalid')
+    const result = {}
+    if ('formatVersion' in source) result.formatVersion = typeof source.formatVersion === 'number' ? source.formatVersion : 0
+    const id = value => typeof value === 'string' && /^UC[\w-]{22}$/.test(value) ? value : null
+    for (const key of ['whitelistedChannelIds', 'blacklistedChannelIds', 'manualChannelIds', 'savedChannelSettings']) {
+      if (!(key in source)) continue
+      const list = source[key]
+      if (list === null) { result[key] = null; continue }
+      if (!Array.isArray(list)) { result[key] = 0; continue }
+      result[key] = list.map(item => {
+        if (typeof item === 'string') return id(item)
+        if (!item || typeof item !== 'object' || Array.isArray(item)) return null
+        const entry = { id: id(item.id) }
+        for (const flag of ['notify', 'notifyOnFirstScan']) {
+          if (flag in item) entry[flag] = typeof item[flag] === 'boolean' ? item[flag] : null
+        }
+        if ('initialBacklog' in item) {
+          const policy = item.initialBacklog
+          if (!policy || typeof policy !== 'object' || Array.isArray(policy) || Object.keys(policy).some(k => k !== 'mode' && k !== 'count')) entry.initialBacklog = null
+          else entry.initialBacklog = { mode: ['all', 'none', 'newest'].includes(policy.mode) ? policy.mode : null, ...('count' in policy ? { count: typeof policy.count === 'number' ? policy.count : null } : {}) }
+        }
+        return entry
+      })
+    }
+    return result
+  }
+  const importValue = value => value === null ? text.valueDefault : typeof value === 'boolean' ? (value ? text.valueOn : text.valueOff) : JSON.stringify(value)
+  $('import-file').addEventListener('change', () => { $('import-review').hidden = true; state.importPreview = null })
+  $('import-preview').addEventListener('click', async () => {
+    const file = $('import-file').files[0]
+    if (!file || file.size > 2 * 1024 * 1024) { showNotice(text.importChooseFile); return }
+    $('import-preview').disabled = true; $('import-review').hidden = true; state.importPreview = null
+    try {
+      const importData = safeImport(JSON.parse(await file.text()))
+      const preview = await post('/api/subscriptions/import/preview', { importData })
+      state.importPreview = preview
+      $('import-summary').textContent = `${preview.added} ${text.importAdded} · ${preview.existing} ${text.importExisting} · ${preview.conflicts.length} ${text.importConflicts} · ${preview.problems.length} ${text.importInvalid}`
+      const details = []
+      if (preview.createdLists.length) details.push(`${text.importCreates} ${preview.createdLists.map(key => text['list_' + key] || key).join(', ')}`)
+      for (const entry of preview.additions) details.push(`${text.importAddition}: ${text['list_' + entry.list] || entry.list} · ${entry.channelId}`)
+      const conflictKeys = new Set(preview.conflicts.map(c => `${c.list}|${c.channelId}|${c.field}`))
+      for (const change of preview.changes) {
+        const isConflict = conflictKeys.has(`${change.list}|${change.channelId}|${change.field}`)
+        details.push(`${isConflict ? text.importConflict : text.importChange}: ${text['list_' + change.list] || change.list} · ${change.channelId} · ${text['field_' + change.field] || change.field}: ${importValue(change.existing)} → ${importValue(change.incoming)}`)
+      }
+      for (const problem of preview.problems) details.push(`${text.importProblem}: ${text['list_' + problem.list] || problem.list} #${problem.index + 1}`)
+      $('import-details').textContent = details.join('\n')
+      $('partial-label').hidden = !preview.problems.length; $('accept-partial').checked = false
+      $('import-review').hidden = false; showNotice('')
+    } catch { showNotice(text.importSummaryError) } finally { $('import-preview').disabled = false }
+  })
+  $('import-apply').addEventListener('click', async () => {
+    const preview = state.importPreview
+    if (!preview) return
+    if (preview.problems.length && !$('accept-partial').checked) { showNotice(text.importNeedsConsent); return }
+    $('import-apply').disabled = true
+    try {
+      await post('/api/subscriptions/import/apply', { previewId: preview.id, conflictChoice: $('import-choice').value, acceptPartial: $('accept-partial').checked })
+      $('import-review').hidden = true; $('import-file').value = ''; state.importPreview = null; showNotice(text.importSuccess)
+    } catch { $('import-review').hidden = true; state.importPreview = null; showNotice(text.importApplyError) }
+    finally { $('import-apply').disabled = false }
   })
   $('backlog').addEventListener('change', () => { $('backlog-count-label').hidden = $('backlog').value !== 'newest' })
   $('confirm-add').addEventListener('click', async () => {
