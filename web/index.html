@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>BBYEN</title>
+  <link rel="stylesheet" href="/style.css">
+  <script defer src="/app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="BBYEN home"><span class="brand-mark">▶</span> BBYEN</a>
+    <span class="top-caption" data-text="caption"></span>
+    <button id="theme" class="quiet" type="button" data-text="theme"></button>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="eyebrow" data-text="library"></p>
+      <nav aria-label="Library">
+        <button id="videos-nav" class="nav active" type="button" data-text="videos"></button>
+        <button id="channels-nav" class="nav" type="button" data-text="channels"></button>
+      </nav>
+      <div class="sidebar-note" data-text="libraryNote"></div>
+    </aside>
+    <main>
+      <div class="page-head">
+        <div><p class="eyebrow" data-text="yourLibrary"></p><h1 id="heading"></h1></div>
+        <div class="head-actions">
+          <button id="refresh" class="outline" type="button" data-text="refresh"></button>
+          <button id="add" class="primary" type="button" data-text="add"></button>
+        </div>
+      </div>
+      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+      <section id="add-panel" class="add-panel" hidden>
+        <h2 data-text="addTitle"></h2>
+        <p data-text="addHelp"></p>
+        <form id="resolve-form"><label for="channel-input" data-text="channelInput"></label>
+          <div class="input-row"><input id="channel-input" required maxlength="2048" autocomplete="off">
+          <button class="outline" type="submit" data-text="findChannel"></button></div>
+        </form>
+        <div id="preview" hidden><p><span data-text="resolved"></span> <code id="resolved-id"></code></p>
+          <button id="confirm-add" class="primary" type="button" data-text="confirmAdd"></button>
+        </div>
+      </section>
+      <div class="toolbar">
+        <label class="search"><span data-text="search"></span><input id="search" type="search" autocomplete="off"></label>
+        <div id="dates" class="date-fields">
+          <label><span data-text="from"></span><input id="from" type="date"></label>
+          <label><span data-text="through"></span><input id="through" type="date"></label>
+        </div>
+      </div>
+      <p id="filter-label" class="filter-label" hidden></p>
+      <div class="list-heading"><span id="list-label"></span><span id="refresh-state"></span></div>
+      <section id="results" aria-live="polite"></section>
+      <div id="paging" class="paging" hidden>
+        <button id="previous" class="outline" type="button" data-text="previous"></button>
+        <span id="page-label"></span>
+        <button id="next" class="outline" type="button" data-text="next"></button>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "caption": "Your YouTube email library",
+  "library": "LIBRARY", "yourLibrary": "YOUR LIBRARY", "videos": "Videos", "channels": "Channels",
+  "libraryNote": "Your collection grows as BBYEN checks for new uploads.",
+  "theme": "Change theme", "refresh": "Refresh", "add": "+ Add channel",
+  "addTitle": "Add a channel", "addHelp": "Find a channel from its handle, YouTube URL, feed URL or channel ID.",
+  "channelInput": "Channel or video", "findChannel": "Find channel", "resolved": "Channel ID:", "confirmAdd": "Add to BBYEN",
+  "search": "Search", "from": "From", "through": "Through", "previous": "Previous", "next": "Next",
+  "loading": "Loading…", "emptyVideos": "No videos found for this range.", "emptyChannels": "No channels found. Add a channel to begin.",
+  "loadError": "Could not load data. Check the service and try again.", "resolveError": "Could not find that channel. Check the address and try again.",
+  "addError": "Could not save the channel. Try again.", "added": "Channel saved. Channel details will appear after refresh.",
+  "refreshRequested": "Refresh requested. The list will update when it finishes.", "refreshError": "Could not start the refresh.",
+  "invalidDates": "Choose a valid date range that does not include a future day.",
+  "allChannels": "All channels", "showAll": "Show all", "unknownTitle": "Untitled video", "unknownChannel": "Unknown channel",
+  "unknownDate": "Date unavailable", "openChannel": "Open channel", "openVideo": "Watch on YouTube", "deleted": "Not currently tracked",
+  "idle": "Idle", "queued": "Queued", "running": "Refreshing", "refresh_success": "Last refresh succeeded", "refresh_partial": "Last refresh was partial", "refresh_failed": "Last refresh failed", "refresh_interrupted": "Last refresh interrupted", "sent": "Email sent", "muted": "Email muted", "excluded": "Email excluded",
+  "backlog_skipped": "Existing video skipped", "failed": "Email failed", "uncertain": "Delivery uncertain", "pending": "Sending", "discovered": "Discovered", "unknown": "Outcome unavailable"
+}

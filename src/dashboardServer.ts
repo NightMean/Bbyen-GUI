@@ -1,5 +1,7 @@
 import { randomUUID } from 'crypto'
 import { createServer, Server } from 'http'
+import fs from 'fs/promises'
+import path from 'path'
 import * as sqlite from 'sqlite'
 import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
@@ -25,6 +27,21 @@ export const createDashboardServer = (
 	let url: URL
 	try { url = new URL(request.url ?? '/', 'http://localhost') } catch {
 		send(400, { error: 'Invalid request.' })
+		return
+	}
+	const assets: Record<string, [string, string]> = {
+		'/': ['index.html', 'text/html; charset=utf-8'],
+		'/app.js': ['app.js', 'application/javascript; charset=utf-8'],
+		'/style.css': ['style.css', 'text/css; charset=utf-8'],
+		'/en.json': ['en.json', 'application/json; charset=utf-8'],
+	}
+	const asset = assets[url.pathname]
+	if (request.method === 'GET' && asset && !url.search) {
+		void fs.readFile(path.join(__dirname, '../web', asset[0])).then(data => {
+			response.setHeader('Content-Type', asset[1])
+			response.writeHead(200)
+			response.end(data)
+		}, () => send(500, { error: 'Dashboard files are unavailable.' }))
 		return
 	}
 	if (request.method === 'POST' && !url.search && actions &&

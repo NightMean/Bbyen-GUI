@@ -64,6 +64,10 @@ test('service startup recovers attempts and records jobs', async () => {
 			.toBe('uncertain')
 		expect(completed).toBe(2)
 		expect(child.exitCode).toBeNull()
+		const page = await axios.get(`http://127.0.0.1:${port}/`)
+		expect(page.data).toContain('/app.js')
+		const strings = await axios.get(`http://127.0.0.1:${port}/en.json`)
+		expect(strings.data.videos).toBe('Videos')
 		const result = await axios.get(`http://127.0.0.1:${port}/api/videos`)
 		expect(result.data.videos[0].emailOutcome).toBe('uncertain')
 		const channelId = 'UCabcdefghijklmnopqrstuv'

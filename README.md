@@ -71,16 +71,17 @@ cp secrets.example.json data/secrets.json
 so SQLite and its journal stay in persistent storage. The template port is
 3030, matching Compose. For whitelist mode, set `mode` to `whitelist`.
 
-The service also exposes a preliminary dashboard API on port 3031. It can
-resolve channel inputs, add canonical channel IDs, and schedule a subscription
-refresh after saving.
+Open the preliminary dashboard on port 3031 to browse stored videos, search
+channels, add a channel, or request a refresh. The dashboard resolves channel
+inputs before adding them and schedules a subscription refresh after saving.
 Manual refresh requests use the same scheduler and quota handling as timed
 refreshes; the refresh endpoint reports their most recent outcomes.
 The shared channel resolver accepts YouTube HTTPS URLs, handles and validated
 YouTube feed URLs; it refuses redirects to other hosts.
 Its channel list currently returns at most 500 records, while video history
-supports pagination and date, channel and title filters. The web interface and
-configuration controls are still under development. Set
+supports pagination and date, channel and title filters. Account connections,
+configuration controls, and other dashboard features are still under
+development. Set
 `BBYEN_DASHBOARD_PORT` to change the listening port and update the Compose
 port mapping to match. This endpoint has no login or built-in HTTPS; configure
 network access and any HTTPS proxy for your environment.
