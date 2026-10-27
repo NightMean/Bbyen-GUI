@@ -13,7 +13,8 @@ test('saves defaults and retains unrelated settings', async () => {
 	const config = { notifyOnFirstScan: false,
 		logging: { level: 'info', emailOnError: true } } as Config
 	const settings = { initialBacklog: { mode: 'newest', count: 2 },
-		videoRetentionDays: 30, activityRetentionDays: null, emailOnError: false,
+		videoRetentionDays: 30, videoViewDays: 14,
+		activityRetentionDays: null, emailOnError: false,
 		confirmUnsubscribe: true,
 		notifyTitleChanges: true, notifyChannelAdded: true,
 		notifyFailureReminders: false, notifyRecoveries: false }
@@ -26,6 +27,10 @@ test('saves defaults and retains unrelated settings', async () => {
 		expect(saved.logging.level).toBe('info')
 		expect(saved.other).toBe(1)
 		expect(() => parseGeneralSettings({ ...settings, videoRetentionDays: 0 }))
+			.toThrow()
+		expect(() => parseGeneralSettings({ ...settings, videoViewDays: 0 }))
+			.toThrow()
+		expect(() => parseGeneralSettings({ ...settings, videoViewDays: 3651 }))
 			.toThrow()
 		expect(() => parseGeneralSettings({ ...settings, emailOnError: 'yes' }))
 			.toThrow()

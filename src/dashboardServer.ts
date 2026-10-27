@@ -214,6 +214,8 @@ export const createDashboardHandler = (
 				void jobs.maintenance(randomUUID(), async () => {
 					const input = data.settings as Record<string, unknown>
 					const settings = parseGeneralSettings({ ...input,
+						videoViewDays: input.videoViewDays ??
+							actions.config.videoViewDays ?? 7,
 						activityRetentionDays: input.activityRetentionDays === undefined ?
 							actions.config.activityRetentionDays ?? null :
 							input.activityRetentionDays,

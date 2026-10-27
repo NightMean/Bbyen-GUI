@@ -333,13 +333,14 @@ test('first-run setup starts the service without restarting', async () => {
 		} finally { await activityDb.close() }
 		await axios.post(`${url}/api/settings`, { settings: {
 			initialBacklog: { mode: 'all' }, videoRetentionDays: 30,
+			videoViewDays: 14,
 			activityRetentionDays: 30, emailOnError: false,
 		} })
 		expect((await axios.get(`${url}/api/channel-events`)).data.events)
 			.toEqual([])
 		const savedSettings = (await axios.get(`${url}/api/settings`)).data.settings
 		expect(savedSettings).toEqual({ initialBacklog: { mode: 'all' },
-			videoRetentionDays: 30, activityRetentionDays: 30,
+			videoRetentionDays: 30, videoViewDays: 14, activityRetentionDays: 30,
 			emailOnError: false, confirmUnsubscribe: true,
 			notifyTitleChanges: true, notifyChannelAdded: true,
 			notifyFailureReminders: false, notifyRecoveries: false })
@@ -355,6 +356,7 @@ test('first-run setup starts the service without restarting', async () => {
 		} })
 		expect(legacySettings.data.settings.confirmUnsubscribe).toBe(false)
 		expect(legacySettings.data.settings.activityRetentionDays).toBe(30)
+		expect(legacySettings.data.settings.videoViewDays).toBe(14)
 		const importedId = 'UCabcdefghijklmnopqrstuv'
 		const preview = await axios.post(
 			`${url}/api/subscriptions/import/preview`, {

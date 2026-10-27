@@ -92,7 +92,8 @@ Manual refresh requests use the same scheduler and quota handling as timed
 refreshes; the refresh endpoint reports their most recent outcomes.
 Dashboard Settings accepts separate intervals such as `6 hours` or `3 days` and
 replaces the running timers after the new settings are saved.
-Settings also controls the default first-scan policy, video-detail retention,
+Settings also controls the default video history window (1 to 3650 local
+calendar days, including today), first-scan policy, video-detail retention,
 and failure emails. Retention removes old details during video checks while
 keeping processed video IDs for deduplication.
 Activity history has a separate retention setting and is kept indefinitely by

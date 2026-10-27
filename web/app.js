@@ -223,6 +223,7 @@
         $('default-count-label').hidden = general.settings.initialBacklog.mode !== 'newest'
         $('default-count').disabled = general.settings.initialBacklog.mode !== 'newest'
         $('default-count').value = general.settings.initialBacklog.count || 5
+        $('video-view-days').value = general.settings.videoViewDays
         $('retention-days').value = general.settings.videoRetentionDays ?? ''
         $('activity-retention-days').value = general.settings.activityRetentionDays ?? ''
         $('failure-email').checked = general.settings.emailOnError
@@ -393,7 +394,7 @@
     const initialBacklog = mode === 'newest' ? { mode, count } : { mode }
     const videoRetentionDays = $('retention-days').value ? Number($('retention-days').value) : null
     const activityRetentionDays = $('activity-retention-days').value === '' ? null : Number($('activity-retention-days').value)
-    const settings = { initialBacklog, videoRetentionDays, activityRetentionDays, emailOnError: $('failure-email').checked, notifyFailureReminders: $('failure-reminder').checked, notifyRecoveries: $('recovery-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked, notifyChannelAdded: $('channel-email').checked }
+    const settings = { initialBacklog, videoRetentionDays, videoViewDays: Number($('video-view-days').value), activityRetentionDays, emailOnError: $('failure-email').checked, notifyFailureReminders: $('failure-reminder').checked, notifyRecoveries: $('recovery-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked, notifyChannelAdded: $('channel-email').checked }
     try { await post('/api/settings', { settings }); state.confirmUnsubscribe = settings.confirmUnsubscribe; showNotice(text.generalSaved) }
     catch { showNotice(text.generalError) }
   })
@@ -586,4 +587,14 @@
   }
   setLayout(localStorage.getItem('bbyen-layout') === 'grid' ? 'grid' : 'list')
   setPage('videos'); setInterval(poll, 5000)
+  const initialSequence = state.sequence
+  try {
+    const general = await request('/api/settings')
+    const days = general.settings.videoViewDays
+    if (state.sequence === initialSequence && Number.isSafeInteger(days) && days >= 1 && days <= 3650) {
+      const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - days + 1)
+      $('from').value = localDate(start)
+      load()
+    }
+  } catch { /* The default seven-day view remains available. */ }
 })()

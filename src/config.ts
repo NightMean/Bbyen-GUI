@@ -76,6 +76,7 @@ export interface Config {
 	notifyOnFirstScan: boolean,
 	initialBacklog?: BacklogPolicy,
 	videoRetentionDays?: number | null,
+	videoViewDays?: number,
 	activityRetentionDays?: number | null,
 	emailSelectionPolicy?: EmailSelectionPolicy,
 	whitelistedChannelIds?: ChannelEntry[],
@@ -83,6 +84,14 @@ export interface Config {
 	manualChannelIds?: ChannelEntry[],
 	savedChannelSettings?: ChannelEntry[],
 	channelSettingsById?: Map<string, ChannelEntry>,
+}
+
+export const parseVideoViewDays = (value: unknown): number => {
+	if (typeof value !== 'number' || !Number.isSafeInteger(value) ||
+			value < 1 || value > 3650) {
+		throw new Error('videoViewDays must be an integer from 1 to 3650.')
+	}
+	return value
 }
 
 // Check that all the keys present in the example config file are also present
@@ -304,6 +313,9 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.notifyRecoveries !== undefined &&
 			typeof config.notifyRecoveries !== 'boolean') {
 		throw new Error('notifyRecoveries must be a boolean.')
+	}
+	if (config.videoViewDays !== undefined) {
+		config.videoViewDays = parseVideoViewDays(config.videoViewDays)
 	}
 	if (config.videoRetentionDays !== undefined) {
 		config.videoRetentionDays = parseVideoRetentionDays(
