@@ -2,5 +2,7 @@
 	"cookieStale": "YouTube cookie sync is unavailable. This email uses the last confirmed channel settings; check your cookie connection.",
 	"titleSubject": "A YouTube channel changed its name",
 	"titlePrevious": "Previous name",
-	"titleCurrent": "Current name"
+	"titleCurrent": "Current name",
+	"channelAddedSubject": "YouTube channels are now monitored",
+	"channelAddedIntro": "BBYEN is now monitoring these channels:"
 }

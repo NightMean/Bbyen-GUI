@@ -8,6 +8,7 @@ import * as sqlite from 'sqlite'
 import sqlite3 from 'sqlite3'
 import { expect, test } from 'vitest'
 import { init } from './database'
+import { ChannelAddedBatch } from './channelAddedEvents'
 
 test('running service sends a pending name alert through SMTP', async () => {
 	const messages: string[] = []
@@ -54,6 +55,14 @@ test('running service sends a pending name alert through SMTP', async () => {
 		(channelId, channelTitle, channelThumbnail)
 		VALUES ('UC0000000000000000000001', 'Old', '')`)
 	await db.run('UPDATE subscriptions SET channelTitle=?', 'New')
+	await db.run(`INSERT INTO subscriptions
+		(channelId, channelTitle, channelThumbnail)
+		VALUES ('UC0000000000000000000002', 'Other', '')`)
+	await db.exec('BEGIN IMMEDIATE')
+	const batch = new ChannelAddedBatch(db)
+	await batch.record('UC0000000000000000000001')
+	await batch.record('UC0000000000000000000002')
+	await db.exec('COMMIT')
 	await db.close()
 	const child = spawn(process.execPath,
 		['-r', 'ts-node/register/transpile-only', 'src/index.ts'], {
@@ -71,29 +80,46 @@ test('running service sends a pending name alert through SMTP', async () => {
 			try {
 				events = (await axios.get(`http://127.0.0.1:${port}/api/title-events`))
 					.data.events
-				if (events[0]?.emailState === 'sent') break
+				const additions = (await axios.get(
+					`http://127.0.0.1:${port}/api/channel-added-events`)).data.events
+				if (events[0]?.emailState === 'sent' &&
+						additions.length === 2 &&
+						additions.every((entry: any) => entry.emailState === 'sent')) break
 			} catch { /* Service is still starting. */ }
 			await new Promise(resolve => setTimeout(resolve, 100))
 		}
 		expect(events[0]?.emailState).toBe('sent')
-		expect(messages).toHaveLength(1)
-		expect(messages[0]).toContain('Previous name: Old')
-		expect(messages[0]).toContain('Current name: New')
+		expect(messages).toHaveLength(2)
+		const titleMail = messages.find(message =>
+			message.includes('Previous name:'))
+		const channelMail = messages.find(message => message.includes('monitoring'))
+		expect(titleMail).toContain('Previous name: Old')
+		expect(titleMail).toContain('Current name: New')
+		expect(channelMail).toContain('UC0000000000000000000001')
+		expect(channelMail).toContain('UC0000000000000000000002')
 		const base = `http://127.0.0.1:${port}`
 		const settings = (await axios.get(`${base}/api/settings`)).data.settings
 		await axios.post(`${base}/api/settings`, { settings: { ...settings,
-			notifyTitleChanges: false } })
+			notifyTitleChanges: false, notifyChannelAdded: false } })
 		const connection = await sqlite.open({ filename, driver: sqlite3.Database })
 		try {
 			await connection.run('UPDATE subscriptions SET channelTitle=?', 'Next')
+			await connection.exec('BEGIN IMMEDIATE')
+			await new ChannelAddedBatch(connection).record(
+				'UC0000000000000000000001')
+			await connection.exec('COMMIT')
 		}
 		finally { await connection.close() }
 		await axios.post(`${base}/api/settings`, { settings: { ...settings,
-			notifyTitleChanges: true } })
+			notifyTitleChanges: true, notifyChannelAdded: true } })
 		const recent = (await axios.get(`${base}/api/title-events`)).data.events
 		const next = recent.find((event: any) => event.currentTitle === 'Next')
 		expect(next.emailState).toBe('suppressed')
-		expect(messages).toHaveLength(1)
+		const additions = (await axios.get(`${base}/api/channel-added-events`))
+			.data.events
+		expect(additions.filter((event: any) => event.emailState === 'suppressed'))
+			.toHaveLength(1)
+		expect(messages).toHaveLength(2)
 	} finally {
 		child.kill(); await exited
 		await new Promise<void>(resolve => smtp.close(() => resolve()))

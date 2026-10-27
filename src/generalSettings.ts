@@ -10,6 +10,7 @@ export interface GeneralSettings {
 	emailOnError: boolean,
 	confirmUnsubscribe: boolean,
 	notifyTitleChanges: boolean,
+	notifyChannelAdded: boolean,
 }
 
 export const readGeneralSettings = (config: Config): GeneralSettings => ({
@@ -19,6 +20,7 @@ export const readGeneralSettings = (config: Config): GeneralSettings => ({
 	emailOnError: config.logging.emailOnError,
 	confirmUnsubscribe: config.confirmUnsubscribe !== false,
 	notifyTitleChanges: config.notifyTitleChanges !== false,
+	notifyChannelAdded: config.notifyChannelAdded !== false,
 })
 
 export const parseGeneralSettings = (value: unknown): GeneralSettings => {
@@ -35,7 +37,9 @@ export const parseGeneralSettings = (value: unknown): GeneralSettings => {
 	confirmUnsubscribe: data.confirmUnsubscribe === undefined ? true :
 		parseConfirmation(data.confirmUnsubscribe),
 	notifyTitleChanges: data.notifyTitleChanges === undefined ? true :
-		parseConfirmation(data.notifyTitleChanges) }
+		parseConfirmation(data.notifyTitleChanges),
+	notifyChannelAdded: data.notifyChannelAdded === undefined ? true :
+		parseConfirmation(data.notifyChannelAdded) }
 }
 
 const parseConfirmation = (value: unknown): boolean => {
@@ -55,6 +59,7 @@ export const saveGeneralSettings = async (
 		config.logging.emailOnError = settings.emailOnError
 		config.confirmUnsubscribe = settings.confirmUnsubscribe
 		config.notifyTitleChanges = settings.notifyTitleChanges
+		config.notifyChannelAdded = settings.notifyChannelAdded
 	}
 	try { await updateJsonFile(filename, value => {
 		if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -67,6 +72,7 @@ export const saveGeneralSettings = async (
 			videoRetentionDays: settings.videoRetentionDays,
 			confirmUnsubscribe: settings.confirmUnsubscribe,
 			notifyTitleChanges: settings.notifyTitleChanges,
+			notifyChannelAdded: settings.notifyChannelAdded,
 			logging: { ...current.logging, emailOnError: settings.emailOnError } }
 	}) } catch (err) {
 		// A replacement can succeed even if lock cleanup fails afterward.
@@ -77,6 +83,7 @@ export const saveGeneralSettings = async (
 				videoRetentionDays: stored.videoRetentionDays,
 				confirmUnsubscribe: stored.confirmUnsubscribe,
 				notifyTitleChanges: stored.notifyTitleChanges,
+				notifyChannelAdded: stored.notifyChannelAdded,
 				emailOnError: stored.logging?.emailOnError })
 			if (JSON.stringify(effective) === JSON.stringify(settings)) apply()
 		} catch { console.warn('Could not verify saved general settings.') }

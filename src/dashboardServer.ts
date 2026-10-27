@@ -216,7 +216,9 @@ export const createDashboardHandler = (
 						confirmUnsubscribe: input.confirmUnsubscribe ??
 							actions.config.confirmUnsubscribe ?? true,
 						notifyTitleChanges: input.notifyTitleChanges ??
-							actions.config.notifyTitleChanges ?? true })
+							actions.config.notifyTitleChanges ?? true,
+						notifyChannelAdded: input.notifyChannelAdded ??
+							actions.config.notifyChannelAdded ?? true })
 					await actions.saveGeneral(settings)
 					return settings
 				})
@@ -442,7 +444,7 @@ export const createDashboardHandler = (
 				'/api/refresh', '/api/incidents', '/api/email/settings',
 				'/api/email/tests', '/api/subscriptions/export', '/api/schedule',
 				'/api/settings', '/api/cookies/status', '/api/channel-events',
-				'/api/title-events']
+				'/api/title-events', '/api/channel-added-events']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -520,6 +522,13 @@ export const createDashboardHandler = (
 				currentTitle, observedAt, emailState FROM channel_title_events
 				WHERE observedAt >= ${cutoff} ORDER BY observedAt DESC, id DESC
 				LIMIT 100;`) }
+		}
+		if (url.pathname === '/api/channel-added-events') {
+			return { events: await db.all(`SELECT e.channelId, e.observedAt,
+				COALESCE(s.channelTitle, e.channelId) AS title, b.emailState
+				FROM channel_added_events e JOIN channel_added_batches b
+				ON b.id=e.batchId LEFT JOIN subscriptions s ON s.channelId=e.channelId
+				ORDER BY e.observedAt DESC, e.rowid DESC LIMIT 100`) }
 		}
 		if (url.pathname === '/api/channels') {
 			const channels = await db.all(`SELECT channelId, channelTitle,

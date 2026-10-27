@@ -4,6 +4,7 @@ import * as sqlite from 'sqlite'
 import { Config } from './config'
 import { updateSubscriptionsFromWhitelistNoApi } from './subscriptions'
 import { migrateVideoSchema } from './videoSchema'
+import { initChannelSchema } from './channelSchema'
 
 vi.mock('axios', () => ({ default: vi.fn().mockResolvedValue({
 	data: '<meta property="og:image" content="https://example.com/avatar">',
@@ -28,6 +29,7 @@ describe('whitelist subscription lifecycle', () => {
 			videoId TEXT UNIQUE, channelId TEXT NOT NULL
 		)`)
 		await migrateVideoSchema(db)
+		await initChannelSchema(db)
 	})
 	afterEach(async () => { await db.close() })
 
@@ -95,5 +97,14 @@ describe('whitelist subscription lifecycle', () => {
 		const rows = await db.all('SELECT * FROM subscriptions')
 		expect(rows).toHaveLength(1)
 		expect(rows[0].firstObservedAt).toEqual(expect.any(String))
+	})
+
+	test('groups first manual observations once per refresh', async () => {
+		const second = 'UC0000000000000000000001'
+		const config = { whitelistedChannelIds: [{ id }, { id: second }] } as Config
+		await updateSubscriptionsFromWhitelistNoApi({ db, config, logger })
+		await updateSubscriptionsFromWhitelistNoApi({ db, config, logger })
+		expect(await db.all('SELECT * FROM channel_added_batches')).toHaveLength(1)
+		expect(await db.all('SELECT * FROM channel_added_events')).toHaveLength(2)
 	})
 })

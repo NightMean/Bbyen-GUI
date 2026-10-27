@@ -124,5 +124,7 @@ test('a database failure rolls back the complete cookie snapshot', async () => {
 			WHERE channelId=?`, first)).toEqual({ deleted: 0, bellState: 'all' })
 		expect(await db.get('SELECT COUNT(*) AS count FROM cookie_channel_events'))
 			.toEqual({ count: 1 })
+		expect(await db.get('SELECT COUNT(*) AS count FROM channel_added_events'))
+			.toEqual({ count: 1 })
 	} finally { await db.close() }
 })

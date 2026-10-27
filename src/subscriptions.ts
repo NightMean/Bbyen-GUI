@@ -15,6 +15,7 @@ import { assertChannelId, isChannelId } from './lib/channelId'
 import { ISendErrorEmail } from './email'
 import { DEFAULT_CHANNEL_THUMBNAIL } from './database'
 import { RefreshResult } from './refreshResult'
+import { ChannelAddedBatch } from './channelAddedEvents'
 
 // Extract canonical channel ids from a list of normalized channel entries.
 const channelIds = (entries?: ChannelEntry[]): string[] =>
@@ -90,6 +91,7 @@ const insertNewSubscriptions = async (
 
 	try {
 		if (!insideTransaction) await db.exec('BEGIN IMMEDIATE')
+		const additions = new ChannelAddedBatch(db)
 		try {
 			for (const [i, channelId] of newSubscriptions.entries()) {
 				const res = channelDetails.get(channelId)
@@ -110,6 +112,7 @@ const insertNewSubscriptions = async (
 				const existing = await db.get(SQL`
 				SELECT deleted, deletedReason FROM subscriptions
 				WHERE channelId=${channelId};`)
+				if (!existing) await additions.record(channelId)
 				if (existing?.deleted && existing.deletedReason !== 'terminated') {
 					await db.run(SQL`DELETE FROM video_scan_baselines
 					WHERE channelId=${channelId};`)

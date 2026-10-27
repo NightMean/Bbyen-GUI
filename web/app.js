@@ -226,6 +226,7 @@
         $('retention-days').value = general.settings.videoRetentionDays ?? ''
         $('failure-email').checked = general.settings.emailOnError
         $('title-email').checked = general.settings.notifyTitleChanges
+        $('channel-email').checked = general.settings.notifyChannelAdded
         $('confirm-unsubscribe-setting').checked = general.settings.confirmUnsubscribe
         state.confirmUnsubscribe = general.settings.confirmUnsubscribe
         $('email-user').disabled = data.userFromEnvironment
@@ -238,12 +239,17 @@
         return
       }
       if (state.page === 'activity') {
-        const [data, changes, titles] = await Promise.all([request('/api/incidents'), request('/api/channel-events'), request('/api/title-events')])
+        const [data, changes, titles, additions] = await Promise.all([request('/api/incidents'), request('/api/channel-events'), request('/api/title-events'), request('/api/channel-added-events')])
         if (sequence !== state.sequence) return
-        const items = [...data.incidents.map(value => ({ kind: 'incident', date: value.lastObservedAt, value })), ...changes.events.map(value => ({ kind: 'bell', date: value.observedAt, value })), ...titles.events.map(value => ({ kind: 'title', date: value.observedAt, value }))].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
+        const items = [...data.incidents.map(value => ({ kind: 'incident', date: value.lastObservedAt, value })), ...changes.events.map(value => ({ kind: 'bell', date: value.observedAt, value })), ...titles.events.map(value => ({ kind: 'title', date: value.observedAt, value })), ...additions.events.map(value => ({ kind: 'added', date: value.observedAt, value }))].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
         $('list-label').textContent = `${items.length} ${text.recentActivity}`
         $('paging').hidden = true
         $('results').replaceChildren(...(items.length ? items.map(item => {
+          if (item.kind === 'added') {
+            const change = item.value, row = element('article', 'incident-row')
+            row.append(element('h3', '', text.channelAddedActivity), element('p', 'meta', `${change.title} · ${displayDate(change.observedAt)} · ${text['titleEmail_' + change.emailState] || ''}`))
+            return row
+          }
           if (item.kind === 'title') {
             const change = item.value, row = element('article', 'incident-row')
             row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}${text['titleEmail_' + change.emailState] ? ` · ${text['titleEmail_' + change.emailState]}` : ''}`))
@@ -365,7 +371,7 @@
     if (mode === 'newest' && (!Number.isSafeInteger(count) || count < 1)) { showNotice(text.invalidCount); return }
     const initialBacklog = mode === 'newest' ? { mode, count } : { mode }
     const videoRetentionDays = $('retention-days').value ? Number($('retention-days').value) : null
-    const settings = { initialBacklog, videoRetentionDays, emailOnError: $('failure-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked }
+    const settings = { initialBacklog, videoRetentionDays, emailOnError: $('failure-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked, notifyChannelAdded: $('channel-email').checked }
     try { await post('/api/settings', { settings }); state.confirmUnsubscribe = settings.confirmUnsubscribe; showNotice(text.generalSaved) }
     catch { showNotice(text.generalError) }
   })

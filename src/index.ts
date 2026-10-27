@@ -42,6 +42,7 @@ import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { saveUnsubscribePreference } from './unsubscribePreference'
 import { TitleAlerts } from './titleAlerts'
+import { ChannelAddedAlerts } from './channelAddedAlerts'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -95,6 +96,11 @@ const startService = async (existingServer?: Server) => {
 				cookieStale: config.cookieStale })
 		}, message => logger.warn(message))
 		await titleAlerts.recoverInterrupted()
+		const channelAlerts = new ChannelAddedAlerts(db, async () => {
+			const email = await mailer.init(await loadEmailConfig())
+			return channels => email.sendChannelAdded(channels, config.cookieStale)
+		}, message => logger.warn(message))
+		await channelAlerts.recoverInterrupted()
 		const refreshCookies = createCookieRefresh({ store: cookieStore,
 			config, alerts, logger })
 		const tasks = createServiceTasks({ db, service, config, logger,
@@ -155,8 +161,10 @@ const startService = async (existingServer?: Server) => {
 				saveRefreshIntervals(CONFIG_FILE, config, activeSchedule, value),
 			saveGeneral: async value => {
 				if (config.notifyTitleChanges === false) await titleAlerts.run(false)
+				if (config.notifyChannelAdded === false) await channelAlerts.run(false)
 				await saveGeneralSettings(CONFIG_FILE, config, value)
 				if (!value.notifyTitleChanges) await titleAlerts.run(false)
+				if (!value.notifyChannelAdded) await channelAlerts.run(false)
 			},
 			saveUnsubscribePreference: value =>
 				saveUnsubscribePreference(CONFIG_FILE, config, value),
@@ -194,6 +202,13 @@ const startService = async (existingServer?: Server) => {
 			() => jobs.maintenance('title-alerts', () =>
 				titleAlerts.run(config.notifyTitleChanges !== false))
 				.catch(() => logger.warn('Could not process title alerts.')),
+			60_000,
+			true,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('channel-alerts', () =>
+				channelAlerts.run(config.notifyChannelAdded !== false))
+				.catch(() => logger.warn('Could not process channel alerts.')),
 			60_000,
 			true,
 		)

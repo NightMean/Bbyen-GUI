@@ -8,6 +8,7 @@ import SMTPTransport from 'nodemailer/lib/smtp-transport'
 import { EmailConfig } from '../config'
 import messages from './messages.en.json'
 import { TitleAlert } from '../titleAlerts'
+import { AddedChannel } from '../channelAddedAlerts'
 
 export type SendVideoEmail =
 	(props: ISendVideoEmail) => Promise<SMTPTransport.SentMessageInfo>
@@ -17,6 +18,11 @@ const loadTemplate = async (name: string) =>
 		path.join(__dirname, name),
 		'utf-8',
 	))
+
+const safeChannelTitle = (value: string): string => [...value].map(char => {
+	const code = char.charCodeAt(0)
+	return code < 32 || code === 127 ? ' ' : char
+}).join('').slice(0, 200)
 
 
 export interface ISendVideoEmail {
@@ -82,6 +88,17 @@ export const init = async (config: EmailConfig) => {
 			`https://www.youtube.com/channel/${alert.channelId}` +
 			(alert.cookieStale ? `\n\n${messages.cookieStale}` : ''),
 	})
+	const sendChannelAdded = (channels: AddedChannel[], cookieStale = false) =>
+		transporter.sendMail({
+			from: config.sendingContact, to: config.destination,
+			subject: messages.channelAddedSubject,
+			text: `${messages.channelAddedIntro}\n\n` + channels.map(channel =>
+				`${safeChannelTitle(channel.title)}\n` +
+				'https://www.youtube.com/channel/' +
+				channel.channelId).join('\n\n') +
+				(cookieStale ? `\n\n${messages.cookieStale}` : ''),
+		})
 
-	return { sendVideoEmail, sendErrorEmail, sendTestEmail, sendTitleAlert }
+	return { sendVideoEmail, sendErrorEmail, sendTestEmail, sendTitleAlert,
+		sendChannelAdded }
 }

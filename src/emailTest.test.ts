@@ -54,6 +54,12 @@ test('records SMTP test outcomes without replay', async () => {
 		expect(messages[2]).toContain('Current name: New name')
 		expect(messages[2].replace(/=\n/g, ''))
 			.toContain('last confirmed channel settings')
+		await email.sendChannelAdded([
+			{ channelId: 'UC0000000000000000000001', title: 'One' },
+			{ channelId: 'UC0000000000000000000002', title: 'Two' },
+		])
+		expect(messages[3]).toContain('One')
+		expect(messages[3]).toContain('Two')
 		expect(await sendTestEmail(db, async () => { throw new Error('fixture') }))
 			.toBe('uncertain')
 		const rows = await db.all(

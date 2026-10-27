@@ -52,6 +52,7 @@ export interface Config {
 	cookieStale?: boolean,
 	confirmUnsubscribe?: boolean,
 	notifyTitleChanges?: boolean,
+	notifyChannelAdded?: boolean,
 	port: number,
 	database: {
 		filename: string,
@@ -287,6 +288,10 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.notifyTitleChanges !== undefined &&
 			typeof config.notifyTitleChanges !== 'boolean') {
 		throw new Error('notifyTitleChanges must be a boolean.')
+	}
+	if (config.notifyChannelAdded !== undefined &&
+			typeof config.notifyChannelAdded !== 'boolean') {
+		throw new Error('notifyChannelAdded must be a boolean.')
 	}
 	if (config.videoRetentionDays !== undefined) {
 		config.videoRetentionDays = parseVideoRetentionDays(

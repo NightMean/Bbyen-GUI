@@ -96,10 +96,12 @@ Settings also controls the default first-scan policy, video-detail retention,
 and failure emails. Retention removes old details during video checks while
 keeping processed video IDs for deduplication.
 The Activity view shows up to 100 recent incidents, cookie bell observations,
-and channel name changes from the last 60 days. Incidents show whether they are
-active or recovered. Channel name-change emails are enabled by default and can
-be disabled in Settings. If delivery cannot be confirmed, Activity marks it
-uncertain and it is not automatically retried.
+channel monitoring starts, and channel name changes from the last 60 days.
+Incidents show whether they are active or recovered. Channel-added and name
+change emails are enabled by default and can be disabled independently in
+Settings. A channel sync groups newly monitored channels into one email;
+confirmed source switches do not generate added-channel emails. If delivery
+cannot be confirmed, Activity marks it uncertain and does not retry it.
 Settings can export a versioned JSON file of channel lists and preferences.
 It excludes credentials, videos, and incidents; `null` lists represent lists
 that were absent, which differs from an explicitly empty list in legacy setups.

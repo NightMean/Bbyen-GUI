@@ -3,6 +3,7 @@ import SQL from 'sql-template-strings'
 import { ChannelBellState } from './lib/innertubeChannels'
 import { isChannelId } from './lib/channelId'
 import { DEFAULT_CHANNEL_THUMBNAIL } from './database'
+import { ChannelAddedBatch } from './channelAddedEvents'
 
 interface CookieSnapshot {
 	profileKey: string,
@@ -42,6 +43,7 @@ export const reconcileCookieSnapshot = async (
 	}
 	const profileKey = snapshot.profileKey
 	const now = new Date().toISOString()
+	const additions = new ChannelAddedBatch(db)
 	if (!options.externalTransaction) await db.exec('BEGIN IMMEDIATE')
 	try {
 		const active = await db.get('SELECT profileKey FROM cookie_active_profile')
@@ -83,6 +85,11 @@ export const reconcileCookieSnapshot = async (
 			// It remains unconfirmed until YouTube supplies a definite state.
 			const track = confirmed === 'all' || (confirmed === null &&
 				channel.notificationState === 'unknown' && existing?.deleted === 0)
+			if (notifyEligible && confirmed === 'all' &&
+					(!existing || (existing.deleted &&
+					existing.deletedReason !== 'terminated'))) {
+				await additions.record(channel.channelId)
+			}
 			if (track) monitored.add(channel.channelId)
 			if (confirmed === 'all' && existing?.deleted &&
 					existing.deletedReason !== 'terminated') {

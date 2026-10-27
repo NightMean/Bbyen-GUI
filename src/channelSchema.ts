@@ -75,6 +75,18 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		startedAt TEXT NOT NULL,
 		finishedAt TEXT
 	);
+	CREATE TABLE IF NOT EXISTS channel_added_batches (
+		id TEXT PRIMARY KEY,
+		observedAt TEXT NOT NULL,
+		emailState TEXT NOT NULL CHECK (emailState IN
+			('pending', 'sending', 'sent', 'uncertain', 'suppressed'))
+	);
+	CREATE TABLE IF NOT EXISTS channel_added_events (
+		batchId TEXT NOT NULL,
+		channelId TEXT NOT NULL,
+		observedAt TEXT NOT NULL,
+		PRIMARY KEY (batchId, channelId)
+	);
 	`)
 	await db.exec('BEGIN IMMEDIATE')
 	try {
