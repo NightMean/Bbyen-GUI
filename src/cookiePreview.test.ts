@@ -61,3 +61,20 @@ test('expires candidates before they can be confirmed', async () => {
 			candidate.profiles[0].profileId)).rejects.toThrow(/expired/i)
 	} finally { service.dispose(); await db.close() }
 })
+
+test('discards pending inspection after candidates are cleared', async () => {
+	const db = await init({ filename: ':memory:' })
+	type Discovery = { cookieHeader: string, profiles: typeof profile[] }
+	let finish!: (value: Discovery) => void
+	const result = new Promise<Discovery>(
+		resolve => { finish = resolve })
+	const service = new CookiePreviewService(db, {
+		discover: async () => result, fetch: async () => [channel(first, 'all')],
+	})
+	try {
+		const pending = service.inspect('fixture')
+		service.dispose()
+		finish({ cookieHeader: 'fixture', profiles: [profile] })
+		await expect(pending).rejects.toThrow(/cancelled/i)
+	} finally { service.dispose(); await db.close() }
+})

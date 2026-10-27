@@ -304,8 +304,13 @@ fails as an authentication error rather than treating it as an empty account.
 The dashboard's cookie connection API previews changes before confirmation and
 stores a confirmed cookie in the SQLite database together with its profile and
 tracking snapshot. Database backups therefore contain the session credential.
-Cookie dashboard controls and switching back to manual mode are still under
-development; API-to-cookie and combined mode remain unavailable.
+The connection API can also preview a switch to manual tracking, retaining the
+currently monitored channels and deleting the stored connection and the matching
+`CONFIG_DIR/cookies.txt` file. Cleanup is retried after a restart; a file changed
+after preview is retained and must be removed separately before reconnecting.
+Environment variables and copies or backups of cookies are not deleted.
+Cookie dashboard controls are still under development; API-to-cookie and
+combined mode remain unavailable.
 
 Then run:
 

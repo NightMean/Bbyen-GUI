@@ -8,6 +8,7 @@ import { Config } from './config'
 import { SubscriptionImportService } from './subscriptionImportService'
 import { CookiePreviewService } from './cookiePreview'
 import { CookieConnectionStore } from './cookieConnection'
+import { ManualSourceSwitch } from './manualSourceSwitch'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -77,6 +78,9 @@ test('validates writes and schedules refresh after saving', async () => {
 		imports: new SubscriptionImportService('unused', {} as Config),
 		cookiePreviews,
 		cookieStatus: () => cookieStore.status(),
+		cookieCleanupPending: () => cookieStore.cleanupPending(),
+		manualSwitch: new ManualSourceSwitch(db, config, 'unused', 'unused',
+			'unused', cookiePreviews),
 		activateCookie: async (candidate, preview) => {
 			const confirmed = await cookiePreviews.confirm(candidate, preview)
 			await cookieStore.activate(confirmed.cookieHeader, confirmed.profile,

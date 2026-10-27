@@ -36,6 +36,8 @@ import { CookieConnectionStore } from './cookieConnection'
 import { createCookieRefresh } from './cookieRefresh'
 import { CookiePreviewService } from './cookiePreview'
 import { activateConfirmedCookie } from './activateCookie'
+import { recoverCookieCleanup } from './cookieCleanup'
+import { ManualSourceSwitch } from './manualSourceSwitch'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -62,6 +64,9 @@ const startService = async (existingServer?: Server) => {
 		const databaseConnection = db
 		await recoverPendingVideoEmails(db)
 		const cookieStore = new CookieConnectionStore(db)
+		try { await recoverCookieCleanup(db, CONFIG_DIR) } catch {
+			logger.warn('Cookie cleanup is pending.')
+		}
 		const cookieStatus = await cookieStore.status()
 		if (cookieStatus) {
 			config.mode = 'cookie'
@@ -107,10 +112,14 @@ const startService = async (existingServer?: Server) => {
 		schedule.configure({ subscriptions: subscriptionsTimer,
 			videos: videosTimer })
 		const cookiePreviews = new CookiePreviewService(db)
+		const manualSwitch = new ManualSourceSwitch(db, config, CONFIG_FILE,
+			CHANNELS_FILE, CONFIG_DIR, cookiePreviews)
 		const handler = createDashboardHandler(db, jobs, {
 			config,
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),
+			cookieCleanupPending: () => cookieStore.cleanupPending(),
+			manualSwitch,
 			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
 				config, cookieStore, cookiePreviews, candidateId, previewId),
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),
@@ -151,6 +160,13 @@ const startService = async (existingServer?: Server) => {
 				await tasks.retryAlerts()
 			})
 				.catch(() => logger.warn('Could not retry incident alerts.')),
+			60_000,
+			false,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('cookie-cleanup', () =>
+				recoverCookieCleanup(databaseConnection, CONFIG_DIR))
+				.catch(() => logger.warn('Cookie cleanup is pending.')),
 			60_000,
 			false,
 		)

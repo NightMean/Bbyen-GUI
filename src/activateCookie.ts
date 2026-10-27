@@ -11,6 +11,9 @@ export const activateConfirmedCookie = async (
 	if (config.mode === 'youtube') {
 		throw new Error('API-to-cookie switching is unavailable.')
 	}
+	if (await store.cleanupPending()) {
+		throw new Error('Previous cookie cleanup must finish first.')
+	}
 	const candidate = await previews.confirm(candidateId, previewId)
 	await secureCookieStorage(config.database.filename)
 	await store.activate(candidate.cookieHeader, candidate.profile,

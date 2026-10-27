@@ -370,6 +370,7 @@ test('restores cookie tracking mode from the persistent database', async () => {
 	await fs.writeFile(path.join(dir, 'config.json'), JSON.stringify(config))
 	await fs.writeFile(path.join(dir, 'channels.json'),
 		JSON.stringify({ whitelistedChannelIds: [] }))
+	await fs.writeFile(path.join(dir, 'cookies.txt'), 'synthetic-file-fixture')
 	const db = await init(config.database)
 	await new CookieConnectionStore(db).activate('SAPISID=synthetic-fixture', {
 		name: 'Profile', selected: true, selectable: true,
@@ -396,6 +397,19 @@ test('restores cookie tracking mode from the persistent database', async () => {
 		expect(result?.manualMode).toBe(false)
 		expect(result?.channels[0].channelId).toBe('UC0000000000000000000002')
 		expect(JSON.stringify(result)).not.toContain('synthetic-fixture')
+		const base = `http://127.0.0.1:${port}`
+		const preview = (await axios.post(`${base}/api/cookies/manual/preview`, {}))
+			.data
+		expect(preview.continuing).toHaveLength(1)
+		expect(preview.legacyCookieFile).toBe(true)
+		const switched = await axios.post(`${base}/api/cookies/manual/apply`,
+			{ previewId: preview.previewId })
+		expect(switched.data).toEqual({ switched: true, cleanupPending: false })
+		expect((await axios.get(`${base}/api/cookies/status`)).data.mode)
+			.toBe('whitelist')
+		await expect(fs.stat(path.join(dir, 'cookies.txt')))
+			.rejects.toMatchObject({ code: 'ENOENT' })
+		expect((await axios.get(`${base}/api/channels`)).data.manualMode).toBe(true)
 	} finally {
 		child.kill(); await exited
 		await fs.rm(dir, { recursive: true, force: true })

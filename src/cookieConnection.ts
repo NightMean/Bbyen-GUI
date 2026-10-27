@@ -37,6 +37,9 @@ export class CookieConnectionStore {
 			channel.notificationState === 'unknown')
 		await this.db.exec('BEGIN IMMEDIATE')
 		try {
+			if (await this.cleanupPending()) {
+				throw new Error('Previous cookie cleanup must finish first.')
+			}
 			await reconcileCookieSnapshot(this.db, {
 				profileKey: profile.channelId, complete: true, activateProfile: true,
 				suppressNotifications: true, channels,
@@ -117,5 +120,9 @@ export class CookieConnectionStore {
 		return row ? { channelId: row.channelId, name: row.profileName,
 			handle: row.handle, stale: !!row.stale,
 			lastSuccessfulAt: row.lastSuccessfulAt } : null
+	}
+
+	async cleanupPending(): Promise<boolean> {
+		return !!await this.db.get('SELECT id FROM cookie_cleanup WHERE id=1')
 	}
 }

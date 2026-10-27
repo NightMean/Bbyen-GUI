@@ -20,6 +20,7 @@ import {
 	GeneralSettings, parseGeneralSettings, readGeneralSettings,
 } from './generalSettings'
 import { CookiePreviewService } from './cookiePreview'
+import { ManualSourceSwitch } from './manualSourceSwitch'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -41,6 +42,8 @@ interface ChannelActions {
 	cookiePreviews: CookiePreviewService,
 	cookieStatus: () => Promise<unknown>,
 	activateCookie: (candidateId: string, previewId: string) => Promise<void>,
+	manualSwitch: ManualSourceSwitch,
+	cookieCleanupPending: () => Promise<boolean>,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -76,6 +79,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/cookies/compare' ||
 			url.pathname === '/api/cookies/activate' ||
 			url.pathname === '/api/cookies/cancel' ||
+			url.pathname === '/api/cookies/manual/preview' ||
+			url.pathname === '/api/cookies/manual/apply' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -108,6 +113,24 @@ export const createDashboardHandler = (
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
 			if (url.pathname.startsWith('/api/cookies/')) {
+				if (url.pathname === '/api/cookies/manual/preview') {
+					void jobs.maintenance(randomUUID(), () =>
+						actions.manualSwitch.preview()).then(result => send(200, result),
+						() => send(409, { error: 'Could not preview the source switch.' }))
+					return
+				}
+				if (url.pathname === '/api/cookies/manual/apply') {
+					if (typeof data.previewId !== 'string' || !data.previewId) {
+						send(400, { error: 'Source switch preview is missing.' }); return
+					}
+					const preview = data.previewId
+					void jobs.maintenance(randomUUID(), () =>
+						actions.manualSwitch.apply(preview)).then(result =>
+						send(200, { switched: true, ...result }), () => send(409, {
+						error: 'Could not confirm the switch. Review the preview again.',
+					}))
+					return
+				}
 				if (actions.config.mode === 'youtube') {
 					send(409, { error: 'API-to-cookie switching is unavailable.' })
 					return
@@ -366,7 +389,9 @@ export const createDashboardHandler = (
 	void jobs.maintenance(randomUUID(), async () => {
 		if (url.pathname === '/api/cookies/status') {
 			return { mode: actions!.config.mode,
-				connection: await actions!.cookieStatus() }
+				connection: await actions!.cookieStatus(),
+				cleanupPending: await actions!.cookieCleanupPending(),
+				environmentCookie: process.env.YOUTUBE_COOKIE !== undefined }
 		}
 		if (url.pathname === '/api/subscriptions/export') {
 			if (!actions) throw new Error('Subscription export unavailable.')

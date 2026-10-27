@@ -26,6 +26,7 @@ const CANDIDATE_LIFETIME_MS = 10 * 60_000
 /** Keep temporary cookie candidates in memory only and expire them promptly. */
 export class CookiePreviewService {
 	private readonly candidates = new Map<string, Candidate>()
+	private epoch = 0
 	constructor(private readonly db: sqlite.Database,
 		private readonly deps: PreviewDependencies = {
 			discover: discoverCookieProfiles, fetch: fetchCookieChannels,
@@ -47,7 +48,9 @@ export class CookiePreviewService {
 	}
 
 	async inspect(cookie: string) {
+		const epoch = this.epoch
 		const { cookieHeader, profiles } = await this.deps.discover(cookie)
+		if (epoch !== this.epoch) throw new Error('Cookie preview was cancelled.')
 		while (this.candidates.size >= MAX_CANDIDATES) {
 			this.remove(this.candidates.keys().next().value as string)
 		}
@@ -180,5 +183,8 @@ export class CookiePreviewService {
 
 	cancel(id: string): void { this.remove(id) }
 
-	dispose(): void { for (const id of this.candidates.keys()) this.remove(id) }
+	dispose(): void {
+		this.epoch++
+		for (const id of this.candidates.keys()) this.remove(id)
+	}
 }
