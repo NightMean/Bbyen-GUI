@@ -58,6 +58,28 @@ test('serves persisted data and rejects unsupported requests', async () => {
 	}
 })
 
+test('returns channels beyond the previous dashboard limit', async () => {
+	const db = await init({ filename: ':memory:' })
+	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
+	const server = createDashboardServer(db, jobs)
+	try {
+		for (let i = 0; i < 501; i++) {
+			await db.run(`INSERT INTO subscriptions
+				(channelId, channelThumbnail, channelTitle) VALUES (?, '', ?)`,
+			`channel-${i}`, `Channel ${i.toString().padStart(3, '0')}`)
+		}
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+		const port = (server.address() as AddressInfo).port
+		const response = await axios.get(`http://127.0.0.1:${port}/api/channels`)
+		expect(response.data.channels).toHaveLength(501)
+		expect(response.data.channels[500].channelId).toBe('channel-500')
+	} finally {
+		if (server.listening) await new Promise<void>((resolve, reject) =>
+			server.close(err => err ? reject(err) : resolve()))
+		await db.close()
+	}
+})
+
 test('validates the listening port', () => {
 	expect(dashboardPort(undefined)).toBe(3031)
 	expect(dashboardPort('0')).toBe(0)

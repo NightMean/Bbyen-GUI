@@ -566,8 +566,7 @@ export const createDashboardHandler = (
 				JOIN cookie_connection c ON c.channelId=s.profileKey
 				WHERE s.channelId=subscriptions.channelId AND c.id=1
 				AND s.subscribed=1) AS cookieSubscribed
-				FROM subscriptions ORDER BY channelTitle, channelId
-				LIMIT 500`)
+				FROM subscriptions ORDER BY channelTitle, channelId`)
 			const manualMode = actions?.manualMode() ?? false
 			return { manualMode, cookieMode: actions?.config.mode === 'cookie',
 				confirmUnsubscribe: actions?.config.confirmUnsubscribe !== false,
