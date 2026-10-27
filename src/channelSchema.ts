@@ -47,5 +47,23 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		currentState TEXT NOT NULL,
 		notifyEligible INTEGER NOT NULL CHECK (notifyEligible IN (0, 1)),
 		observedAt TEXT NOT NULL
-	);`)
+	);
+	CREATE TABLE IF NOT EXISTS channel_title_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		channelId TEXT NOT NULL,
+		previousTitle TEXT NOT NULL,
+		currentTitle TEXT NOT NULL,
+		observedAt TEXT NOT NULL
+	);
+	CREATE TRIGGER IF NOT EXISTS record_channel_title_change
+	AFTER UPDATE OF channelTitle ON subscriptions
+	WHEN OLD.channelTitle <> NEW.channelTitle
+		AND OLD.channelTitle <> OLD.channelId AND OLD.channelTitle <> ''
+		AND NEW.channelTitle <> NEW.channelId AND NEW.channelTitle <> ''
+	BEGIN
+		INSERT INTO channel_title_events
+			(channelId, previousTitle, currentTitle, observedAt)
+		VALUES (NEW.channelId, OLD.channelTitle, NEW.channelTitle,
+			strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+	END;`)
 }

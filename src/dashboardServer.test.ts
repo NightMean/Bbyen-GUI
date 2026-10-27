@@ -163,6 +163,14 @@ test('validates writes and schedules refresh after saving', async () => {
 		const events = (await axios.get(`${base}/api/channel-events`)).data.events
 		expect(events).toMatchObject([{ channelId: id, previousState: null,
 			currentState: 'all' }])
+		await db.run('UPDATE subscriptions SET channelTitle=? WHERE channelId=?',
+			'Renamed', id)
+		await db.run(`INSERT INTO channel_title_events
+			(channelId, previousTitle, currentTitle, observedAt)
+			VALUES (?, 'Old', 'Older', '2000-01-01T00:00:00.000Z')`, id)
+		const titles = (await axios.get(`${base}/api/title-events`)).data.events
+		expect(titles).toMatchObject([{ previousTitle: 'Channel',
+			currentTitle: 'Renamed' }])
 		config.cookieStale = true
 		expect((await axios.get(`${base}/api/channels`)).data.cookieStale)
 			.toBe(true)

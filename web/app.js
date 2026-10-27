@@ -186,12 +186,17 @@
         return
       }
       if (state.page === 'activity') {
-        const [data, changes] = await Promise.all([request('/api/incidents'), request('/api/channel-events')])
+        const [data, changes, titles] = await Promise.all([request('/api/incidents'), request('/api/channel-events'), request('/api/title-events')])
         if (sequence !== state.sequence) return
-        const items = [...data.incidents.map(value => ({ kind: 'incident', date: value.lastObservedAt, value })), ...changes.events.map(value => ({ kind: 'bell', date: value.observedAt, value }))].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
+        const items = [...data.incidents.map(value => ({ kind: 'incident', date: value.lastObservedAt, value })), ...changes.events.map(value => ({ kind: 'bell', date: value.observedAt, value })), ...titles.events.map(value => ({ kind: 'title', date: value.observedAt, value }))].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
         $('list-label').textContent = `${items.length} ${text.recentActivity}`
         $('paging').hidden = true
         $('results').replaceChildren(...(items.length ? items.map(item => {
+          if (item.kind === 'title') {
+            const change = item.value, row = element('article', 'incident-row')
+            row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}`))
+            return row
+          }
           if (item.kind === 'bell') {
             const change = item.value, row = element('article', 'incident-row')
             const title = element('h3', '', change.previousState === null ? text.bellObserved : text.bellActivity)

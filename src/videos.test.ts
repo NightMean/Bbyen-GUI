@@ -57,6 +57,19 @@ describe('video failure recovery', () => {
 		expect(result).toMatchObject({ status: 'failed', failed: 1, total: 1 })
 	})
 
+	test('records a changed manual channel name from an empty feed', async () => {
+		vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({
+			title: 'New name', items: [],
+		} as never)
+		await parseFeedsAndNotify({ ...args(), auth: undefined,
+			config: { ...config, mode: 'whitelist' } } as never)
+		expect(await db.get('SELECT channelTitle FROM subscriptions'))
+			.toEqual({ channelTitle: 'New name' })
+		expect(await db.get(`SELECT previousTitle, currentTitle
+			FROM channel_title_events`)).toEqual({ previousTitle: 'Creator',
+			currentTitle: 'New name' })
+	})
+
 	test('marks video emails when cookie data is stale', async () => {
 		const result = await parseFeedsAndNotify({ ...args(), auth: undefined,
 			config: { ...config, mode: 'cookie', cookieStale: true } } as never)

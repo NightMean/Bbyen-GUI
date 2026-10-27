@@ -95,9 +95,9 @@ replaces the running timers after the new settings are saved.
 Settings also controls the default first-scan policy, video-detail retention,
 and failure emails. Retention removes old details during video checks while
 keeping processed video IDs for deduplication.
-The Activity view shows up to 100 recent incidents and cookie bell observations,
-including whether each incident
-one is active or recovered. It does not yet contain channel change history.
+The Activity view shows up to 100 recent incidents, cookie bell observations,
+and channel name changes from the last 60 days. Incidents show whether they are
+active or recovered. Name-change email notifications are not yet available.
 Settings can export a versioned JSON file of channel lists and preferences.
 It excludes credentials, videos, and incidents; `null` lists represent lists
 that were absent, which differs from an explicitly empty list in legacy setups.

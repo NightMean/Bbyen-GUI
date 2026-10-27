@@ -1,6 +1,7 @@
 import { randomUUID } from 'crypto'
 import { createServer, RequestListener, Server } from 'http'
 import * as sqlite from 'sqlite'
+import SQL from 'sql-template-strings'
 import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
 import { listDashboardVideos, parseVideoQuery } from './dashboardVideos'
@@ -350,7 +351,8 @@ export const createDashboardHandler = (
 			!['/api/health', '/api/channels', '/api/videos',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
 				'/api/email/tests', '/api/subscriptions/export', '/api/schedule',
-				'/api/settings', '/api/cookies/status', '/api/channel-events']
+				'/api/settings', '/api/cookies/status', '/api/channel-events',
+				'/api/title-events']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -420,6 +422,14 @@ export const createDashboardHandler = (
 				FROM cookie_channel_events e LEFT JOIN subscriptions s
 				ON s.channelId=e.channelId ORDER BY e.observedAt DESC, e.id DESC
 				LIMIT 100`) }
+		}
+		if (url.pathname === '/api/title-events') {
+			const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
+				.toISOString()
+			return { events: await db.all(SQL`SELECT id, channelId, previousTitle,
+				currentTitle, observedAt FROM channel_title_events
+				WHERE observedAt >= ${cutoff} ORDER BY observedAt DESC, id DESC
+				LIMIT 100;`) }
 		}
 		if (url.pathname === '/api/channels') {
 			const channels = await db.all(`SELECT channelId, channelTitle,

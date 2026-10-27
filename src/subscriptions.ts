@@ -280,6 +280,13 @@ export const updateSubscriptionsFromAPI = async (
 		}
 		await insertNewSubscriptions(
 			db, logger, Array.from(newSubscriptions), channelDetails, true)
+		for (const channelId of updatedSubscriptions) {
+			const details = channelDetails.get(channelId)
+			if (details?.title && details.title !== channelId) {
+				await db.run(SQL`UPDATE subscriptions SET channelTitle=${details.title}
+					WHERE channelId=${channelId} AND deleted=0;`)
+			}
+		}
 		await removeDeletedSubscriptions(db, logger, removedSubscriptions.values())
 		await db.exec('COMMIT')
 	} catch (err) {

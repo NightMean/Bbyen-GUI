@@ -21,6 +21,27 @@ const subscription = (id: string) => ({ snippet: {
 
 afterEach(() => vi.restoreAllMocks())
 
+test('API refresh records changed titles for existing channels', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.run(`INSERT INTO subscriptions
+			(channelId, channelTitle, channelThumbnail) VALUES (?, 'Old', 'img')`,
+		allowed)
+		const item = subscription(allowed)
+		item.snippet.title = 'New'
+		const service = { subscriptions: { list: vi.fn().mockResolvedValue({
+			data: { items: [item] },
+		}) } } as never
+		const config = { mode: 'youtube',
+			emailSelectionPolicy: 'allowlist' } as Config
+		await updateSubscriptionsFromAPI({ db, config, service,
+			auth: {} as never, sendErrorEmail: vi.fn() })
+		expect(await db.get(`SELECT previousTitle, currentTitle
+			FROM channel_title_events`)).toEqual({ previousTitle: 'Old',
+			currentTitle: 'New' })
+	} finally { await db.close() }
+})
+
 test('API discovery retains all subscriptions and applies allowlist email',
 	async () => {
 		const db = await init({ filename: ':memory:' })

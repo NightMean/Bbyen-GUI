@@ -192,6 +192,11 @@ const getChannelsVideos = async ({
 	// In whitelist mode there is no API channel title; the RSS feed title is the
 	// channel name.
 	const rssChannelTitle = (feed as { title?: string }).title
+	if (config.mode === 'whitelist' && typeof rssChannelTitle === 'string' &&
+			rssChannelTitle.trim() && rssChannelTitle !== channelId) {
+		await db.run(SQL`UPDATE subscriptions SET channelTitle=${rssChannelTitle}
+			WHERE channelId=${channelId} AND deleted=0;`)
+	}
 	// Previously collected RSS videos may no longer appear in the current feed.
 	const feedIds = new Set(feedItems.map(item => item.videoId))
 	const queued = [...pendingMetadata].filter(id => !feedIds.has(id))
