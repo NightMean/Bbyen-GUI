@@ -214,7 +214,9 @@ export const createDashboardHandler = (
 					const input = data.settings as Record<string, unknown>
 					const settings = parseGeneralSettings({ ...input,
 						confirmUnsubscribe: input.confirmUnsubscribe ??
-							actions.config.confirmUnsubscribe ?? true })
+							actions.config.confirmUnsubscribe ?? true,
+						notifyTitleChanges: input.notifyTitleChanges ??
+							actions.config.notifyTitleChanges ?? true })
 					await actions.saveGeneral(settings)
 					return settings
 				})
@@ -515,7 +517,7 @@ export const createDashboardHandler = (
 			const cutoff = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000)
 				.toISOString()
 			return { events: await db.all(SQL`SELECT id, channelId, previousTitle,
-				currentTitle, observedAt FROM channel_title_events
+				currentTitle, observedAt, emailState FROM channel_title_events
 				WHERE observedAt >= ${cutoff} ORDER BY observedAt DESC, id DESC
 				LIMIT 100;`) }
 		}

@@ -330,7 +330,8 @@ test('first-run setup starts the service without restarting', async () => {
 		} })
 		const savedSettings = (await axios.get(`${url}/api/settings`)).data.settings
 		expect(savedSettings).toEqual({ initialBacklog: { mode: 'all' },
-			videoRetentionDays: 30, emailOnError: false, confirmUnsubscribe: true })
+			videoRetentionDays: 30, emailOnError: false, confirmUnsubscribe: true,
+			notifyTitleChanges: true })
 		await axios.post(`${url}/api/unsubscribe-confirmation`,
 			{ confirmUnsubscribe: false })
 		expect((await axios.get(`${url}/api/settings`)).data.settings

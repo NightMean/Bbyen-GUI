@@ -48,6 +48,12 @@ test('records SMTP test outcomes without replay', async () => {
 			videoURL: 'https://www.youtube.com/watch?v=video', cookieStale: true })
 		expect(messages[1].replace(/=\n/g, ''))
 			.toContain('last confirmed channel settings')
+		await email.sendTitleAlert({ channelId: 'UC0000000000000000000001',
+			previousTitle: 'Old name', currentTitle: 'New name', cookieStale: true })
+		expect(messages[2]).toContain('Previous name: Old name')
+		expect(messages[2]).toContain('Current name: New name')
+		expect(messages[2].replace(/=\n/g, ''))
+			.toContain('last confirmed channel settings')
 		expect(await sendTestEmail(db, async () => { throw new Error('fixture') }))
 			.toBe('uncertain')
 		const rows = await db.all(

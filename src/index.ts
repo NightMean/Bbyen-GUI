@@ -41,6 +41,7 @@ import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { saveUnsubscribePreference } from './unsubscribePreference'
+import { TitleAlerts } from './titleAlerts'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -88,6 +89,12 @@ const startService = async (existingServer?: Server) => {
 		await jobs.recoverInterrupted()
 		const alerts = new IncidentReporter(db, logger)
 		await alerts.recoverInterrupted()
+		const titleAlerts = new TitleAlerts(db, async () => {
+			const email = await mailer.init(await loadEmailConfig())
+			return alert => email.sendTitleAlert({ ...alert,
+				cookieStale: config.cookieStale })
+		}, message => logger.warn(message))
+		await titleAlerts.recoverInterrupted()
 		const refreshCookies = createCookieRefresh({ store: cookieStore,
 			config, alerts, logger })
 		const tasks = createServiceTasks({ db, service, config, logger,
@@ -146,7 +153,11 @@ const startService = async (existingServer?: Server) => {
 			saveCredentials: value => saveEmailCredentials(SECRETS_FILE, value),
 			saveSchedule: value =>
 				saveRefreshIntervals(CONFIG_FILE, config, activeSchedule, value),
-			saveGeneral: value => saveGeneralSettings(CONFIG_FILE, config, value),
+			saveGeneral: async value => {
+				if (config.notifyTitleChanges === false) await titleAlerts.run(false)
+				await saveGeneralSettings(CONFIG_FILE, config, value)
+				if (!value.notifyTitleChanges) await titleAlerts.run(false)
+			},
 			saveUnsubscribePreference: value =>
 				saveUnsubscribePreference(CONFIG_FILE, config, value),
 			testEmail: () => sendTestEmail(databaseConnection, async () => {
@@ -178,6 +189,13 @@ const startService = async (existingServer?: Server) => {
 				.catch(() => logger.warn('Cookie cleanup is pending.')),
 			60_000,
 			false,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('title-alerts', () =>
+				titleAlerts.run(config.notifyTitleChanges !== false))
+				.catch(() => logger.warn('Could not process title alerts.')),
+			60_000,
+			true,
 		)
 		setIntervalInstant(
 			() => quota.tick().catch(() => logger.warn('Quota retry check failed.')),

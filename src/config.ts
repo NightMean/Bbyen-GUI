@@ -51,6 +51,7 @@ export interface Config {
 	mode: 'youtube' | 'whitelist' | 'cookie',
 	cookieStale?: boolean,
 	confirmUnsubscribe?: boolean,
+	notifyTitleChanges?: boolean,
 	port: number,
 	database: {
 		filename: string,
@@ -282,6 +283,10 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.confirmUnsubscribe !== undefined &&
 			typeof config.confirmUnsubscribe !== 'boolean') {
 		throw new Error('confirmUnsubscribe must be a boolean.')
+	}
+	if (config.notifyTitleChanges !== undefined &&
+			typeof config.notifyTitleChanges !== 'boolean') {
+		throw new Error('notifyTitleChanges must be a boolean.')
 	}
 	if (config.videoRetentionDays !== undefined) {
 		config.videoRetentionDays = parseVideoRetentionDays(

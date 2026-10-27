@@ -75,15 +75,29 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		startedAt TEXT NOT NULL,
 		finishedAt TEXT
 	);
-	CREATE TRIGGER IF NOT EXISTS record_channel_title_change
+	`)
+	await db.exec('BEGIN IMMEDIATE')
+	try {
+		const columns = await db.all('PRAGMA table_info(channel_title_events)')
+		if (!columns.some(column => column.name === 'emailState')) {
+			await db.exec(`ALTER TABLE channel_title_events ADD COLUMN emailState TEXT
+				NOT NULL DEFAULT 'historical'`)
+		}
+		await db.exec(`DROP TRIGGER IF EXISTS record_channel_title_change;
+	CREATE TRIGGER record_channel_title_change
 	AFTER UPDATE OF channelTitle ON subscriptions
 	WHEN OLD.channelTitle <> NEW.channelTitle
 		AND OLD.channelTitle <> OLD.channelId AND OLD.channelTitle <> ''
 		AND NEW.channelTitle <> NEW.channelId AND NEW.channelTitle <> ''
 	BEGIN
 		INSERT INTO channel_title_events
-			(channelId, previousTitle, currentTitle, observedAt)
+			(channelId, previousTitle, currentTitle, observedAt, emailState)
 		VALUES (NEW.channelId, OLD.channelTitle, NEW.channelTitle,
-			strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+			strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 'pending');
 	END;`)
+		await db.exec('COMMIT')
+	} catch (err) {
+		await db.exec('ROLLBACK')
+		throw err
+	}
 }

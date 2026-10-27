@@ -225,6 +225,7 @@
         $('default-count').value = general.settings.initialBacklog.count || 5
         $('retention-days').value = general.settings.videoRetentionDays ?? ''
         $('failure-email').checked = general.settings.emailOnError
+        $('title-email').checked = general.settings.notifyTitleChanges
         $('confirm-unsubscribe-setting').checked = general.settings.confirmUnsubscribe
         state.confirmUnsubscribe = general.settings.confirmUnsubscribe
         $('email-user').disabled = data.userFromEnvironment
@@ -245,7 +246,7 @@
         $('results').replaceChildren(...(items.length ? items.map(item => {
           if (item.kind === 'title') {
             const change = item.value, row = element('article', 'incident-row')
-            row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}`))
+            row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}${text['titleEmail_' + change.emailState] ? ` · ${text['titleEmail_' + change.emailState]}` : ''}`))
             return row
           }
           if (item.kind === 'bell') {
@@ -364,7 +365,7 @@
     if (mode === 'newest' && (!Number.isSafeInteger(count) || count < 1)) { showNotice(text.invalidCount); return }
     const initialBacklog = mode === 'newest' ? { mode, count } : { mode }
     const videoRetentionDays = $('retention-days').value ? Number($('retention-days').value) : null
-    const settings = { initialBacklog, videoRetentionDays, emailOnError: $('failure-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked }
+    const settings = { initialBacklog, videoRetentionDays, emailOnError: $('failure-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked }
     try { await post('/api/settings', { settings }); state.confirmUnsubscribe = settings.confirmUnsubscribe; showNotice(text.generalSaved) }
     catch { showNotice(text.generalError) }
   })

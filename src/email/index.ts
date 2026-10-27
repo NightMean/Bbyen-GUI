@@ -7,6 +7,7 @@ import SMTPTransport from 'nodemailer/lib/smtp-transport'
 
 import { EmailConfig } from '../config'
 import messages from './messages.en.json'
+import { TitleAlert } from '../titleAlerts'
 
 export type SendVideoEmail =
 	(props: ISendVideoEmail) => Promise<SMTPTransport.SentMessageInfo>
@@ -73,6 +74,14 @@ export const init = async (config: EmailConfig) => {
 		subject: 'BBYEN test email',
 		text: 'Your BBYEN email delivery settings are working.',
 	})
+	const sendTitleAlert = (alert: TitleAlert) => transporter.sendMail({
+		from: config.sendingContact, to: config.destination,
+		subject: messages.titleSubject,
+		text: `${messages.titlePrevious}: ${alert.previousTitle}\n` +
+			`${messages.titleCurrent}: ${alert.currentTitle}\n` +
+			`https://www.youtube.com/channel/${alert.channelId}` +
+			(alert.cookieStale ? `\n\n${messages.cookieStale}` : ''),
+	})
 
-	return { sendVideoEmail, sendErrorEmail, sendTestEmail }
+	return { sendVideoEmail, sendErrorEmail, sendTestEmail, sendTitleAlert }
 }
