@@ -310,6 +310,21 @@ While the official YouTube Data API does not expose notification bell preference
 
 Export your session cookies from your browser (via Cookie-Editor or Netscape format) to `cookies.txt` in the `bbyen` directory.
 
+If YouTube rejects an export while the regular browser remains signed in,
+YouTube may have rotated the browser session. A separate private session worked
+in a live BBYEN test. Follow the [yt-dlp YouTube cookie export guidance](https://github.com/yt-dlp/yt-dlp/wiki/Extractors#exporting-youtube-cookies):
+
+1. Open a new private/incognito window and sign in to the YouTube account.
+2. In the same tab, navigate to `https://www.youtube.com/robots.txt`.
+3. Export the `youtube.com` cookies and close the private window. Your export
+   extension may need permission to run in private windows.
+4. Place the export in `CONFIG_DIR/cookies.txt` on the machine running BBYEN,
+   or import it in dashboard Settings. Keep it private; it grants account access.
+
+Do not reopen that private session after exporting. This may reduce rotation; it
+does not guarantee how long YouTube will accept the export. BBYEN cannot refresh
+cookies directly from the browser, so repeat the export if the session expires.
+
 Cookie exports with domain metadata are restricted to YouTube cookies usable
 for the InnerTube request path. A raw Cookie header has no domain metadata,
 so include only cookies intended for YouTube when supplying that format.
