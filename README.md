@@ -100,8 +100,9 @@ Activity history has a separate retention setting and is kept indefinitely by
 default. Cleanup preserves active incidents, pending email deliveries, and
 unresolved YouTube actions until they are resolved; it also keeps the latest
 completed refresh for each refresh type so current status remains available.
-The Activity view shows up to 100 recent incidents, cookie bell observations,
-channel monitoring starts, and channel name changes from the last 60 days.
+The Activity view pages through retained incidents, refresh outcomes, cookie
+bell observations, channel monitoring starts, and channel name changes from
+the last 60 days.
 Incidents show whether they are active or recovered. Channel-added and name
 change emails are enabled by default and can be disabled independently in
 Settings. A channel sync groups newly monitored channels into one email;
@@ -121,10 +122,9 @@ The Settings test-email action records each attempt and does not retry uncertain
 the most recent 1,000 attempts are retained.
 The shared channel resolver accepts YouTube HTTPS URLs, handles and validated
 YouTube feed URLs; it refuses redirects to other hosts.
-Its channel list currently returns at most 500 records, while video history
-supports pagination and date, channel and title filters. Account connections,
-configuration controls, and other dashboard features are still under
-development. Set
+The channel list supports status and name filters; video history supports
+pagination and date, channel and title filters. Some account connections and
+configuration controls are still under development. Set
 `BBYEN_DASHBOARD_PORT` to change the listening port and update the Compose
 port mapping to match. This endpoint has no login or built-in HTTPS; configure
 network access and any HTTPS proxy for your environment.
