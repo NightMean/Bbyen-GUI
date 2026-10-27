@@ -5,6 +5,7 @@ import SQL from 'sql-template-strings'
 import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
 import { listDashboardVideos, parseVideoQuery } from './dashboardVideos'
+import { listActivity, parseActivityPage } from './dashboardActivity'
 import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 import {
 	PublicEmailSettings, parseEmailCredentials, parseEmailSettings,
@@ -446,12 +447,13 @@ export const createDashboardHandler = (
 		send(405, { error: 'Method not allowed.' })
 		return
 	}
-	if ((url.search && url.pathname !== '/api/videos') ||
+	if ((url.search &&
+			!['/api/videos', '/api/activity'].includes(url.pathname)) ||
 			!['/api/health', '/api/channels', '/api/videos',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
 				'/api/email/tests', '/api/subscriptions/export', '/api/schedule',
 				'/api/settings', '/api/cookies/status', '/api/channel-events',
-				'/api/title-events', '/api/channel-added-events']
+				'/api/title-events', '/api/channel-added-events', '/api/activity']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -487,6 +489,15 @@ export const createDashboardHandler = (
 		void Promise.all([jobs.status('subscriptions'), jobs.status('videos')])
 			.then(([subscriptions, videos]) => send(200, { subscriptions, videos }),
 				() => send(500, { error: 'Refresh status is unavailable.' }))
+		return
+	}
+	if (url.pathname === '/api/activity') {
+		try {
+			const page = parseActivityPage(url.searchParams)
+			void jobs.maintenance(randomUUID(), () => listActivity(db, page))
+				.then(result => send(200, result),
+					() => send(500, { error: 'Activity is unavailable.' }))
+		} catch { send(400, { error: 'Invalid activity page.' }) }
 		return
 	}
 	let query: ReturnType<typeof parseVideoQuery>

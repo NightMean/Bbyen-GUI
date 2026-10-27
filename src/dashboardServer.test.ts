@@ -41,6 +41,11 @@ test('serves persisted data and rejects unsupported requests', async () => {
 			.toBe('idle')
 		expect((await axios.get(`${base}/api/incidents`)).data.incidents[0].source)
 			.toBe('smtp')
+		const activity = await axios.get(`${base}/api/activity?limit=1&offset=0`)
+		expect(activity.data.total).toBe(1)
+		expect(activity.data.items[0].value.source).toBe('smtp')
+		expect((await axios.get(`${base}/api/activity?limit=0`,
+			{ validateStatus: () => true })).status).toBe(400)
 		expect((await axios.post(`${base}/api/channels`, null,
 			{ validateStatus: () => true })).status)
 			.toBe(405)

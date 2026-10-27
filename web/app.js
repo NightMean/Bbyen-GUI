@@ -242,11 +242,18 @@
         return
       }
       if (state.page === 'activity') {
-        const [data, changes, titles, additions] = await Promise.all([request('/api/incidents'), request('/api/channel-events'), request('/api/title-events'), request('/api/channel-added-events')])
+        const data = await request(`/api/activity?limit=${size}&offset=${state.offset}`)
         if (sequence !== state.sequence) return
-        const items = [...data.incidents.map(value => ({ kind: 'incident', date: value.lastObservedAt, value })), ...changes.events.map(value => ({ kind: 'bell', date: value.observedAt, value })), ...titles.events.map(value => ({ kind: 'title', date: value.observedAt, value })), ...additions.events.map(value => ({ kind: 'added', date: value.observedAt, value }))].sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, 100)
-        $('list-label').textContent = `${items.length} ${text.recentActivity}`
-        $('paging').hidden = true
+        if (state.offset > 0 && state.offset >= data.total) {
+          state.offset = Math.max(0, Math.ceil(data.total / size) - 1) * size
+          return load()
+        }
+        const items = data.items
+        $('list-label').textContent = `${data.total} ${text.recentActivity}`
+        $('paging').hidden = data.total <= size
+        $('previous').disabled = state.offset === 0
+        $('next').disabled = state.offset + size >= data.total
+        $('page-label').textContent = `${state.offset + 1}\u2013${Math.min(state.offset + size, data.total)} / ${data.total}`
         $('results').replaceChildren(...(items.length ? items.map(item => {
           if (item.kind === 'added') {
             const change = item.value, row = element('article', 'incident-row')
