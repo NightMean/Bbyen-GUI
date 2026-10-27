@@ -158,19 +158,7 @@
           load()
         } catch { showNotice(text.bellError) } finally { review.disabled = false }
       }); row.append(review)
-    } else if (cookieMode && channel.cookieSubscribed && ['all', 'personalized', 'none'].includes(channel.bellState) && channel.deletedReason !== 'terminated') {
-      const select = element('select', 'channel-bell'); select.setAttribute('aria-label', `${text.bellSelect}: ${channel.channelTitle || channel.channelId}`)
-      for (const preference of ['all', 'personalized', 'none']) {
-        const option = element('option', '', text['bell_' + preference]); option.value = preference; option.selected = preference === channel.bellState; select.append(option)
-      }
-      select.addEventListener('change', async () => {
-        select.disabled = true
-        try {
-          const result = await post('/api/channels/bell', { channelId: channel.channelId, preference: select.value })
-          showNotice(result.outcome === 'uncertain' ? text.bellUncertain : text.bellSaved); load()
-        } catch { showNotice(text.bellError); load() } finally { select.disabled = false }
-      }); row.append(select)
-    }
+    } else if (cookieMode && channel.cookieSubscribed) info.append(element('div', 'channel-detail', text.bellUnavailable))
     if (cookieMode && channel.cookieSubscribed && !channel.subscriptionUncertain && !channel.bellUncertain) {
       const remove = element('button', 'quiet', text.unsubscribe)
       remove.type = 'button'; remove.addEventListener('click', async () => {
@@ -516,10 +504,7 @@
       try {
         const result = await post('/api/channels/subscription', { ...body, subscribed: true })
         if (result.outcome === 'uncertain') { $('review-add-subscription').hidden = false; showNotice(text.subscriptionUncertain); return }
-        try {
-          const bell = await post('/api/channels/bell', { ...body, preference: 'all' })
-          showNotice(bell.outcome === 'uncertain' ? text.subscriptionPartial : text.subscriptionSaved)
-        } catch { showNotice(text.subscriptionPartial) }
+        showNotice(text.subscriptionSaved)
         $('add-panel').hidden = true; $('channel-input').value = ''; load()
       } catch { $('review-add-subscription').hidden = false; showNotice(text.subscriptionError) }
       finally { $('confirm-add').disabled = false }

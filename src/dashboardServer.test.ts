@@ -190,15 +190,13 @@ test('validates writes and schedules refresh after saving', async () => {
 			{ validateStatus: () => true })
 		expect(invalidBell.status).toBe(400)
 		const changedBell = await axios.post(`${base}/api/channels/bell`,
-			{ channelId: id, preference: 'personalized' })
-		expect(changedBell.data.outcome).toBe('confirmed')
-		expect((await axios.get(`${base}/api/channels`)).data.channels[0].deleted)
-			.toBe(1)
+			{ channelId: id, preference: 'personalized' },
+			{ validateStatus: () => true })
+		expect(changedBell.status).toBe(503)
 		expect(cookieChannels.cookieStale).toBe(false)
 		expect(cookieChannels.channels[0].bellState).toBe('all')
 		const events = (await axios.get(`${base}/api/channel-events`)).data.events
 		expect(events).toMatchObject([
-			{ channelId: id, previousState: 'all', currentState: 'personalized' },
 			{ channelId: id, previousState: null, currentState: 'all' },
 		])
 		await db.run('UPDATE subscriptions SET channelTitle=? WHERE channelId=?',
