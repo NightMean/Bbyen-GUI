@@ -1,13 +1,13 @@
 import { randomUUID } from 'crypto'
 import { createServer, Server } from 'http'
 import * as sqlite from 'sqlite'
-import { RefreshCoordinator } from './refreshCoordinator'
+import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
 import { isChannelId } from './lib/channelId'
 
 interface ChannelActions {
 	add: (channelId: string) => Promise<void>,
 	resolve: (input: string) => Promise<string>,
-	refresh: () => void,
+	refresh: (kind: RefreshKind) => void,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -28,7 +28,8 @@ export const createDashboardServer = (
 	}
 	if (request.method === 'POST' && !url.search && actions &&
 			(url.pathname === '/api/channels' ||
-			url.pathname === '/api/channels/resolve')) {
+			url.pathname === '/api/channels/resolve' ||
+			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
 				origin !== `https://${request.headers.host}`) ||
@@ -43,8 +44,17 @@ export const createDashboardServer = (
 			if (body.length > 4096) request.destroy()
 		})
 		request.on('end', () => {
-			let data: { channelId?: unknown, input?: unknown } = {}
+			let data: { channelId?: unknown, input?: unknown, kind?: unknown } = {}
 			try { data = JSON.parse(body) ?? {} } catch { /* invalid JSON */ }
+			if (url.pathname === '/api/refresh') {
+				if (data.kind !== 'subscriptions' && data.kind !== 'videos') {
+					send(400, { error: 'Choose a valid refresh type.' })
+					return
+				}
+				actions.refresh(data.kind)
+				send(202, { kind: data.kind })
+				return
+			}
 			if (url.pathname === '/api/channels/resolve') {
 				if (typeof data.input !== 'string' || !data.input.trim() ||
 						data.input.length > 2048) {
@@ -68,8 +78,11 @@ export const createDashboardServer = (
 				return
 			}
 			void jobs.maintenance(randomUUID(), () => actions.add(id as string))
-				.then(() => { actions.refresh(); send(202, { channelId: id }) },
-					() => send(500, { error: 'Could not save the channel.' }))
+				.then(() => {
+					actions.refresh('subscriptions')
+					send(202, { channelId: id })
+				},
+				() => send(500, { error: 'Could not save the channel.' }))
 		})
 		return
 	}
@@ -87,6 +100,13 @@ export const createDashboardServer = (
 		send(200, { status: 'running' })
 		return
 	}
+	if (url.pathname === '/api/refresh') {
+		// Status must remain observable while a long-running job owns the queue.
+		void Promise.all([jobs.status('subscriptions'), jobs.status('videos')])
+			.then(([subscriptions, videos]) => send(200, { subscriptions, videos }),
+				() => send(500, { error: 'Refresh status is unavailable.' }))
+		return
+	}
 	void jobs.maintenance(randomUUID(), async () => {
 		if (url.pathname === '/api/channels') {
 			return { channels: await db.all(`SELECT channelId, channelTitle,
@@ -94,14 +114,10 @@ export const createDashboardServer = (
 				bellUpdatedAt FROM subscriptions ORDER BY channelTitle, channelId
 				LIMIT 500`) }
 		}
-		if (url.pathname === '/api/videos') {
-			return { videos: await db.all(`SELECT videoId, channelId, title,
-				publishedAt, thumbnailUrl, durationSeconds, contentType, observedAt,
-				emailOutcome, sentAt FROM video_observations
-				ORDER BY COALESCE(publishedAt, observedAt) DESC, videoId LIMIT 500`) }
-		}
-		return { subscriptions: await jobs.status('subscriptions'),
-			videos: await jobs.status('videos') }
+		return { videos: await db.all(`SELECT videoId, channelId, title,
+			publishedAt, thumbnailUrl, durationSeconds, contentType, observedAt,
+			emailOutcome, sentAt FROM video_observations
+			ORDER BY COALESCE(publishedAt, observedAt) DESC, videoId LIMIT 500`) }
 	}).then(result => send(200, result), () => {
 		send(500, { error: 'Dashboard data is temporarily unavailable.' })
 	})

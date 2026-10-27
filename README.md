@@ -74,6 +74,8 @@ so SQLite and its journal stay in persistent storage. The template port is
 The service also exposes a preliminary dashboard API on port 3031. It can
 resolve channel inputs, add canonical channel IDs, and schedule a subscription
 refresh after saving.
+Manual refresh requests use the same scheduler and quota handling as timed
+refreshes; the refresh endpoint reports their most recent outcomes.
 The shared channel resolver accepts YouTube HTTPS URLs, handles and validated
 YouTube feed URLs; it refuses redirects to other hosts.
 Its channel and video lists currently return at most 500 records, and the web

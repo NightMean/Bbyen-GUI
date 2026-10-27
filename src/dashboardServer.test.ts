@@ -50,7 +50,7 @@ test('validates writes and schedules refresh after saving', async () => {
 	const server = createDashboardServer(db, jobs, {
 		add: async id => { calls.push(id) },
 		resolve: async input => input,
-		refresh: () => { calls.push('refresh') },
+		refresh: kind => { calls.push(kind) },
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
@@ -66,10 +66,27 @@ test('validates writes and schedules refresh after saving', async () => {
 		expect(calls).toEqual([])
 		const result = await axios.post(`${base}/api/channels`, { channelId: id })
 		expect(result.status).toBe(202)
-		expect(calls).toEqual([id, 'refresh'])
+		expect(calls).toEqual([id, 'subscriptions'])
 		const resolved = await axios.post(`${base}/api/channels/resolve`,
 			{ input: id })
 		expect(resolved.data.channelId).toBe(id)
+		const refresh = await axios.post(`${base}/api/refresh`, { kind: 'videos' })
+		expect(refresh.status).toBe(202)
+		expect(calls).toEqual([id, 'subscriptions', 'videos'])
+		const invalidRefresh = await axios.post(`${base}/api/refresh`,
+			{ kind: 'other' }, { validateStatus: () => true })
+		expect(invalidRefresh.status).toBe(400)
+		let finish!: () => void
+		const hold = new Promise<void>(resolve => { finish = resolve })
+		const work = jobs.run('videos', async () => {
+			await hold
+			return { status: 'success', total: 0, succeeded: 0, failed: 0,
+				skipped: 0, failedChannels: [] }
+		})
+		try {
+			const status = await axios.get(`${base}/api/refresh`, { timeout: 1000 })
+			expect(['queued', 'running']).toContain(status.data.videos.state)
+		} finally { finish(); await work }
 	} finally {
 		await new Promise<void>((resolve, reject) => server.close(err =>
 			err ? reject(err) : resolve()))

@@ -65,8 +65,8 @@ const main = async () => {
 		const server = createDashboardServer(db, jobs, {
 			add: id => addManualChannel(CHANNELS_FILE, config, id),
 			resolve: resolveChannelId,
-			refresh: () => { void quota.run('subscriptions').catch(() =>
-				logger.error('Channel refresh failed unexpectedly.')) },
+			refresh: kind => { void quota.run(kind).catch(() =>
+				logger.error('Manual refresh failed unexpectedly.')) },
 		})
 		await new Promise<void>((resolve, reject) => {
 			server.once('error', reject)
