@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import axios from 'axios'
 import { assertChannelId, isChannelId } from './channelId'
+import { CookieSessionError } from './cookieSessionError'
 
 export interface ChannelBellState {
 	channelId: string
@@ -334,7 +335,19 @@ export const fetchAccountsList = async (
 			},
 			timeout: 10000,
 		},
-	)
+	).catch(err => {
+		if (err?.response?.status === 401 || err?.response?.status === 403) {
+			throw new CookieSessionError('YouTube rejected the session cookie.')
+		}
+		throw err
+	})
+	const webContext = res.data?.responseContext?.mainAppWebResponseContext
+	if (webContext?.loggedOut === true) {
+		throw new CookieSessionError('YouTube rejected the session cookie.')
+	}
+	if (res.data?.error) {
+		throw new Error('YouTube could not list account profiles.')
+	}
 	return parseAccountsListResponse(res.data)
 }
 

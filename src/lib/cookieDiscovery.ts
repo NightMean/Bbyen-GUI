@@ -5,8 +5,9 @@ import {
 	ChannelBellState,
 } from './innertubeChannels'
 import { loadConfigRaw } from '../config'
+import { CookieSessionError } from './cookieSessionError'
 
-export class CookieSessionError extends Error {}
+export { CookieSessionError } from './cookieSessionError'
 
 const INNERTUBE_API_URL = 'https://www.youtube.com/youtubei/v1/browse'
 const ACCOUNT_MENU_URL =
@@ -73,7 +74,8 @@ export const resolveTargetProfile = async (
 	let profiles: YouTubeProfile[] = []
 	try {
 		profiles = await fetchAccountsList(cookieHeader, sapisid)
-	} catch {
+	} catch (err) {
+		if (err instanceof CookieSessionError) throw err
 		// If accounts_list fails, fall back to direct options
 	}
 

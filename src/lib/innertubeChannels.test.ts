@@ -11,7 +11,10 @@ import {
 	subscribeToChannel,
 	unsubscribeFromChannel,
 	setChannelNotificationPreference,
+	fetchAccountsList,
 } from './innertubeChannels'
+import { CookieSessionError } from './cookieSessionError'
+import { classifyError } from './classifyError'
 
 describe('generateSapisidHash', () => {
 	test('uses Unix seconds for automatically generated timestamps', () => {
@@ -82,6 +85,17 @@ describe('normalizeCookieHeader', () => {
 		expect(() => normalizeCookieHeader('[invalid')).toThrow()
 		expect(() => normalizeCookieHeader('SID=fixture\r\nOther: value')).toThrow()
 	})
+})
+
+test('classifies a logged-out profile response as auth failure', async () => {
+	vi.spyOn(axios, 'post').mockResolvedValueOnce({ data: { responseContext: {
+		mainAppWebResponseContext: { loggedOut: true },
+	} } })
+	try {
+		await expect(fetchAccountsList('SID=synthetic-fixture', 'fixture'))
+			.rejects.toBeInstanceOf(CookieSessionError)
+		expect(classifyError(new CookieSessionError('fixture'))).toBe('auth')
+	} finally { vi.restoreAllMocks() }
 })
 
 describe('extractSapisidFromCookie', () => {

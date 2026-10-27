@@ -299,6 +299,8 @@ Export your session cookies from your browser (via Cookie-Editor or Netscape for
 Cookie exports with domain metadata are restricted to YouTube cookies usable
 for the InnerTube request path. A raw Cookie header has no domain metadata,
 so include only cookies intended for YouTube when supplying that format.
+When YouTube reports that a cookie session is logged out, profile discovery
+fails as an authentication error rather than treating it as an empty account.
 
 Then run:
 

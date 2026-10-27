@@ -1,3 +1,5 @@
+import { CookieSessionError } from './cookieSessionError'
+
 export type ErrorCategory = 'auth' | 'quota' | 'other'
 
 const AUTH_REASONS = [
@@ -13,6 +15,7 @@ const QUOTA_REASONS = [
 // layer can track and de-duplicate by cause. Total: never throws, unknown
 // shapes fall through to 'other'.
 export const classifyError = (err: unknown): ErrorCategory => {
+	if (err instanceof CookieSessionError) return 'auth'
 	if (typeof err !== 'object' || err === null) {
 		return 'other'
 	}

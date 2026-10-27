@@ -125,6 +125,16 @@ test('rejects continuation cycles without writing a partial whitelist',
 			.rejects.toMatchObject({ code: 'ENOENT' })
 	})
 
+test('rejects a logged-out account before fetching channels', async () => {
+	vi.mocked(axios.post).mockResolvedValue({ data: { responseContext: {
+		mainAppWebResponseContext: { loggedOut: true },
+	} } } as any)
+	await expect(sync({ cookie: 'SAPISID=synthetic-fixture',
+		saveToChannelsJson: true })).rejects.toThrow(/session cookie/i)
+	expect(vi.mocked(axios.post)).toHaveBeenCalledTimes(1)
+	await expect(fs.stat(channelsFile)).rejects.toMatchObject({ code: 'ENOENT' })
+})
+
 test('rolls back failed bell batches and safely retries the saved whitelist',
 	async () => {
 		const second = renderer()
