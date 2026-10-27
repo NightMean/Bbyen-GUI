@@ -331,8 +331,12 @@ and after the mutation. If the result is uncertain, review the current state
 before allowing another attempt; a delayed request can still take effect.
 Unsubscribe asks for confirmation by default. The dialog can turn off future
 prompts, and Settings can restore them.
-Cookie exports are snapshots of browser credentials: the service can accept a
-replacement without restarting but cannot renew them from the browser itself.
+Cookie exports are snapshots of browser credentials: the service cannot export
+them from the browser itself. When a stored cookie is rejected, BBYEN tries an
+updated `CONFIG_DIR/cookies.txt`, verifies the same selected profile, and
+replaces the stored cookie without a restart. While the connection is stale,
+the service checks for an updated file approximately once per minute. Export
+the browser cookies to that service-side path or replace them in Settings.
 
 Then run:
 

@@ -5,6 +5,7 @@ import { AlertReporter } from './lib/alertState'
 import { classifyError } from './lib/classifyError'
 import { fetchCookieChannels } from './lib/cookieDiscovery'
 import { RefreshResult } from './refreshResult'
+import { normalizeCookieHeader } from './lib/innertubeChannels'
 
 interface CookieRefreshDependencies {
 	store: CookieConnectionStore,
@@ -13,6 +14,7 @@ interface CookieRefreshDependencies {
 	logger: { info: (message: string) => void, warn: (message: string) => void,
 		error: (error: unknown) => void },
 	fetch?: typeof fetchCookieChannels,
+	loadReplacement?: () => Promise<string | null>,
 }
 
 type CookieMailers = {
@@ -41,12 +43,41 @@ export const createCookieRefresh = (deps: CookieRefreshDependencies) =>
 			const connection = await deps.store.read()
 			if (!connection) throw new Error('Cookie connection is unavailable.')
 			generation = connection.generation
-			const channels = await (deps.fetch ?? fetchCookieChannels)({
-				cookie: connection.cookieHeader, targetProfile: connection.profile,
-				onProgress: () => undefined,
-			})
-			if (!await deps.store.refresh(generation, channels)) {
-				throw new Error('Cookie connection changed during refresh.')
+			const fetch = deps.fetch ?? fetchCookieChannels
+			let channels
+			let replacement: string | null = null
+			let recoveredError: unknown
+			try {
+				channels = await fetch({ cookie: connection.cookieHeader,
+					targetProfile: connection.profile, onProgress: () => undefined })
+			} catch (err) {
+				if (!deps.loadReplacement) throw err
+				try {
+					const file = await deps.loadReplacement()
+					if (file) replacement = normalizeCookieHeader(file)
+					if (!replacement || replacement === connection.cookieHeader) throw err
+					channels = await fetch({ cookie: replacement,
+						targetProfile: connection.profile, onProgress: () => undefined })
+					recoveredError = err
+				} catch {
+					warn('Could not verify an updated cookie file for this profile.')
+					throw err
+				}
+			}
+			const next = replacement ? await deps.store.replaceAndRefresh(
+				generation, replacement, channels) :
+				await deps.store.refresh(generation, channels) ? generation : null
+			if (!next) throw new Error('Cookie connection changed during refresh.')
+			generation = next
+			if (replacement) {
+				try { deps.logger.info('Updated the cookie connection from the file.') }
+				catch { warn('Could not log cookie renewal.') }
+				await report(recoveredError)
+				if (classifyError(recoveredError) === 'auth') {
+					try { await deps.alerts.clear(['auth'], 'cookie') } catch {
+						warn('Could not clear the cookie authentication incident.')
+					}
+				}
 			}
 			const unknown = channels.filter(channel =>
 				channel.notificationState === 'unknown')

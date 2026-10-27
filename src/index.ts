@@ -46,6 +46,8 @@ import { ChannelAddedAlerts } from './channelAddedAlerts'
 import { pruneActivity } from './activityRetention'
 import { IncidentReminders } from './incidentReminders'
 import { IncidentRecoveries } from './incidentRecoveries'
+import { readCookieFile } from './cookieFile'
+import { CookieFileRecovery } from './cookieFileRecovery'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -116,7 +118,8 @@ const startService = async (existingServer?: Server) => {
 		}, message => logger.warn(message))
 		await recoveries.recoverInterrupted()
 		const refreshCookies = createCookieRefresh({ store: cookieStore,
-			config, alerts, logger })
+			config, alerts, logger,
+			loadReplacement: () => readCookieFile(CONFIG_DIR) })
 		const tasks = createServiceTasks({ db, service, config, logger,
 			initialAuth, alerts, refreshCookies,
 			retryPendingAlerts: (send, enabled) => alerts.retryPending(send, enabled),
@@ -137,6 +140,9 @@ const startService = async (existingServer?: Server) => {
 			void quota.run(kind).catch(() =>
 				logger.error('Refresh failed unexpectedly.'))
 		}
+		const fileRecovery = new CookieFileRecovery(config, cookieStore,
+			() => readCookieFile(CONFIG_DIR), () => runRefresh('subscriptions'))
+		let cookieFileWarning = false
 		schedule = new RefreshSchedule(runRefresh)
 		const activeSchedule = schedule
 		schedule.configure({ subscriptions: subscriptionsTimer,
@@ -215,6 +221,15 @@ const startService = async (existingServer?: Server) => {
 				.catch(() => logger.warn('Cookie cleanup is pending.')),
 			60_000,
 			false,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('cookie-file-recovery', () => fileRecovery.check())
+				.then(() => { cookieFileWarning = false }, () => {
+					if (!cookieFileWarning) logger.warn('Could not inspect cookie file.')
+					cookieFileWarning = true
+				}),
+			60_000,
+			true,
 		)
 		setIntervalInstant(
 			() => jobs.maintenance('title-alerts', () =>

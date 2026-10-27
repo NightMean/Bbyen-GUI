@@ -90,6 +90,20 @@ export class CookieConnectionStore {
 	async refresh(
 		generation: string, channels: ChannelBellState[],
 	): Promise<boolean> {
+		return (await this.applySnapshot(generation, channels)) !== null
+	}
+
+	async replaceAndRefresh(generation: string, cookieHeader: string,
+		channels: ChannelBellState[]): Promise<string | null> {
+		if (typeof cookieHeader !== 'string' || cookieHeader.length > 256 * 1024 ||
+				!extractSapisidFromCookie(cookieHeader)) {
+			throw new Error('Replacement cookie is invalid.')
+		}
+		return this.applySnapshot(generation, channels, cookieHeader)
+	}
+
+	private async applySnapshot(generation: string, channels: ChannelBellState[],
+		replacement?: string): Promise<string | null> {
 		if (!Array.isArray(channels) || !channels.length) {
 			throw new Error('An empty cookie snapshot cannot be verified.')
 		}
@@ -97,17 +111,21 @@ export class CookieConnectionStore {
 		try {
 			const row = await this.db.get(SQL`SELECT channelId FROM cookie_connection
 				WHERE id=1 AND generation=${generation};`)
-			if (!row) { await this.db.exec('ROLLBACK'); return false }
+			if (!row) { await this.db.exec('ROLLBACK'); return null }
 			await reconcileCookieSnapshot(this.db, { profileKey: row.channelId,
 				complete: true, channels }, { externalTransaction: true })
 			const stale = channels.some(channel =>
 				channel.notificationState === 'unknown')
+			const nextGeneration = replacement === undefined ? generation :
+				randomUUID()
 			await this.db.run(SQL`UPDATE cookie_connection SET stale=${stale ? 1 : 0},
+				generation=${nextGeneration},
+				cookieHeader=COALESCE(${replacement ?? null}, cookieHeader),
 				lastSuccessfulAt=CASE WHEN ${stale ? 1 : 0}=0
 				THEN ${new Date().toISOString()} ELSE lastSuccessfulAt END
 				WHERE id=1 AND generation=${generation};`)
 			await this.db.exec('COMMIT')
-			return true
+			return nextGeneration
 		} catch (err) {
 			await this.db.exec('ROLLBACK')
 			throw err
