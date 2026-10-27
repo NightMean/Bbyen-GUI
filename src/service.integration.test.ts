@@ -323,6 +323,13 @@ test('first-run setup starts the service without restarting', async () => {
 		expect(config.mode).toBe('whitelist')
 		expect(config.notifyOnFirstScan).toBe(false)
 		expect(config.database.filename).toBe(path.join(dir, 'database.sqlite'))
+		await axios.post(`${url}/api/settings`, { settings: {
+			initialBacklog: { mode: 'all' }, videoRetentionDays: 30,
+			emailOnError: false,
+		} })
+		const savedSettings = (await axios.get(`${url}/api/settings`)).data.settings
+		expect(savedSettings).toEqual({ initialBacklog: { mode: 'all' },
+			videoRetentionDays: 30, emailOnError: false })
 		const importedId = 'UCabcdefghijklmnopqrstuv'
 		const preview = await axios.post(
 			`${url}/api/subscriptions/import/preview`, {

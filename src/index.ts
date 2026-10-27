@@ -31,6 +31,7 @@ import {
 import { sendTestEmail } from './emailTest'
 import { SubscriptionImportService } from './subscriptionImportService'
 import { RefreshSchedule, saveRefreshIntervals } from './refreshSchedule'
+import { saveGeneralSettings } from './generalSettings'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -112,6 +113,7 @@ const startService = async (existingServer?: Server) => {
 			saveCredentials: value => saveEmailCredentials(SECRETS_FILE, value),
 			saveSchedule: value =>
 				saveRefreshIntervals(CONFIG_FILE, config, activeSchedule, value),
+			saveGeneral: value => saveGeneralSettings(CONFIG_FILE, config, value),
 			testEmail: () => sendTestEmail(databaseConnection, async () => {
 				const mail = await mailer.init(await loadEmailConfig())
 				await mail.sendTestEmail()

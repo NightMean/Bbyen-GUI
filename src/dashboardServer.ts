@@ -16,6 +16,9 @@ import {
 	ImportChangedError, ImportConfirmationError, SubscriptionImportService,
 } from './subscriptionImportService'
 import { parseRefreshIntervals, RefreshIntervals } from './refreshSchedule'
+import {
+	GeneralSettings, parseGeneralSettings, readGeneralSettings,
+} from './generalSettings'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -33,6 +36,7 @@ interface ChannelActions {
 	config: Config,
 	imports: SubscriptionImportService,
 	saveSchedule: (value: RefreshIntervals) => Promise<void>,
+	saveGeneral: (value: GeneralSettings) => Promise<void>,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -63,6 +67,7 @@ export const createDashboardHandler = (
 			url.pathname === '/api/subscriptions/import/preview' ||
 			url.pathname === '/api/subscriptions/import/apply' ||
 			url.pathname === '/api/schedule' ||
+			url.pathname === '/api/settings' ||
 			url.pathname === '/api/refresh')) {
 		const origin = request.headers.origin
 		if ((origin && origin !== `http://${request.headers.host}` &&
@@ -92,6 +97,17 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname === '/api/settings') {
+				let settings: GeneralSettings
+				try { settings = parseGeneralSettings(data.settings) } catch {
+					send(400, { error: 'Enter valid settings.' }); return
+				}
+				void jobs.maintenance(randomUUID(), () => actions.saveGeneral(settings))
+					.then(() => send(200, { settings }), () => send(500, {
+						error: 'Could not confirm settings. Reload before retrying.',
+					}))
+				return
+			}
 			if (url.pathname === '/api/schedule') {
 				let intervals: RefreshIntervals
 				try {
@@ -244,7 +260,8 @@ export const createDashboardHandler = (
 	if ((url.search && url.pathname !== '/api/videos') ||
 			!['/api/health', '/api/channels', '/api/videos',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
-				'/api/email/tests', '/api/subscriptions/export', '/api/schedule']
+				'/api/email/tests', '/api/subscriptions/export', '/api/schedule',
+				'/api/settings']
 				.includes(url.pathname)) {
 		send(404, { error: 'Not found.' })
 		return
@@ -264,6 +281,11 @@ export const createDashboardHandler = (
 	if (url.pathname === '/api/schedule') {
 		if (!actions) { send(503, { error: 'Schedule unavailable.' }); return }
 		send(200, { intervals: actions.config.timers })
+		return
+	}
+	if (url.pathname === '/api/settings') {
+		if (!actions) { send(503, { error: 'Settings unavailable.' }); return }
+		send(200, { settings: readGeneralSettings(actions.config) })
 		return
 	}
 	if (url.pathname === '/api/refresh') {

@@ -78,6 +78,7 @@ test('validates writes and schedules refresh after saving', async () => {
 		saveCredentials: async () => undefined,
 		testEmail: async () => 'sent',
 		saveSchedule: async () => undefined,
+		saveGeneral: async () => undefined,
 		refresh: kind => { calls.push(kind) },
 	})
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
