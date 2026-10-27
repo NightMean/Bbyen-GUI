@@ -66,6 +66,14 @@ test('service startup recovers attempts and records jobs', async () => {
 		expect(child.exitCode).toBeNull()
 		const result = await axios.get(`http://127.0.0.1:${port}/api/videos`)
 		expect(result.data.videos[0].emailOutcome).toBe('uncertain')
+		const channelId = 'UCabcdefghijklmnopqrstuv'
+		const added = await axios.post(`http://127.0.0.1:${port}/api/channels`,
+			{ channelId })
+		expect(added.status).toBe(202)
+		const saved = JSON.parse(await fs.readFile(
+			path.join(directory, 'channels.json'), 'utf8'))
+		expect(saved.whitelistedChannelIds).toEqual([{ id: channelId }])
+		expect(saved.manualChannelIds).toEqual([{ id: channelId }])
 	} finally {
 		child.kill()
 		await exited

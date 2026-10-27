@@ -1,6 +1,8 @@
 import { google } from 'googleapis'
 import parseDuration from 'parse-duration'
-import { loadConfig, loadConfigRaw, loadEmailConfig } from './config'
+import {
+	CHANNELS_FILE, loadConfig, loadConfigRaw, loadEmailConfig,
+} from './config'
 import * as database from './database'
 import { recoverPendingVideoEmails } from './videoSchema'
 import authorize from './google/auth'
@@ -14,6 +16,7 @@ import { QuotaRunner } from './quotaRunner'
 import { assertTimerWithinLimit } from './lib/timerLimit'
 import setupLogger from './lib/logger'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
+import { addManualChannel } from './manualChannels'
 
 const main = async () => {
 	const logger = await setupLogger({ label: 'main' })
@@ -58,7 +61,11 @@ const main = async () => {
 			reportQuota: tasks.reportQuota, clearQuota: tasks.clearQuota,
 			warn: message => logger.warn(message),
 		})
-		const server = createDashboardServer(db, jobs)
+		const server = createDashboardServer(db, jobs, {
+			add: id => addManualChannel(CHANNELS_FILE, config, id),
+			refresh: () => { void quota.run('subscriptions').catch(() =>
+				logger.error('Channel refresh failed unexpectedly.')) },
+		})
 		await new Promise<void>((resolve, reject) => {
 			server.once('error', reject)
 			server.listen(dashboardPort(process.env.BBYEN_DASHBOARD_PORT),

@@ -71,7 +71,8 @@ cp secrets.example.json data/secrets.json
 so SQLite and its journal stay in persistent storage. The template port is
 3030, matching Compose. For whitelist mode, set `mode` to `whitelist`.
 
-The service also exposes a preliminary read-only dashboard API on port 3031.
+The service also exposes a preliminary dashboard API on port 3031. It can
+add canonical channel IDs and schedules a subscription refresh after saving.
 Its channel and video lists currently return at most 500 records, and the web
 interface and configuration controls are still under development. Set
 `BBYEN_DASHBOARD_PORT` to change the listening port and update the Compose
