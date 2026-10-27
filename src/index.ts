@@ -43,6 +43,7 @@ import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { saveUnsubscribePreference } from './unsubscribePreference'
 import { TitleAlerts } from './titleAlerts'
 import { ChannelAddedAlerts } from './channelAddedAlerts'
+import { pruneActivity } from './activityRetention'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -163,6 +164,8 @@ const startService = async (existingServer?: Server) => {
 				if (config.notifyTitleChanges === false) await titleAlerts.run(false)
 				if (config.notifyChannelAdded === false) await channelAlerts.run(false)
 				await saveGeneralSettings(CONFIG_FILE, config, value)
+				await pruneActivity(databaseConnection,
+					config.activityRetentionDays ?? null)
 				if (!value.notifyTitleChanges) await titleAlerts.run(false)
 				if (!value.notifyChannelAdded) await channelAlerts.run(false)
 			},
@@ -209,6 +212,13 @@ const startService = async (existingServer?: Server) => {
 			() => jobs.maintenance('channel-alerts', () =>
 				channelAlerts.run(config.notifyChannelAdded !== false))
 				.catch(() => logger.warn('Could not process channel alerts.')),
+			60_000,
+			true,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('activity-retention', () =>
+				pruneActivity(databaseConnection, config.activityRetentionDays ?? null))
+				.catch(() => logger.warn('Could not prune activity history.')),
 			60_000,
 			true,
 		)

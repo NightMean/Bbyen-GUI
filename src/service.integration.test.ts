@@ -324,13 +324,23 @@ test('first-run setup starts the service without restarting', async () => {
 		expect(config.mode).toBe('whitelist')
 		expect(config.notifyOnFirstScan).toBe(false)
 		expect(config.database.filename).toBe(path.join(dir, 'database.sqlite'))
+		const activityDb = await sqlite.open({ filename: config.database.filename,
+			driver: sqlite3.Database })
+		try {
+			await activityDb.run(`INSERT INTO cookie_channel_events
+				(profileKey, channelId, currentState, notifyEligible, observedAt)
+				VALUES ('fixture', 'fixture', 'all', 1, '2020-01-01T00:00:00Z')`)
+		} finally { await activityDb.close() }
 		await axios.post(`${url}/api/settings`, { settings: {
 			initialBacklog: { mode: 'all' }, videoRetentionDays: 30,
-			emailOnError: false,
+			activityRetentionDays: 30, emailOnError: false,
 		} })
+		expect((await axios.get(`${url}/api/channel-events`)).data.events)
+			.toEqual([])
 		const savedSettings = (await axios.get(`${url}/api/settings`)).data.settings
 		expect(savedSettings).toEqual({ initialBacklog: { mode: 'all' },
-			videoRetentionDays: 30, emailOnError: false, confirmUnsubscribe: true,
+			videoRetentionDays: 30, activityRetentionDays: 30,
+			emailOnError: false, confirmUnsubscribe: true,
 			notifyTitleChanges: true, notifyChannelAdded: true })
 		await axios.post(`${url}/api/unsubscribe-confirmation`,
 			{ confirmUnsubscribe: false })
@@ -343,6 +353,7 @@ test('first-run setup starts the service without restarting', async () => {
 			emailOnError: false,
 		} })
 		expect(legacySettings.data.settings.confirmUnsubscribe).toBe(false)
+		expect(legacySettings.data.settings.activityRetentionDays).toBe(30)
 		const importedId = 'UCabcdefghijklmnopqrstuv'
 		const preview = await axios.post(
 			`${url}/api/subscriptions/import/preview`, {

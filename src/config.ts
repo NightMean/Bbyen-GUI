@@ -13,6 +13,7 @@ import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
 import { updateJsonFile } from './lib/jsonFile'
 import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 import { parseVideoRetentionDays } from './videoRetention'
+import { parseActivityRetentionDays } from './activityRetention'
 import { EmailSelectionPolicy, parseEmailSelectionPolicy } from './emailPolicy'
 
 export const CONFIG_DIR = process.env.CONFIG_DIR ?? path.join(__dirname, '..')
@@ -73,6 +74,7 @@ export interface Config {
 	notifyOnFirstScan: boolean,
 	initialBacklog?: BacklogPolicy,
 	videoRetentionDays?: number | null,
+	activityRetentionDays?: number | null,
 	emailSelectionPolicy?: EmailSelectionPolicy,
 	whitelistedChannelIds?: ChannelEntry[],
 	blacklistedChannelIds?: ChannelEntry[],
@@ -296,6 +298,10 @@ export const loadConfigRaw = async (): Promise<Config> => {
 	if (config.videoRetentionDays !== undefined) {
 		config.videoRetentionDays = parseVideoRetentionDays(
 			config.videoRetentionDays)
+	}
+	if (config.activityRetentionDays !== undefined) {
+		config.activityRetentionDays = parseActivityRetentionDays(
+			config.activityRetentionDays)
 	}
 	if (config.emailSelectionPolicy !== undefined) {
 		config.emailSelectionPolicy = parseEmailSelectionPolicy(

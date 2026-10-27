@@ -95,6 +95,10 @@ replaces the running timers after the new settings are saved.
 Settings also controls the default first-scan policy, video-detail retention,
 and failure emails. Retention removes old details during video checks while
 keeping processed video IDs for deduplication.
+Activity history has a separate retention setting and is kept indefinitely by
+default. Cleanup preserves active incidents, pending email deliveries, and
+unresolved YouTube actions until they are resolved; it also keeps the latest
+completed refresh for each refresh type so current status remains available.
 The Activity view shows up to 100 recent incidents, cookie bell observations,
 channel monitoring starts, and channel name changes from the last 60 days.
 Incidents show whether they are active or recovered. Channel-added and name

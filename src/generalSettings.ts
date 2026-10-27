@@ -3,10 +3,12 @@ import fs from 'fs/promises'
 import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 import { updateJsonFile } from './lib/jsonFile'
 import { parseVideoRetentionDays } from './videoRetention'
+import { parseActivityRetentionDays } from './activityRetention'
 
 export interface GeneralSettings {
 	initialBacklog: BacklogPolicy,
 	videoRetentionDays: number | null,
+	activityRetentionDays: number | null,
 	emailOnError: boolean,
 	confirmUnsubscribe: boolean,
 	notifyTitleChanges: boolean,
@@ -17,6 +19,7 @@ export const readGeneralSettings = (config: Config): GeneralSettings => ({
 	initialBacklog: config.initialBacklog ??
 		{ mode: config.notifyOnFirstScan ? 'all' : 'none' },
 	videoRetentionDays: config.videoRetentionDays ?? null,
+	activityRetentionDays: config.activityRetentionDays ?? null,
 	emailOnError: config.logging.emailOnError,
 	confirmUnsubscribe: config.confirmUnsubscribe !== false,
 	notifyTitleChanges: config.notifyTitleChanges !== false,
@@ -34,6 +37,8 @@ export const parseGeneralSettings = (value: unknown): GeneralSettings => {
 	return { initialBacklog: parseBacklogPolicy(data.initialBacklog,
 		'initialBacklog'), videoRetentionDays: parseVideoRetentionDays(
 		data.videoRetentionDays), emailOnError: data.emailOnError,
+	activityRetentionDays: data.activityRetentionDays === undefined ? null :
+		parseActivityRetentionDays(data.activityRetentionDays),
 	confirmUnsubscribe: data.confirmUnsubscribe === undefined ? true :
 		parseConfirmation(data.confirmUnsubscribe),
 	notifyTitleChanges: data.notifyTitleChanges === undefined ? true :
@@ -56,6 +61,7 @@ export const saveGeneralSettings = async (
 	const apply = () => {
 		config.initialBacklog = settings.initialBacklog
 		config.videoRetentionDays = settings.videoRetentionDays
+		config.activityRetentionDays = settings.activityRetentionDays
 		config.logging.emailOnError = settings.emailOnError
 		config.confirmUnsubscribe = settings.confirmUnsubscribe
 		config.notifyTitleChanges = settings.notifyTitleChanges
@@ -70,6 +76,7 @@ export const saveGeneralSettings = async (
 				Array.isArray(current.logging)) throw new Error('Logging is invalid.')
 		return { ...current, initialBacklog: settings.initialBacklog,
 			videoRetentionDays: settings.videoRetentionDays,
+			activityRetentionDays: settings.activityRetentionDays,
 			confirmUnsubscribe: settings.confirmUnsubscribe,
 			notifyTitleChanges: settings.notifyTitleChanges,
 			notifyChannelAdded: settings.notifyChannelAdded,
@@ -81,6 +88,7 @@ export const saveGeneralSettings = async (
 			const effective = parseGeneralSettings({
 				initialBacklog: stored.initialBacklog,
 				videoRetentionDays: stored.videoRetentionDays,
+				activityRetentionDays: stored.activityRetentionDays,
 				confirmUnsubscribe: stored.confirmUnsubscribe,
 				notifyTitleChanges: stored.notifyTitleChanges,
 				notifyChannelAdded: stored.notifyChannelAdded,
