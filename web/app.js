@@ -95,6 +95,7 @@
     const meta = element('div', 'meta')
     meta.append(document.createTextNode(`${channel?.channelTitle || text.unknownChannel} · ${displayDate(video.publishedAt)}`))
     if (video.durationSeconds != null) meta.append(document.createTextNode(` · ${Math.floor(video.durationSeconds / 60)}:${String(video.durationSeconds % 60).padStart(2, '0')}`))
+    if (text['type_' + video.contentType]) meta.append(document.createTextNode(` · ${text['type_' + video.contentType]}`))
     body.append(title, meta)
     const outcome = element('div', 'outcome', text[video.emailOutcome] || text.unknown)
     if (video.sentAt) outcome.append(element('div', '', displayDate(video.sentAt)))
@@ -192,6 +193,7 @@
       const params = new URLSearchParams({ from: start.toISOString(), until: end.toISOString(), limit: String(size), offset: String(state.offset) })
       if (state.channel) params.set('channelId', state.channel.channelId)
       if ($('search').value.trim()) params.set('search', $('search').value.trim())
+      if ($('content-type').value) params.set('contentType', $('content-type').value)
       const data = await request(`/api/videos?${params}`)
       if (sequence !== state.sequence) return
       const channels = new Map(all.channels.map(c => [c.channelId, c]))
@@ -218,6 +220,7 @@
   $('list-layout').addEventListener('click', () => setLayout('list'))
   $('grid-layout').addEventListener('click', () => setLayout('grid'))
   $('playback-speed').addEventListener('change', updateWatchTime)
+  $('content-type').addEventListener('change', () => { state.offset = 0; load() })
   for (const id of ['search','from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
   $('previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset-size); load() })
   $('next').addEventListener('click', () => { state.offset += size; load() })

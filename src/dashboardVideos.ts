@@ -8,11 +8,12 @@ interface VideoQuery {
 	until?: string,
 	channelId?: string,
 	search?: string,
+	contentType?: 'video' | 'short' | 'livestream' | 'unknown',
 }
 
 export const parseVideoQuery = (params: URLSearchParams): VideoQuery => {
 	const allowed = new Set(['limit', 'offset', 'from', 'until', 'channelId',
-		'search'])
+		'search', 'contentType'])
 	for (const key of params.keys()) {
 		if (!allowed.has(key) || params.getAll(key).length !== 1) {
 			throw new Error('Invalid video filter.')
@@ -48,8 +49,11 @@ export const parseVideoQuery = (params: URLSearchParams): VideoQuery => {
 	if (search !== undefined && search.length > 200) {
 		throw new Error('Invalid search.')
 	}
+	const contentType = params.get('contentType') ?? undefined
+	if (contentType !== undefined && !['video', 'short', 'livestream', 'unknown']
+		.includes(contentType)) throw new Error('Invalid content type.')
 	return { limit, offset: number('offset', 0, 1_000_000), from, until,
-		channelId, search }
+		channelId, search, contentType: contentType as VideoQuery['contentType'] }
 }
 
 export const listDashboardVideos = async (
@@ -73,6 +77,13 @@ export const listDashboardVideos = async (
 	if (query.search) {
 		filters.push('instr(lower(COALESCE(title, \'\')), lower(?)) > 0')
 		values.push(query.search)
+	}
+	if (query.contentType === 'unknown') {
+		filters.push(`(contentType IS NULL OR
+			contentType NOT IN ('video', 'short', 'livestream'))`)
+	} else if (query.contentType) {
+		filters.push('contentType = ?')
+		values.push(query.contentType)
 	}
 	const where = filters.length ? ` WHERE ${filters.join(' AND ')}` : ''
 	const total = await db.get(`SELECT COUNT(*) AS count,

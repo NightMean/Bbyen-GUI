@@ -107,6 +107,8 @@ port mapping to match. This endpoint has no login or built-in HTTPS; configure
 network access and any HTTPS proxy for your environment.
 Video results support list and grid layouts and estimate watch time at the
 selected playback speed, with a count of videos whose duration is unknown.
+The type filter distinguishes detected livestreams from unclassified videos;
+RSS alone cannot reliably identify Shorts or ordinary video categories.
 
 For youtube mode, also put `google-credentials.json` in `data/`, then run:
 

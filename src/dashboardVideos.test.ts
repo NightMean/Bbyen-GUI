@@ -17,6 +17,8 @@ test('filters by date and title and paginates deterministically', async () => {
 		}
 		await db.run('UPDATE video_observations SET durationSeconds=120 ' +
 			'WHERE videoId=?', 'c')
+		await db.run('UPDATE video_observations SET contentType=? WHERE videoId=?',
+			'livestream', 'b')
 		const params = new URLSearchParams({ from: '2026-01-02T00:00:00.000Z',
 			until: '2026-01-04T00:00:00.000Z', search: 'exam', limit: '1' })
 		const first = await listDashboardVideos(db, parseVideoQuery(params))
@@ -27,6 +29,12 @@ test('filters by date and title and paginates deterministically', async () => {
 		params.set('offset', '1')
 		const second = await listDashboardVideos(db, parseVideoQuery(params))
 		expect(second.videos[0].videoId).toBe('b')
+		params.set('offset', '0'); params.set('contentType', 'unknown')
+		const unknown = await listDashboardVideos(db, parseVideoQuery(params))
+		expect(unknown.total).toBe(1)
+		params.set('contentType', 'livestream')
+		expect((await listDashboardVideos(db, parseVideoQuery(params))).videos[0]
+			.videoId).toBe('b')
 		await db.run('UPDATE subscriptions SET deleted=1 WHERE channelId=?',
 			'channel')
 		const inactive = await listDashboardVideos(db, parseVideoQuery(params))
@@ -38,7 +46,8 @@ test('filters by date and title and paginates deterministically', async () => {
 
 test('rejects invalid and repeated query parameters', () => {
 	for (const input of ['limit=0', 'limit=201', 'offset=-1', 'search=a&search=b',
-		'from=2026-01-01', 'channelId=invalid', 'other=value']) {
+		'from=2026-01-01', 'channelId=invalid', 'contentType=other',
+		'other=value']) {
 		expect(() => parseVideoQuery(new URLSearchParams(input))).toThrow()
 	}
 })
