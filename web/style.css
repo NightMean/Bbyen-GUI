@@ -4,3 +4,4 @@
 
 #preview select{display:block;margin:6px 0 14px}#backlog-count-label{margin-bottom:14px}#backlog-count{max-width:120px}
 .incident-row{position:relative;padding:20px 95px 20px 0;border-bottom:1px solid var(--line)}.incident-row h3{font-size:1rem;margin:0 0 4px}.incident-row p{margin:0}.incident-state{position:absolute;right:0;top:23px;color:var(--muted);font-size:.8rem}
+#settings-panel{max-width:620px;margin:34px 0}#settings-panel h2:not(:first-child){margin-top:42px}#settings-panel p,#settings-panel small{color:var(--muted);font-size:.85rem}.settings-form{display:grid;gap:15px;margin-top:22px}.settings-form label{display:grid;gap:5px;color:var(--muted);font-size:.8rem;font-weight:700}.settings-form .check{display:flex;align-items:center;gap:10px}.settings-form button{justify-self:start}.settings-form input:disabled{opacity:.55}

@@ -42,9 +42,18 @@
     $('videos-nav').classList.toggle('active', page === 'videos')
     $('channels-nav').classList.toggle('active', page === 'channels')
     $('activity-nav').classList.toggle('active', page === 'activity')
+    $('settings-nav').classList.toggle('active', page === 'settings')
     $('heading').textContent = text[page]
-    $('refresh').hidden = page === 'activity'
-    $('toolbar').hidden = page === 'activity'
+    $('refresh').hidden = page === 'activity' || page === 'settings'
+    $('add').hidden = page === 'settings'
+    $('add-panel').hidden = true
+    $('email-user').value = ''; $('email-password').value = ''
+    showNotice('')
+    $('toolbar').hidden = page === 'activity' || page === 'settings'
+    $('settings-panel').hidden = page !== 'settings'
+    $('list-heading').hidden = page === 'settings'
+    $('results').hidden = page === 'settings'
+    $('paging').hidden = true
     $('dates').hidden = page !== 'videos'
     $('filter-label').hidden = page !== 'videos' || !state.channel
     load(); poll()
@@ -115,6 +124,21 @@
     const sequence = ++state.sequence
     $('results').replaceChildren(element('p', 'empty', text.loading))
     try {
+      if (state.page === 'settings') {
+        const data = await request('/api/email/settings')
+        if (sequence !== state.sequence) return
+        const email = data.settings
+        $('smtp-host').value = email.host; $('smtp-port').value = email.port
+        $('smtp-secure').checked = email.secure
+        $('smtp-sender').value = email.sendingContact
+        $('smtp-destination').value = email.destination
+        $('email-user').disabled = data.userFromEnvironment
+        $('email-password').disabled = data.passFromEnvironment
+        $('user-source').textContent = data.userFromEnvironment ? text.environmentOwned : ''
+        $('password-source').textContent = data.passFromEnvironment ? text.environmentOwned : ''
+        $('save-credentials').disabled = data.userFromEnvironment && data.passFromEnvironment
+        return
+      }
       if (state.page === 'activity') {
         const data = await request('/api/incidents')
         if (sequence !== state.sequence) return
@@ -169,11 +193,12 @@
         const clear = element('button', 'quiet', text.showAll); clear.type = 'button'
         clear.addEventListener('click', () => { state.channel = null; state.offset = 0; load() }); filter.append(clear)
       }
-    } catch { if (sequence === state.sequence) $('results').replaceChildren(element('p', 'empty', text.loadError)) }
+    } catch { if (sequence === state.sequence) { if (state.page === 'settings') showNotice(text.loadError); else $('results').replaceChildren(element('p', 'empty', text.loadError)) } }
   }
   $('videos-nav').addEventListener('click', () => setPage('videos'))
   $('channels-nav').addEventListener('click', () => setPage('channels'))
   $('activity-nav').addEventListener('click', () => setPage('activity'))
+  $('settings-nav').addEventListener('click', () => setPage('settings'))
   for (const id of ['search','from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
   $('previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset-size); load() })
   $('next').addEventListener('click', () => { state.offset += size; load() })
@@ -184,6 +209,20 @@
     catch { showNotice(text.resolveError) }
   })
   $('channel-input').addEventListener('input', () => { $('preview').hidden = true })
+  $('email-settings-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const settings = { host: $('smtp-host').value, port: Number($('smtp-port').value), secure: $('smtp-secure').checked, sendingContact: $('smtp-sender').value, destination: $('smtp-destination').value }
+    try { await post('/api/email/settings', { settings }); showNotice(text.emailSaved) }
+    catch { showNotice(text.emailSaveError) }
+  })
+  $('credentials-form').addEventListener('submit', async event => {
+    event.preventDefault()
+    const credentials = {}
+    if (!$('email-user').disabled && $('email-user').value) credentials.user = $('email-user').value
+    if (!$('email-password').disabled && $('email-password').value) credentials.pass = $('email-password').value
+    try { await post('/api/email/credentials', { credentials }); $('email-user').value = ''; $('email-password').value = ''; showNotice(text.credentialsSaved) }
+    catch { showNotice(text.credentialsError) }
+  })
   $('backlog').addEventListener('change', () => { $('backlog-count-label').hidden = $('backlog').value !== 'newest' })
   $('confirm-add').addEventListener('click', async () => {
     const body = { channelId: $('resolved-id').textContent }
@@ -202,10 +241,10 @@
     catch { showNotice(text.refreshError) }
   })
   const poll = async () => {
-    if (state.page === 'activity') { $('refresh-state').textContent = ''; return }
+    if (state.page === 'activity' || state.page === 'settings') { $('refresh-state').textContent = ''; return }
     try {
       const data = await request('/api/refresh')
-      if (state.page === 'activity') return
+      if (state.page === 'activity' || state.page === 'settings') return
       const kind = state.page === 'videos' ? 'videos' : 'subscriptions'
       const refresh = data[kind]
       const current = refresh.state

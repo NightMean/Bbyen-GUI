@@ -20,6 +20,7 @@
         <button id="videos-nav" class="nav active" type="button" data-text="videos"></button>
         <button id="channels-nav" class="nav" type="button" data-text="channels"></button>
         <button id="activity-nav" class="nav" type="button" data-text="activity"></button>
+        <button id="settings-nav" class="nav" type="button" data-text="settings"></button>
       </nav>
       <div class="sidebar-note" data-text="libraryNote"></div>
     </aside>
@@ -61,7 +62,24 @@
         </div>
       </div>
       <p id="filter-label" class="filter-label" hidden></p>
-      <div class="list-heading"><span id="list-label"></span><span id="refresh-state"></span></div>
+      <section id="settings-panel" hidden>
+        <h2 data-text="emailSettings"></h2><p data-text="emailSettingsHelp"></p>
+        <form id="email-settings-form" class="settings-form">
+          <label><span data-text="smtpHost"></span><input id="smtp-host" required maxlength="253"></label>
+          <label><span data-text="smtpPort"></span><input id="smtp-port" type="number" min="1" max="65535" required></label>
+          <label class="check"><input id="smtp-secure" type="checkbox"><span data-text="smtpSecure"></span></label>
+          <label><span data-text="smtpSender"></span><input id="smtp-sender" required maxlength="512"></label>
+          <label><span data-text="smtpDestination"></span><input id="smtp-destination" required maxlength="512"></label>
+          <button class="primary" type="submit" data-text="saveEmail"></button>
+        </form>
+        <h2 data-text="emailCredentials"></h2><p data-text="credentialsHelp"></p>
+        <form id="credentials-form" class="settings-form" autocomplete="off">
+          <label><span data-text="emailUser"></span><input id="email-user" autocomplete="off" maxlength="512"><small id="user-source"></small></label>
+          <label><span data-text="emailPassword"></span><input id="email-password" type="password" autocomplete="new-password" maxlength="4096"><small id="password-source"></small></label>
+          <button id="save-credentials" class="outline" type="submit" data-text="saveCredentials"></button>
+        </form>
+      </section>
+      <div id="list-heading" class="list-heading"><span id="list-label"></span><span id="refresh-state"></span></div>
       <section id="results" aria-live="polite"></section>
       <div id="paging" class="paging" hidden>
         <button id="previous" class="outline" type="button" data-text="previous"></button>

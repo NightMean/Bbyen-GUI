@@ -1,6 +1,7 @@
 {
   "caption": "Your YouTube email library",
-  "library": "LIBRARY", "yourLibrary": "YOUR LIBRARY", "videos": "Videos", "channels": "Channels", "activity": "Activity",
+  "library": "LIBRARY", "yourLibrary": "YOUR LIBRARY", "videos": "Videos", "channels": "Channels", "activity": "Activity", "settings": "Settings",
+  "emailSettings": "Email delivery", "emailSettingsHelp": "Changes apply to subsequent checks.", "smtpHost": "SMTP host", "smtpPort": "SMTP port", "smtpSecure": "Use a secure connection", "smtpSender": "From address", "smtpDestination": "Destination address", "saveEmail": "Save email settings", "emailCredentials": "Email credentials", "credentialsHelp": "Enter only the credentials you want to change. Saved values are never shown.", "emailUser": "SMTP username", "emailPassword": "SMTP password", "environmentOwned": "Set by the environment; change it in Portainer and restart.", "saveCredentials": "Save credentials", "emailSaved": "Email settings saved.", "credentialsSaved": "Credentials saved.", "emailSaveError": "Could not save email settings. Check the fields and try again.", "credentialsError": "Could not save credentials. Check the fields and try again.",
   "libraryNote": "Your collection grows as BBYEN checks for new uploads.", "recentIncidents": "recent incidents (up to 100)",
   "theme": "Change theme", "refresh": "Refresh", "add": "+ Add channel",
   "addTitle": "Add a channel", "addHelp": "Find a channel from its handle, YouTube URL, feed URL or channel ID.",

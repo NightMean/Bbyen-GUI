@@ -84,7 +84,7 @@ Manual refresh requests use the same scheduler and quota handling as timed
 refreshes; the refresh endpoint reports their most recent outcomes.
 The Activity view shows up to 100 recent incidents, including whether each
 one is active or recovered. It does not yet contain channel change history.
-The dashboard API can save SMTP settings and write-only credentials separately.
+Dashboard Settings can save SMTP settings and write-only credentials separately.
 Environment-supplied credentials take precedence and cannot be changed through
 the API. Updated values are read for subsequent jobs without restarting.
 The shared channel resolver accepts YouTube HTTPS URLs, handles and validated
