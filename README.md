@@ -277,7 +277,8 @@ on the service host. Never share that URL with anyone else.
 Normal runs (`npm start`) never launch the browser. If YouTube credentials are
 missing or rejected, the service stays running, reports the failed refresh, and
 retries authorization on a later scheduled run. Use `npm run login` to
-re-authenticate; a service restart is not required. If SMTP credentials are
+re-authenticate; the service detects a replaced token on the next check without
+a restart. If SMTP credentials are
 missing, video checks pause rather than recording unsent videos as delivered;
 subscription checks may continue. The service rereads SMTP credentials on
 subsequent scheduled runs, so adding or replacing them also needs no restart.

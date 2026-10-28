@@ -19,6 +19,22 @@ const MANAGE_SCOPE = 'https://www.googleapis.com/auth/youtube'
 const LOGIN_TIMEOUT_MS = 10 * 60_000
 const TOKEN_FILE = path.join(CONFIG_DIR, '.google-auth-token.json')
 
+/** A private generation marker; never log or expose the returned value. */
+export const authorizationRevision = async () => {
+	const hash = createHash('sha256')
+	for (const filename of [TOKEN_FILE,
+		path.join(CONFIG_DIR, 'google-credentials.json')]) {
+		try {
+			const data = await fs.readFile(filename)
+			hash.update(String(data.length)).update(':').update(data)
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+			hash.update('missing:')
+		}
+	}
+	return hash.digest('hex')
+}
+
 // Thrown when no valid token exists and interactive login is not permitted.
 export class AuthError extends Error {
 	constructor(message: string) {

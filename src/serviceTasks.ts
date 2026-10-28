@@ -26,6 +26,7 @@ interface TaskDependencies {
 	},
 	loadMailers: () => Promise<Mailers>,
 	loadAuth: () => Promise<OAuth2Client>,
+	authRevision?: () => Promise<string>,
 	initialAuth?: OAuth2Client,
 	alerts?: AlertReporter,
 	retryPendingAlerts?: (send: Mailers['sendErrorEmail'], enabled: boolean) =>
@@ -42,6 +43,8 @@ const unavailable = (category: 'auth' | 'other'): RefreshResult => ({
 /** Resolve credentials again when needed without restarting the service. */
 export const createServiceTasks = (deps: TaskDependencies) => {
 	let auth: OAuth2Client | undefined = deps.initialAuth
+	let authRevision: string | undefined
+	let loadingAuth: Promise<OAuth2Client> | undefined
 	let smtpAvailable: boolean | undefined
 	const alerts = deps.alerts ?? defaultAlertReporter
 	const jobAlerts: AlertReporter = {
@@ -76,13 +79,39 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 	}
 	const getAuth = async (
 		mailers?: Mailers,
+		restarts = 0,
 	): Promise<OAuth2Client | undefined> => {
 		if (deps.config.mode !== 'youtube') return undefined
-		if (auth) return auth
 		try {
-			auth = await deps.loadAuth()
+			const revision = await deps.authRevision?.()
+			if (auth && (!deps.authRevision || authRevision === revision)) return auth
+			if (!loadingAuth) {
+				auth = undefined
+				const work = (async () => {
+					for (let attempt = 0; attempt < 3; attempt++) {
+						const before = await deps.authRevision?.()
+						const loaded = await deps.loadAuth()
+						const after = await deps.authRevision?.()
+						if (before === after) {
+							auth = loaded
+							authRevision = after
+							return loaded
+						}
+					}
+					throw new Error('Authorization changed during reload.')
+				})()
+				loadingAuth = work
+				void work.finally(() => {
+					if (loadingAuth === work) loadingAuth = undefined
+				}).catch(() => undefined)
+			}
+			const loaded = await loadingAuth
+			if (deps.authRevision && authRevision !== await deps.authRevision()) {
+				if (restarts >= 2) throw new Error('Authorization changed repeatedly.')
+				return getAuth(mailers, restarts + 1)
+			}
 			await alerts.clear(['auth'], 'service-auth')
-			return auth
+			return loaded
 		} catch {
 			await alerts.notify('auth', new Error(
 				'YouTube authorization unavailable; reconnect the account.'), {

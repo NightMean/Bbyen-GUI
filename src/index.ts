@@ -7,7 +7,7 @@ import {
 } from './config'
 import * as database from './database'
 import { recoverPendingVideoEmails } from './videoSchema'
-import authorize from './google/auth'
+import authorize, { authorizationRevision } from './google/auth'
 import * as mailer from './email'
 import setIntervalInstant from './lib/setIntervalInstant'
 import { RefreshCoordinator } from './refreshCoordinator'
@@ -131,6 +131,7 @@ const startService = async (existingServer?: Server) => {
 				new Error('API quota retry limit reached.'), options),
 			loadMailers: async () => mailer.init(await loadEmailConfig()),
 			loadAuth: () => authorize({ interactive: false }),
+			authRevision: authorizationRevision,
 		})
 		const quota = new QuotaRunner({ coordinator: jobs,
 			backoff: new QuotaBackoff(db), enabled: () => config.mode === 'youtube',

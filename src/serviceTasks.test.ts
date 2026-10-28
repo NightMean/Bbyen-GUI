@@ -35,6 +35,74 @@ test('reloads OAuth credentials after the current client fails', async () => {
 		.toEqual([first, second])
 })
 
+test('reloads a replaced grant without restarting and shares concurrent loads',
+	async () => {
+		let revision = 'first'
+		const first = { client: 'first' }, second = { client: 'second' }
+		let release!: () => void
+		const loadAuth = vi.fn().mockResolvedValueOnce(first)
+			.mockImplementationOnce(async () => {
+				await new Promise<void>(resolve => { release = resolve })
+				return second
+			})
+		vi.mocked(updateSubscriptions).mockResolvedValue(success)
+		const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+			config: { mode: 'youtube', logging: { emailOnError: false } } as Config,
+			logger, loadMailers: vi.fn().mockResolvedValue(mailers), loadAuth,
+			authRevision: async () => revision })
+		await tasks.runSubscriptions()
+		revision = 'second'
+		const a = tasks.runSubscriptions(), b = tasks.runSubscriptions()
+		while (!release) await new Promise(resolve => setTimeout(resolve, 1))
+		release()
+		await Promise.all([a, b])
+		expect(loadAuth).toHaveBeenCalledTimes(2)
+		expect(vi.mocked(updateSubscriptions).mock.calls.map(call => call[0].auth))
+			.toEqual([first, second, second])
+	})
+
+test('does not install a grant replaced while it is being loaded', async () => {
+	let revision = 'first'
+	const stale = { client: 'stale' }, current = { client: 'current' }
+	const loadAuth = vi.fn().mockImplementationOnce(async () => {
+		revision = 'second'
+		return stale
+	}).mockResolvedValue(current)
+	vi.mocked(updateSubscriptions).mockResolvedValue(success)
+	const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+		config: { mode: 'youtube', logging: { emailOnError: false } } as Config,
+		logger, loadMailers: vi.fn().mockResolvedValue(mailers), loadAuth,
+		authRevision: async () => revision })
+	await tasks.runSubscriptions()
+	expect(loadAuth).toHaveBeenCalledTimes(2)
+	expect(vi.mocked(updateSubscriptions).mock.calls[0][0].auth).toBe(current)
+})
+
+test('an older failed request does not invalidate a newer grant', async () => {
+	let revision = 'first'
+	const first = { client: 'first' }, second = { client: 'second' }
+	const loadAuth = vi.fn().mockResolvedValueOnce(first)
+		.mockResolvedValue(second)
+	let failFirst!: () => void
+	vi.mocked(updateSubscriptions).mockImplementationOnce(async () => {
+		await new Promise<void>(resolve => { failFirst = resolve })
+		return authFailure
+	}).mockResolvedValue(success)
+	const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+		config: { mode: 'youtube', logging: { emailOnError: false } } as Config,
+		logger, loadMailers: vi.fn().mockResolvedValue(mailers), loadAuth,
+		authRevision: async () => revision })
+	const oldRequest = tasks.runSubscriptions()
+	while (!failFirst) await new Promise(resolve => setTimeout(resolve, 1))
+	revision = 'second'
+	await tasks.runSubscriptions()
+	failFirst()
+	await oldRequest
+	await tasks.runSubscriptions()
+	expect(loadAuth).toHaveBeenCalledTimes(2)
+	expect(vi.mocked(updateSubscriptions).mock.calls[2][0].auth).toBe(second)
+})
+
 test('pauses video checks until SMTP becomes available', async () => {
 	const loadMailers = vi.fn().mockRejectedValueOnce(new Error('fixture'))
 		.mockResolvedValue(mailers)
