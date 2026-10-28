@@ -10,6 +10,8 @@ import readline from './readline'
 
 import setupLogger from '../../lib/logger'
 import { CONFIG_DIR, CONFIG_FILE } from '../../config'
+import { updateJsonFile } from '../../lib/jsonFile'
+import { DeviceClient } from '../deviceAuthorization'
 
 const SCOPES = [ 'https://www.googleapis.com/auth/youtube.readonly' ]
 const TOKEN_FILE = path.join(CONFIG_DIR, '.google-auth-token.json')
@@ -31,6 +33,25 @@ const readJson = async (filename: string) =>
 const loadConfig = () => readJson(CONFIG_FILE)
 const loadCredentials = () =>
 	readJson(path.join(CONFIG_DIR, 'google-credentials.json'))
+
+interface DeviceTokenFile {
+	format: 'device-v1',
+	client: DeviceClient,
+	token: Credentials,
+}
+
+/** Replace the grant and client together without partial credentials. */
+export const storeDeviceToken = async (
+	client: DeviceClient, token: Credentials,
+) => {
+	if (typeof client.clientId !== 'string' || !client.clientId ||
+			typeof client.clientSecret !== 'string' || !client.clientSecret ||
+			typeof token.refresh_token !== 'string' || !token.refresh_token) {
+		throw new AuthError('Incomplete device authorization.')
+	}
+	const data: DeviceTokenFile = { format: 'device-v1', client, token }
+	await updateJsonFile(TOKEN_FILE, () => data, { createIfMissing: true })
+}
 
 /**
  * Store given token to `TOKEN_FILE`
@@ -143,14 +164,8 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
  * generating new ones
  */
 
-const getToken = async (
-	oauth2Client: OAuth2Client,
-	interactive: boolean,
-) => {
+const getToken = async () => {
 	const logger = await setupLogger({ label: 'google-auth' })
-
-	// An explicit login replaces the grant, including revoked stored tokens.
-	if (interactive) return genAuthToken(oauth2Client)
 
 	try {
 		const contents = await fs.readFile(TOKEN_FILE)
@@ -184,15 +199,31 @@ const getToken = async (
 const authorize = async (
 	{ interactive }: { interactive: boolean } = { interactive: false },
 ) => {
-	const credentials = await loadCredentials()
 	const config = await loadConfig()
+	const stored = interactive ? undefined : await getToken()
+	if (stored?.format === 'device-v1') {
+		if (typeof stored.client?.clientId !== 'string' ||
+				!stored.client.clientId ||
+				typeof stored.client?.clientSecret !== 'string' ||
+				!stored.client.clientSecret ||
+				typeof stored.token?.refresh_token !== 'string' ||
+				!stored.token.refresh_token) {
+			throw new AuthError('Stored device authorization is incomplete.')
+		}
+		const client = new OAuth2Client(stored.client.clientId,
+			stored.client.clientSecret)
+		client.setCredentials(stored.token)
+		return client
+	}
+	const credentials = await loadCredentials()
 	const oauth2Client = new OAuth2Client(
 		credentials.installed.client_id,
 		credentials.installed.client_secret,
 		`http://localhost:${config.port}/authorization_code`,
 	)
 
-	oauth2Client.setCredentials(await getToken(oauth2Client, interactive))
+	oauth2Client.setCredentials(interactive
+		? await genAuthToken(oauth2Client) : stored)
 
 	return oauth2Client
 }

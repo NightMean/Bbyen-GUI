@@ -59,6 +59,21 @@ describe('authorization recovery', () => {
 		expect(fs.writeFile).not.toHaveBeenCalled()
 	})
 
+	test('reloads a device grant with its issuing client', async () => {
+		mockFiles()
+		vi.mocked(fs.readFile).mockImplementation(async file => {
+			const data = String(file).endsWith('.google-auth-token.json')
+				? { format: 'device-v1', client: { clientId: 'device-id',
+					clientSecret: 'device-fixture' },
+				token: { refresh_token: 'device-refresh-fixture' } }
+				: { port: 0 }
+			return Buffer.from(JSON.stringify(data))
+		})
+		const client = await authorize()
+		expect(client.credentials.refresh_token).toBe('device-refresh-fixture')
+		expect(client._clientId).toBe('device-id')
+	})
+
 	test('failed consent preserves the existing token', async () => {
 		mockFiles()
 		vi.mocked(readline).mockResolvedValue('fixture-code')
