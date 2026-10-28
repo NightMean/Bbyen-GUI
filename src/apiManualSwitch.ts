@@ -132,6 +132,7 @@ export class ApiManualSwitch {
 	private async snapshot(): Promise<Snapshot> {
 		if (this.config.mode !== 'youtube' || this.config.manualTransitionPending ||
 				await this.db.get('SELECT id FROM api_manual_switch WHERE id=1') ||
+				await this.db.get('SELECT id FROM manual_api_switch WHERE id=1') ||
 				await this.db.get('SELECT id FROM oauth_cleanup WHERE id=1')) {
 			throw new Error('API tracking is unavailable for switching.')
 		}

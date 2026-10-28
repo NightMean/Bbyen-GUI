@@ -62,8 +62,10 @@ import { readAccountIdentity, sameAccount } from './google/accountIdentity'
 import { withAuthorizationTimeout } from './google/desktopAuthorization'
 import { ApiSourceSwitch } from './apiSourceSwitch'
 import { ApiManualSwitch, recoverApiManualSwitch } from './apiManualSwitch'
+import { ManualApiSwitch, recoverManualApiSwitch } from './manualApiSwitch'
 import { normalizeApiChannelLists } from './apiChannelLists'
 import fs from 'fs/promises'
+import { parseEmailSelectionPolicy } from './emailPolicy'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -89,8 +91,13 @@ const startService = async (existingServer?: Server) => {
 				recoveredManual = true
 				raw = await loadValidatedConfigRaw()
 			}
+			if (await recoverManualApiSwitch(db, CONFIG_DIR, CONFIG_FILE,
+				CHANNELS_FILE, authorizationRevision)) {
+				recoveredManual = true
+				raw = await loadValidatedConfigRaw()
+			}
 		} catch (error) {
-			logger.error('Manual source recovery failed. Check config.json, ' +
+			logger.error('Source recovery failed. Check config.json, ' +
 				'channels.json and their lock files; preserve any external edits.')
 			try {
 				const reporter = new IncidentReporter(db, logger)
@@ -237,7 +244,7 @@ const startService = async (existingServer?: Server) => {
 			cookiePreviews, service, () => authorize(), authorizationRevision,
 			CONFIG_DIR, CONFIG_FILE)
 		const reportManualRecovery = () => alerts.notify('other', new Error(
-			'Confirmed manual source switch is awaiting recovery.'), {
+			'Confirmed source switch is awaiting recovery.'), {
 			source: 'source-switch', emailOnError: config.logging.emailOnError,
 			logger, sendErrorEmail: async message => (await mailer.init(
 				await loadEmailConfig())).sendErrorEmail(message),
@@ -245,6 +252,9 @@ const startService = async (existingServer?: Server) => {
 		const apiManualSwitch = new ApiManualSwitch(db, config, CONFIG_DIR,
 			CONFIG_FILE, CHANNELS_FILE, authorizationRevision, Date.now,
 			reportManualRecovery)
+		const manualApiSwitch = new ManualApiSwitch(db, config, CONFIG_DIR,
+			CONFIG_FILE, CHANNELS_FILE, service, () => authorize(),
+			authorizationRevision, Date.now, reportManualRecovery)
 		const verifyApiProfile = async (channelId: string) => {
 			if (config.mode !== 'youtube') throw new Error('API mode is unavailable.')
 			const revision = await authorizationRevision()
@@ -261,6 +271,7 @@ const startService = async (existingServer?: Server) => {
 			combinedMode,
 			apiSourceSwitch,
 			apiManualSwitch,
+			manualApiSwitch,
 			verifyApiProfile,
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),
@@ -364,21 +375,35 @@ const startService = async (existingServer?: Server) => {
 		setIntervalInstant(
 			() => jobs.maintenance('api-manual-recovery', async () => {
 				if (!config.manualTransitionPending) return
+				const api = await recoverManualApiSwitch(databaseConnection, CONFIG_DIR,
+					CONFIG_FILE, CHANNELS_FILE, authorizationRevision)
+				if (api) {
+					manualApiSwitch.finishRuntime(api)
+					await alerts.clear(['other'], 'source-switch')
+					return
+				}
 				let lists = await recoverApiManualSwitch(databaseConnection, CONFIG_DIR,
 					CONFIG_FILE, CHANNELS_FILE)
 				if (!lists) {
 					const current = JSON.parse(await fs.readFile(CONFIG_FILE, 'utf8'))
-					if (current.mode !== 'whitelist') {
+					if (current.mode !== 'whitelist' && current.mode !== 'youtube') {
 						throw new Error('Manual source recovery is incomplete.')
 					}
 					lists = await normalizeApiChannelLists(
 						JSON.parse(await fs.readFile(CHANNELS_FILE, 'utf8')))
+					if (current.mode === 'youtube') {
+						manualApiSwitch.finishRuntime({ lists,
+							policy: parseEmailSelectionPolicy(
+								current.emailSelectionPolicy ?? 'allowlist') })
+						await alerts.clear(['other'], 'source-switch')
+						return
+					}
 				}
 				apiManualSwitch.finishRuntime(lists)
 				await recoverOAuthCleanup(databaseConnection, CONFIG_DIR)
 				await alerts.clear(['other'], 'source-switch')
 			}).catch(async () => {
-				logger.warn('Manual source recovery is pending.')
+				logger.warn('Source recovery is pending.')
 				try { await reportManualRecovery() } catch {
 					logger.warn('Could not report source recovery failure.')
 				}

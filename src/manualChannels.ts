@@ -70,11 +70,15 @@ const updateManualChannel = async (
 				]),
 			}
 		}
+		const hasApiArchive = [...saved, ...whitelist, ...manual]
+			.some(entry => entry.apiAllowlisted !== undefined)
 		const update = change.type === 'add' ? { id: channelId,
+			...(hasApiArchive ? { apiAllowlisted: true } : {}),
 			...(change.initialBacklog
 				? { initialBacklog: change.initialBacklog } : {}),
 		} :
-			{ id: channelId, notify: change.notify, manualPolicyExcluded: false }
+			{ id: channelId, notify: change.notify, manualPolicyExcluded: false,
+				...(hasApiArchive && change.notify ? { apiAllowlisted: true } : {}) }
 		return { ...current,
 			whitelistedChannelIds: mergeChannelEntries([...whitelist, update]),
 			blacklistedChannelIds: blacklist,

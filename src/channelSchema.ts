@@ -43,6 +43,15 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		channelsJson TEXT NOT NULL,
 		tokenHash TEXT
 	);
+	CREATE TABLE IF NOT EXISTS manual_api_switch (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		configBefore TEXT NOT NULL,
+		configAfter TEXT NOT NULL,
+		channelsBefore TEXT NOT NULL,
+		channelsAfter TEXT NOT NULL,
+		trackedJson TEXT NOT NULL,
+		authRevision TEXT NOT NULL
+	);
 	CREATE TABLE IF NOT EXISTS combined_connection (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
 		profileKey TEXT NOT NULL

@@ -9,17 +9,12 @@ import { CookieConnectionStore } from './cookieConnection'
 import { CookiePreviewService } from './cookiePreview'
 import { compareConnectionIdentities } from './combinedIdentity'
 import { legacyCookieHash, recoverCookieCleanup } from './cookieCleanup'
-import { DEFAULT_CHANNEL_THUMBNAIL } from './database'
-import { subscriptionIterator, subscriptionMembershipIterator }
-	from './google/iterators'
+import { ApiChannel, ApiSubscriptionSnapshot, applyApiSnapshot }
+	from './apiSubscriptions'
 import { isChannelId } from './lib/channelId'
 import { updateJsonFile } from './lib/jsonFile'
 import { withOAuthTokenLock } from './oauthCleanup'
 
-interface ApiChannel {
-	channelId: string, title: string, thumbnail: string,
-	subscriptionId: string | null, subscribedAt: string | null,
-}
 interface Snapshot {
 	generation: string, revision: string, configHash: string,
 	legacyHash: string | null, channels: ApiChannel[],
@@ -60,27 +55,8 @@ export class ApiSourceSwitch {
 			authRevision: this.revision })
 		if (!comparison.matches) throw new Error('YouTube profiles differ.')
 		const auth = await this.loadAuth()
-		const entries = new Map<string, ApiChannel>()
-		const add = (item: youtube_v3.Schema$Subscription,
-			allowed?: Set<string>) => {
-			const channelId = item.snippet?.resourceId?.channelId
-			if (!channelId || !isChannelId(channelId) ||
-					(allowed && !allowed.has(channelId)) || entries.has(channelId)) {
-				throw new Error('API subscription response is invalid.')
-			}
-			const date = item.snippet?.publishedAt
-			entries.set(channelId, { channelId,
-				title: item.snippet?.title || channelId,
-				thumbnail: item.snippet?.thumbnails?.high?.url ||
-					DEFAULT_CHANNEL_THUMBNAIL,
-				subscriptionId: typeof item.id === 'string' ? item.id : null,
-				subscribedAt: typeof date === 'string' &&
-					Number.isFinite(Date.parse(date))
-					? new Date(date).toISOString() : null })
-			if (entries.size > 10_000) throw new Error('Too many subscriptions.')
-		}
-		for await (const item of subscriptionIterator(this.service, auth,
-			{ timeout: 30_000 })) add(item)
+		const entries = new ApiSubscriptionSnapshot()
+		await entries.read(this.service, auth)
 		const cookieRows = await this.db.all(SQL`SELECT channelId
 			FROM cookie_channel_state WHERE profileKey=${cookie.profile.channelId}
 			AND subscribed=1 ORDER BY channelId LIMIT 10001;`)
@@ -88,15 +64,8 @@ export class ApiSourceSwitch {
 				cookieRows.some(row => !isChannelId(row.channelId))) {
 			throw new Error('Cookie subscription list is invalid.')
 		}
-		const missing = cookieRows.map(row => row.channelId as string)
-			.filter(id => !entries.has(id))
-		for (let offset = 0; offset < missing.length; offset += 50) {
-			const batch = missing.slice(offset, offset + 50)
-			const allowed = new Set(batch)
-			for await (const item of subscriptionMembershipIterator(this.service,
-				auth, batch, { timeout: 30_000 })) add(item, allowed)
-		}
-		if (cookieRows.some(row => !entries.has(row.channelId))) {
+		if (!await entries.verifyKnown(this.service, auth,
+			cookieRows.map(row => row.channelId as string))) {
 			throw new IncompleteApiSnapshot('API snapshot is incomplete.')
 		}
 		const manual = (this.config.manualChannelIds ?? []).map(item => item.id)
@@ -116,8 +85,7 @@ export class ApiSourceSwitch {
 			throw new Error('Connections changed; review again.')
 		}
 		return { generation: cookie.generation, revision, configHash: hash(general),
-			legacyHash, channels: [...entries.values()].sort((a, b) =>
-				 a.channelId.localeCompare(b.channelId)), manual: [...manual].sort(),
+			legacyHash, channels: entries.channels(), manual: [...manual].sort(),
 			tracked, terminated }
 	}
 
@@ -195,7 +163,7 @@ export class ApiSourceSwitch {
 					emailSelectionPolicy: this.config.emailSelectionPolicy ??
 						'allowlist' }
 			})
-			await this.applySnapshot(snapshot)
+			await applyApiSnapshot(this.db, snapshot)
 			await this.db.run(SQL`INSERT INTO cookie_cleanup (id, legacyHash)
 				VALUES (1, ${snapshot.legacyHash});`)
 			await this.db.run('DELETE FROM combined_connection WHERE id=1')
@@ -215,54 +183,4 @@ export class ApiSourceSwitch {
 		}
 	}
 
-	private async applySnapshot(snapshot: Snapshot): Promise<void> {
-		const now = new Date().toISOString()
-		const terminated = new Set(snapshot.terminated)
-		const next = new Set(snapshot.channels.map(item => item.channelId)
-			.filter(id => !terminated.has(id)))
-		for (const id of snapshot.manual) if (!terminated.has(id)) next.add(id)
-		await this.db.run('UPDATE channel_sources SET apiSubscribed=0, manual=0')
-		for (const item of snapshot.channels) {
-			await this.db.run(SQL`INSERT INTO channel_sources
-				(channelId, apiSubscribed, apiSubscriptionId, apiSubscribedAt,
-					apiObservedAt) VALUES (${item.channelId}, 1, ${item.subscriptionId},
-					${item.subscribedAt}, ${now}) ON CONFLICT(channelId) DO UPDATE SET
-					apiSubscribed=1, apiSubscriptionId=excluded.apiSubscriptionId,
-					apiSubscribedAt=excluded.apiSubscribedAt,
-					apiObservedAt=excluded.apiObservedAt;`)
-		}
-		for (const id of snapshot.manual) await this.db.run(SQL`INSERT INTO
-			channel_sources (channelId, manual) VALUES (${id}, 1)
-			ON CONFLICT(channelId) DO UPDATE SET manual=1;`)
-		const details = new Map(snapshot.channels.map(item =>
-			[item.channelId, item]))
-		for (const id of next) {
-			const old = await this.db.get(SQL`SELECT deleted, deletedReason
-				FROM subscriptions WHERE channelId=${id};`)
-			if (old?.deleted && old.deletedReason !== 'terminated') {
-				await this.db.run(SQL`DELETE FROM video_scan_baselines
-					WHERE channelId=${id};`)
-				await this.db.run(SQL`DELETE FROM initial_backlog_videos
-					WHERE channelId=${id};`)
-			}
-			const item = details.get(id)
-			await this.db.run(SQL`INSERT INTO subscriptions
-				(channelId, channelTitle, channelThumbnail, firstObservedAt, deleted)
-				VALUES (${id}, ${item?.title ?? id},
-					${item?.thumbnail ?? DEFAULT_CHANNEL_THUMBNAIL}, ${now}, 0)
-				ON CONFLICT(channelId) DO UPDATE SET
-					deleted=CASE WHEN deletedReason='terminated' THEN 1 ELSE 0 END,
-					deletedReason=CASE WHEN deletedReason='terminated' THEN 'terminated'
-						ELSE NULL END,
-					deletedAt=CASE WHEN deletedReason='terminated' THEN deletedAt
-						ELSE NULL END,
-					bellState=NULL;`)
-		}
-		for (const item of snapshot.tracked) {
-			if (next.has(item.channelId)) continue
-			await this.db.run(SQL`UPDATE subscriptions SET deleted=1,
-				deletedReason='source-switch', deletedAt=${now}, bellState=NULL
-				WHERE channelId=${item.channelId} AND deleted=0;`)
-		}
-	}
 }

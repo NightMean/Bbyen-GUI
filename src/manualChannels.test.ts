@@ -49,6 +49,26 @@ test('changes manual notification settings in memory and on disk', async () => {
 	} finally { await fs.rm(directory, { recursive: true, force: true }) }
 })
 
+test('includes explicitly unmuted and added channels in an archived allowlist',
+	async () => {
+		const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-list-'))
+		const file = path.join(directory, 'channels.json')
+		const id = 'UCabcdefghijklmnopqrstuv'
+		const added = 'UC0123456789012345678901'
+		const config = { mode: 'whitelist' } as Config
+		try {
+			await fs.writeFile(file, JSON.stringify({
+				whitelistedChannelIds: [{ id, apiAllowlisted: false,
+					manualPolicyExcluded: true }],
+				manualChannelIds: [{ id, apiAllowlisted: false }],
+			}))
+			await setManualChannelNotify(file, config, id, true)
+			await addManualChannel(file, config, added)
+			expect(config.channelSettingsById?.get(id)?.apiAllowlisted).toBe(true)
+			expect(config.channelSettingsById?.get(added)?.apiAllowlisted).toBe(true)
+		} finally { await fs.rm(directory, { recursive: true, force: true }) }
+	})
+
 test('rejects invalid inputs and preserves the file', async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-channels-'))
 	const file = path.join(directory, 'channels.json')

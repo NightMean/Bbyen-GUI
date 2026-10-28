@@ -28,6 +28,9 @@ export const makeEmailEligibility = (
 			return 'eligible'
 		}
 		if (block.has(channelId)) return 'excluded'
+		if (config.emailSelectionPolicy === 'allowlist' &&
+				manualOnly.has(channelId) && entry?.manualPolicyExcluded &&
+				entry.apiAllowlisted === false) return 'excluded'
 		if (manualOnly.has(channelId)) return 'eligible'
 		if (config.emailSelectionPolicy === 'allowlist' && !allow.has(channelId)) {
 			return 'excluded'

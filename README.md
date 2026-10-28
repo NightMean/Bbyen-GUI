@@ -403,8 +403,13 @@ is journaled across its database and configuration files. If recovery is
 pending, refreshes and edits pause while the service retries; check the service
 log and preserve any external edits if recovery cannot complete. A pending
 recovery is also recorded as an incident and follows the failure-email setting.
-Manual-to-API
-switching still requires additional implementation.
+From manual mode, Settings can review a switch to API tracking after Google
+authorization. Existing manual channels remain tracked, and saved API allowlist
+membership is restored. The review shows any changes to their email eligibility.
+YouTube can omit subscriptions from an API response, including subscriptions
+that BBYEN has never seen, so review the account and channel changes carefully.
+This switch also uses a recovery journal and pauses refreshes and edits while
+an interrupted transition is recovered; the saved Google grant is retained.
 
 Google may authorize a
 different YouTube channel from the one selected in the browser, depending on

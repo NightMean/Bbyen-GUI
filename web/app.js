@@ -55,6 +55,7 @@
     state.combinedPreview = null; $('combined-review').hidden = true
     state.apiSourcePreview = null; $('api-source-review').hidden = true
     state.apiManualPreview = null; $('api-manual-review').hidden = true
+    state.manualApiPreview = null; $('manual-api-review').hidden = true
     $('cookie-input').value = ''; $('cookie-file').value = ''
     $('cookie-profiles').hidden = true; $('cookie-review').hidden = true; $('manual-review').hidden = true
     state.page = page; state.offset = 0
@@ -116,6 +117,7 @@
     $('combined-switch').hidden = !active
     $('api-source-switch').hidden = !active
     $('api-manual-switch').hidden = !state.apiConnection || connection.manualTransitionPending
+    $('manual-api-switch').hidden = connection.mode !== 'whitelist' || connection.manualTransitionPending || connection.oauthCleanupPending
     $('combined-preview').textContent = state.combined ? text.combinedDisable : text.combinedEnable
   }
   const postSourceSwitch = async (url, body) => {
@@ -124,6 +126,30 @@
     if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : text.cookieError)
     return data
   }
+  $('manual-api-preview').addEventListener('click', async () => {
+    const epoch = state.cookieEpoch
+    state.manualApiPreview = null; $('manual-api-review').hidden = true; $('manual-api-preview').disabled = true
+    try {
+      const result = await postSourceSwitch('/api/source/from-manual/preview', {})
+      if (epoch !== state.cookieEpoch) return
+      state.manualApiPreview = result.previewId
+      const emailChanges = `${text.manualApiEmailChanges} (${result.emailChanges.length})\n${result.emailChanges.map(item => `  ${item.title || item.channelId} · ${item.after ? text.manualApiEmailStart : text.manualApiEmailStop}`).join('\n')}`
+      $('manual-api-details').textContent = [text.manualApiHelp, `${text.identityApi}: ${result.profile.title} (${result.profile.channelId})`, describeChannels(text.cookieStart, result.start), describeChannels(text.cookieContinue, result.continuing), describeChannels(text.cookieStop, result.stop), emailChanges].join('\n\n')
+      $('manual-api-review').hidden = false
+    } catch (error) { if (epoch === state.cookieEpoch) showNotice(error.message) }
+    finally { $('manual-api-preview').disabled = false }
+  })
+  $('manual-api-apply').addEventListener('click', async () => {
+    if (!state.manualApiPreview) return
+    $('manual-api-apply').disabled = true
+    try {
+      const result = await postSourceSwitch('/api/source/from-manual/apply', { previewId: state.manualApiPreview })
+      state.manualApiPreview = null; $('manual-api-review').hidden = true
+      renderConnection({ ...state.connection, mode: result.pending ? 'whitelist' : 'youtube', manualTransitionPending: result.pending })
+      showNotice(result.pending ? text.manualTransitionPending : text.apiSourceDone)
+    } catch (error) { state.manualApiPreview = null; $('manual-api-review').hidden = true; showNotice(error.message) }
+    finally { $('manual-api-apply').disabled = false }
+  })
   $('api-manual-preview').addEventListener('click', async () => {
     const epoch = state.cookieEpoch
     state.apiManualPreview = null; $('api-manual-review').hidden = true; $('api-manual-preview').disabled = true

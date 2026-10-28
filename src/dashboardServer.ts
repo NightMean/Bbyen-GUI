@@ -34,6 +34,7 @@ import { CombinedMode } from './combinedMode'
 import { ApiSourceSwitch, IncompleteApiSnapshot, UnconfirmedCookieSnapshot }
 	from './apiSourceSwitch'
 import { ApiManualSwitch } from './apiManualSwitch'
+import { ManualApiSwitch } from './manualApiSwitch'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -66,6 +67,7 @@ interface ChannelActions {
 	combinedMode?: CombinedMode,
 	apiSourceSwitch?: ApiSourceSwitch,
 	apiManualSwitch?: ApiManualSwitch,
+	manualApiSwitch?: ManualApiSwitch,
 	verifyApiProfile?: (channelId: string) => Promise<void>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
@@ -123,6 +125,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/source/api/apply' ||
 			url.pathname === '/api/source/manual/preview' ||
 			url.pathname === '/api/source/manual/apply' ||
+			url.pathname === '/api/source/from-manual/preview' ||
+			url.pathname === '/api/source/from-manual/apply' ||
 			url.pathname === '/api/cookies/cancel' ||
 			url.pathname === '/api/cookies/manual/preview' ||
 			url.pathname === '/api/cookies/manual/apply' ||
@@ -172,6 +176,23 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname.startsWith('/api/source/from-manual/')) {
+				const source = actions.manualApiSwitch
+				if (!source) {
+					send(503, { error: 'API source switch is unavailable.' }); return
+				}
+				const preview = data.previewId
+				if (url.pathname.endsWith('/apply') &&
+						(typeof preview !== 'string' || !preview)) {
+					send(400, { error: 'Source preview is missing.' }); return
+				}
+				void writeMaintenance(async () =>
+					url.pathname.endsWith('/preview') ? source.review() :
+						source.apply(preview as string)).then(result => send(200, result),
+					() => send(409, { error: 'Could not verify the Google account ' +
+						'or its subscriptions. Connect Google and review again.' }))
+				return
+			}
 			if (url.pathname.startsWith('/api/source/manual/')) {
 				const source = actions.apiManualSwitch
 				if (!source) {
