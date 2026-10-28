@@ -102,7 +102,17 @@
     $('connection-warning').textContent = warnings.join(' ')
     $('cookie-connect').hidden = connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
     $('manual-switch').hidden = !active
+    $('identity-check').hidden = !active
+    $('identity-result').textContent = ''
   }
+  $('identity-compare').addEventListener('click', async () => {
+    $('identity-compare').disabled = true
+    try {
+      const result = await post('/api/cookies/compare-identity', {})
+      $('identity-result').textContent = `${result.matches ? text.identityMatch : text.identityMismatch} ${text.identityApi}: ${result.api.title} (${result.api.channelId}); ${text.identityCookie}: ${result.cookie.name} (${result.cookie.channelId})`
+    } catch { $('identity-result').textContent = text.identityError }
+    finally { $('identity-compare').disabled = false }
+  })
   const describeChannels = (heading, channels) => `${heading} (${channels.length})\n${channels.map(channel => `  ${channel.title || channel.channelId}${channel.unconfirmed ? ` · ${text.cookieUnconfirmed}` : ''}`).join('\n')}`
   const confirmUnsubscribe = () => {
     if (!state.confirmUnsubscribe) return Promise.resolve({ confirmed: true, skip: false })

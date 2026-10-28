@@ -124,6 +124,9 @@ test('validates writes and schedules refresh after saving', async () => {
 		imports: new SubscriptionImportService('unused', {} as Config),
 		cookiePreviews,
 		cookieStatus: () => cookieStore.status(),
+		compareIdentities: async () => ({ matches: true,
+			api: { channelId: id, title: 'API' },
+			cookie: { channelId: id, name: 'Cookie' } }),
 		cookieCleanupPending: () => cookieStore.cleanupPending(),
 		manualSwitch: new ManualSourceSwitch(db, config, 'unused', 'unused',
 			'unused', cookiePreviews),
@@ -181,6 +184,8 @@ test('validates writes and schedules refresh after saving', async () => {
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 	try {
+		expect((await axios.post(`${base}/api/cookies/compare-identity`, {},
+			{ validateStatus: () => true })).status).toBe(409)
 		const exported = await axios.get(`${base}/api/subscriptions/export`)
 		expect(exported.data.whitelistedChannelIds).toEqual([{ id }])
 		expect(exported.data.blacklistedChannelIds).toBeNull()
@@ -230,6 +235,8 @@ test('validates writes and schedules refresh after saving', async () => {
 		})
 		const cookieStatus = await axios.get(`${base}/api/cookies/status`)
 		expect(cookieStatus.data.mode).toBe('cookie')
+		expect((await axios.post(`${base}/api/cookies/compare-identity`, {}))
+			.data.matches).toBe(true)
 		expect(JSON.stringify(cookieStatus.data)).not.toContain('synthetic-fixture')
 		const cookieChannels = (await axios.get(`${base}/api/channels`)).data
 		expect(cookieChannels.cookieMode).toBe(true)

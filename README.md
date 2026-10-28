@@ -364,6 +364,9 @@ In API mode, Settings can preview a switch to cookie tracking. Confirming it
 stops API tracking and deletes the saved OAuth token; the Google client file
 is retained. If the token was replaced during cleanup, it is retained and
 Settings reports that cleanup needs attention. Cleanup is retried after restart.
+Settings can compare the active cookie profile with an existing Google
+authorization without changing either connection. The comparison uses canonical
+channel IDs and refuses a result if either connection changes during the check.
 Combined mode remains unavailable. Google may authorize a
 different YouTube channel from the one selected in the browser, depending on
 the account’s default channel. The app must verify the canonical channel IDs

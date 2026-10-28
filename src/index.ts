@@ -54,6 +54,7 @@ import { IncidentRecoveries } from './incidentRecoveries'
 import { readCookieFile } from './cookieFile'
 import { CookieFileRecovery } from './cookieFileRecovery'
 import { oauthTokenHash, recoverOAuthCleanup } from './oauthCleanup'
+import { compareConnectionIdentities } from './combinedIdentity'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -178,6 +179,13 @@ const startService = async (existingServer?: Server) => {
 			cookieStatus: () => cookieStore.status(),
 			cookieCleanupPending: () => cookieStore.cleanupPending(),
 			oauthCleanupPending: () => cookieStore.oauthCleanupPending(),
+			compareIdentities: async () => {
+				if (await cookieStore.oauthCleanupPending()) {
+					throw new Error('Authorization cleanup is pending.')
+				}
+				return compareConnectionIdentities({ store: cookieStore, service,
+					loadAuth: () => authorize(), authRevision: authorizationRevision })
+			},
 			manualSwitch,
 			bellActions: new CookieBellActions(db, config, cookieStore,
 				tasks.runSubscriptions),

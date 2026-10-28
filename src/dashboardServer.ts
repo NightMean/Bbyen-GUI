@@ -56,6 +56,7 @@ interface ChannelActions {
 	manualSwitch: ManualSourceSwitch,
 	cookieCleanupPending: () => Promise<boolean>,
 	oauthCleanupPending?: () => Promise<boolean>,
+	compareIdentities?: () => Promise<unknown>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
 	apiSubscriptionActions?: ApiSubscriptionActions,
@@ -103,6 +104,7 @@ export const createDashboardHandler = (
 			url.pathname === '/api/cookies/inspect' ||
 			url.pathname === '/api/cookies/compare' ||
 			url.pathname === '/api/cookies/activate' ||
+			url.pathname === '/api/cookies/compare-identity' ||
 			url.pathname === '/api/cookies/cancel' ||
 			url.pathname === '/api/cookies/manual/preview' ||
 			url.pathname === '/api/cookies/manual/apply' ||
@@ -139,6 +141,15 @@ export const createDashboardHandler = (
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
 			if (url.pathname.startsWith('/api/cookies/')) {
+				if (url.pathname === '/api/cookies/compare-identity') {
+					if (!actions.compareIdentities || actions.config.mode !== 'cookie') {
+						send(409, { error: 'A cookie connection is required.' }); return
+					}
+					void jobs.maintenance(randomUUID(), () =>
+						actions.compareIdentities!()).then(result => send(200, result),
+						() => send(422, { error: 'Could not verify both connections.' }))
+					return
+				}
 				if (url.pathname === '/api/cookies/manual/preview') {
 					void jobs.maintenance(randomUUID(), () =>
 						actions.manualSwitch.preview()).then(result => send(200, result),
