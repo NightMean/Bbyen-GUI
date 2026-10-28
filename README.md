@@ -385,8 +385,10 @@ without replacing the cookie snapshot. When API quota is exhausted, cookie
 checks and RSS video checks continue while API requests back off. Switching
 back to cookie-only mode deletes the saved OAuth grant, retaining history and
 the Google client file. To change the cookie profile or switch to manual mode,
-first switch to cookie-only mode. API-only to combined switching and other
-source-switch directions still require additional implementation.
+first switch to cookie-only mode. When adding cookies in API mode, select
+"Keep the Google API connection" to retain the grant and enable combined mode;
+the account identities are checked before the preview and again on confirmation.
+Other source-switch directions still require additional implementation.
 
 Google may authorize a
 different YouTube channel from the one selected in the browser, depending on

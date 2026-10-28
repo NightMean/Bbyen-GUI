@@ -22,7 +22,11 @@ export class CookieConnectionStore {
 	constructor(private readonly db: sqlite.Database) {}
 
 	async activate(cookieHeader: string, profile: ResolvedCookieProfile,
-		channels: ChannelBellState[], oauthHash?: string): Promise<string> {
+		channels: ChannelBellState[], oauthHash?: string,
+		combinedProfile?: string): Promise<string> {
+		if (oauthHash && combinedProfile) {
+			throw new Error('Cannot combine and remove the same authorization.')
+		}
 		if (!Array.isArray(channels) || !channels.length ||
 				typeof cookieHeader !== 'string' || cookieHeader.length > 256 * 1024 ||
 				!extractSapisidFromCookie(cookieHeader) || !profile.selectable ||
@@ -42,6 +46,13 @@ export class CookieConnectionStore {
 				throw new Error('Previous cookie cleanup must finish first.')
 			}
 			if (oauthHash) await recordOAuthCleanup(this.db, oauthHash)
+			if (combinedProfile) {
+				if (combinedProfile !== profile.channelId) {
+					throw new Error('Combined account identity does not match.')
+				}
+				await this.db.run(SQL`INSERT INTO combined_connection
+					(id, profileKey) VALUES (1, ${combinedProfile});`)
+			}
 			await reconcileCookieSnapshot(this.db, {
 				profileKey: profile.channelId, complete: true, activateProfile: true,
 				suppressNotifications: true, channels,

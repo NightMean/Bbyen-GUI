@@ -61,6 +61,7 @@ interface ChannelActions {
 	compareIdentities?: () => Promise<unknown>,
 	remoteDesktopAuth?: RemoteDesktopAuth,
 	combinedMode?: CombinedMode,
+	verifyApiProfile?: (channelId: string) => Promise<void>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
 	apiSubscriptionActions?: ApiSubscriptionActions,
@@ -142,7 +143,7 @@ export const createDashboardHandler = (
 				profileId?: unknown, preference?: unknown, subscribed?: unknown,
 				confirmUnsubscribe?: unknown, list?: unknown, included?: unknown,
 				port?: unknown, id?: unknown, state?: unknown, code?: unknown,
-				direction?: unknown } = {}
+				direction?: unknown, keepApi?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -244,20 +245,37 @@ export const createDashboardHandler = (
 						send(400, { error: 'Choose an available profile.' }); return
 					}
 					const profile = data.profileId
+					if (data.keepApi !== undefined && typeof data.keepApi !== 'boolean') {
+						send(400, { error: 'Choose whether to keep API access.' }); return
+					}
+					if (data.keepApi && (actions.config.mode !== 'youtube' ||
+							!actions.verifyApiProfile)) {
+						send(409, { error: 'API tracking is unavailable.' }); return
+					}
+					const verify = data.keepApi ? actions.verifyApiProfile : undefined
 					void jobs.maintenance(randomUUID(), () =>
-						actions.cookiePreviews.compare(candidate, profile)).then(result =>
-						send(200, result), () => send(422, {
-						error: 'Could not compare channels for this profile.',
-					}))
+						actions.cookiePreviews.compare(candidate, profile, verify)).then(
+						result => send(200, result), () => send(422, {
+							error: 'Could not compare channels for this profile.',
+						}))
 					return
 				}
 				if (typeof data.previewId !== 'string' || !data.previewId) {
 					send(400, { error: 'Cookie comparison is missing.' }); return
 				}
 				const preview = data.previewId
-				void jobs.maintenance(randomUUID(), () =>
-					actions.activateCookie(candidate, preview)).then(() => {
-					actions.refresh('videos'); send(200, { connected: true })
+				void jobs.maintenance(randomUUID(), async () => {
+					await actions.activateCookie(candidate, preview)
+					return { mode: actions.config.mode,
+						apiEnrichment: !!actions.config.apiEnrichment,
+						connection: await actions.cookieStatus(),
+						cleanupPending: await actions.cookieCleanupPending(),
+						oauthCleanupPending: await actions.oauthCleanupPending?.() ?? false,
+						environmentCookie: process.env.YOUTUBE_COOKIE !== undefined }
+				}).then(connection => {
+					send(200, { connected: true, connection })
+					if (actions.config.apiEnrichment) actions.refresh('subscriptions')
+					actions.refresh('videos')
 				}, () => send(409, {
 					error: 'Could not confirm the connection. Review the preview again.',
 				}))

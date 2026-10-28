@@ -124,6 +124,9 @@ test('validates writes and schedules refresh after saving', async () => {
 		imports: new SubscriptionImportService('unused', {} as Config),
 		cookiePreviews,
 		cookieStatus: () => cookieStore.status(),
+		verifyApiProfile: async profile => {
+			if (profile !== id) throw new Error('Profile mismatch.')
+		},
 		remoteDesktopAuth: {
 			start: async (port: unknown) => ({ id: 'fixture', url: String(port) }),
 			finish: async () => undefined,
@@ -239,6 +242,14 @@ test('validates writes and schedules refresh after saving', async () => {
 		const inspected = await axios.post(`${base}/api/cookies/inspect`,
 			{ cookie: 'SAPISID=synthetic-fixture' })
 		expect(JSON.stringify(inspected.data)).not.toContain('synthetic-fixture')
+		expect((await axios.post(`${base}/api/cookies/compare`, {
+			candidateId: inspected.data.candidateId,
+			profileId: inspected.data.profiles[0].profileId, keepApi: true,
+		})).status).toBe(200)
+		expect((await axios.post(`${base}/api/cookies/compare`, {
+			candidateId: inspected.data.candidateId,
+			profileId: inspected.data.profiles[0].profileId, keepApi: 'yes',
+		}, { validateStatus: () => true })).status).toBe(400)
 		const compared = await axios.post(`${base}/api/cookies/compare`, {
 			candidateId: inspected.data.candidateId,
 			profileId: inspected.data.profiles[0].profileId,

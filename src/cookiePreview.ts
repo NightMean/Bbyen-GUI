@@ -13,7 +13,7 @@ interface Candidate {
 	expiresAt: number,
 	timer: NodeJS.Timeout,
 	preview?: { id: string, profileId: string, fingerprint: string,
-		sourceRevision: string },
+		sourceRevision: string, keepApi: boolean },
 }
 
 interface PreviewDependencies {
@@ -69,13 +69,15 @@ export class CookiePreviewService {
 					selectable: profile.selectable })) }
 	}
 
-	async compare(candidateId: string, profileId: string) {
+	async compare(candidateId: string, profileId: string,
+		verifyApiProfile?: (channelId: string) => Promise<void>) {
 		const candidate = this.candidate(candidateId)
 		const sourceRevision = await this.sourceRevision()
 		const profile = candidate.profiles.get(profileId)
 		if (!profile?.selectable || !profile.channelId) {
 			throw new Error('Selected cookie profile is unavailable.')
 		}
+		if (verifyApiProfile) await verifyApiProfile(profile.channelId)
 		const channels = await this.deps.fetch({ cookie: candidate.cookieHeader,
 			targetProfile: profile, onProgress: () => undefined })
 		// Recheck after network I/O; expired or replaced candidates cannot commit.
@@ -89,7 +91,8 @@ export class CookiePreviewService {
 		}
 		const id = randomUUID()
 		candidate.preview = { id, profileId,
-			fingerprint: this.fingerprint(channels, comparison), sourceRevision }
+			fingerprint: this.fingerprint(channels, comparison), sourceRevision,
+			keepApi: !!verifyApiProfile }
 		return { previewId: id, ...comparison }
 	}
 
@@ -158,7 +161,7 @@ export class CookiePreviewService {
 
 	async confirm(candidateId: string, previewId: string): Promise<{
 		cookieHeader: string, profile: ResolvedCookieProfile,
-		channels: ChannelBellState[], sourceRevision: string,
+		channels: ChannelBellState[], sourceRevision: string, keepApi: boolean,
 	}> {
 		const candidate = this.candidate(candidateId)
 		const preview = candidate.preview
@@ -185,7 +188,7 @@ export class CookiePreviewService {
 		}
 		this.remove(candidateId)
 		return { cookieHeader: candidate.cookieHeader, profile, channels,
-			sourceRevision: preview.sourceRevision }
+			sourceRevision: preview.sourceRevision, keepApi: preview.keepApi }
 	}
 
 	cancel(id: string): void { this.remove(id) }

@@ -53,7 +53,7 @@ import { IncidentReminders } from './incidentReminders'
 import { IncidentRecoveries } from './incidentRecoveries'
 import { readCookieFile } from './cookieFile'
 import { CookieFileRecovery } from './cookieFileRecovery'
-import { oauthTokenHash, recoverOAuthCleanup } from './oauthCleanup'
+import { recoverOAuthCleanup } from './oauthCleanup'
 import { compareConnectionIdentities } from './combinedIdentity'
 import { RemoteDesktopAuth } from './remoteDesktopAuth'
 import { CombinedMode } from './combinedMode'
@@ -195,7 +195,7 @@ const startService = async (existingServer?: Server) => {
 			videos: videosTimer })
 		const cookieSourceRevision = async () => {
 			if (config.mode === 'youtube') {
-				return `youtube:${await oauthTokenHash(CONFIG_DIR) ?? 'missing'}`
+				return `youtube:${await authorizationRevision()}`
 			}
 			if (config.mode === 'cookie') {
 				return `cookie:${(await cookieStore.read())?.generation ?? 'missing'}`
@@ -208,9 +208,21 @@ const startService = async (existingServer?: Server) => {
 			CHANNELS_FILE, CONFIG_DIR, cookiePreviews)
 		const combinedMode = new CombinedMode(db, config, cookieStore, service,
 			() => authorize(), authorizationRevision, CONFIG_DIR)
+		const verifyApiProfile = async (channelId: string) => {
+			if (config.mode !== 'youtube') throw new Error('API mode is unavailable.')
+			const revision = await authorizationRevision()
+			const identity = await withAuthorizationTimeout(
+				readAccountIdentity(service, await authorize()))
+			if (!sameAccount(identity.channelId, channelId) ||
+					config.mode !== 'youtube' ||
+					revision !== await authorizationRevision()) {
+				throw new Error('YouTube profiles do not match.')
+			}
+		}
 		const handler = createDashboardHandler(db, jobs, {
 			config,
 			combinedMode,
+			verifyApiProfile,
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),
 			cookieCleanupPending: () => cookieStore.cleanupPending(),
@@ -235,6 +247,7 @@ const startService = async (existingServer?: Server) => {
 				config, cookieStore, cookiePreviews, candidateId, previewId, {
 					directory: CONFIG_DIR, sourceRevision: cookieSourceRevision,
 					recover: () => recoverOAuthCleanup(databaseConnection, CONFIG_DIR),
+					verifyApiProfile,
 				}),
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),
 			add: (id, backlog) =>

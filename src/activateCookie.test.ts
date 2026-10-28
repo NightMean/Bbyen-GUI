@@ -153,3 +153,82 @@ test('retains a replaced grant and resumes cleanup after restart', async () => {
 		await fs.rm(dir, { recursive: true, force: true })
 	}
 })
+
+test('adds a matching cookie profile to API mode without deleting its grant',
+	async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-api-combined-'))
+		const filename = path.join(dir, 'database.sqlite')
+		const token = path.join(dir, '.google-auth-token.json')
+		let db = await init({ filename })
+		const config = { mode: 'youtube', database: { filename } } as Config
+		const store = new CookieConnectionStore(db)
+		const revision = async () => `${config.mode}:${await oauthTokenHash(dir)}`
+		const profileId = 'UC0000000000000000000001'
+		const verify = async (id: string) => {
+			if (id !== profileId) throw new Error('Profiles differ.')
+		}
+		const previews = new CookiePreviewService(db, {
+			discover: async () => ({ cookieHeader: 'SAPISID=synthetic-fixture',
+				profiles: [{ name: 'Profile', channelId: profileId,
+					selected: true, selectable: true }] }),
+			fetch: async () => [{ channelId: 'UC0000000000000000000002',
+				title: 'Channel', notificationState: 'all', isAllNotifications: true }],
+		}, Date.now, revision)
+		try {
+			await fs.writeFile(token, 'grant-fixture')
+			const candidate = await previews.inspect('fixture')
+			const preview = await previews.compare(candidate.candidateId,
+				candidate.profiles[0].profileId, verify)
+			await activateConfirmedCookie(config, store, previews,
+				candidate.candidateId, preview.previewId, { directory: dir,
+					sourceRevision: revision, verifyApiProfile: verify,
+					recover: () => recoverOAuthCleanup(db, dir) })
+			expect(config.mode).toBe('cookie')
+			expect(config.apiEnrichment).toBe(true)
+			expect(await fs.readFile(token, 'utf8')).toBe('grant-fixture')
+			expect(await store.oauthCleanupPending()).toBe(false)
+			await db.close()
+			db = await init({ filename })
+			expect(await db.get('SELECT profileKey FROM combined_connection'))
+				.toEqual({ profileKey: profileId })
+			expect(await db.all('SELECT id FROM channel_added_batches')).toEqual([])
+		} finally {
+			previews.dispose(); await db.close()
+			await fs.rm(dir, { recursive: true, force: true })
+		}
+	})
+
+test('does not switch when the API profile changes after review', async () => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-api-combined-'))
+	const filename = path.join(dir, 'database.sqlite')
+	const db = await init({ filename })
+	const config = { mode: 'youtube', database: { filename } } as Config
+	const store = new CookieConnectionStore(db)
+	let matches = true
+	const verify = async () => {
+		if (!matches) throw new Error('Profiles differ.')
+	}
+	const previews = new CookiePreviewService(db, {
+		discover: async () => ({ cookieHeader: 'SAPISID=synthetic-fixture',
+			profiles: [{ name: 'Profile', channelId: 'UC0000000000000000000001',
+				selected: true, selectable: true }] }),
+		fetch: async () => [{ channelId: 'UC0000000000000000000002',
+			title: 'Channel', notificationState: 'all', isAllNotifications: true }],
+	})
+	try {
+		const candidate = await previews.inspect('fixture')
+		const preview = await previews.compare(candidate.candidateId,
+			candidate.profiles[0].profileId, verify)
+		matches = false
+		await expect(activateConfirmedCookie(config, store, previews,
+			candidate.candidateId, preview.previewId, { directory: dir,
+				sourceRevision: async () => '', verifyApiProfile: verify,
+				recover: () => recoverOAuthCleanup(db, dir) })).rejects.toThrow()
+		expect(config.mode).toBe('youtube')
+		expect(await store.read()).toBeNull()
+		expect(await db.get('SELECT id FROM combined_connection')).toBeUndefined()
+	} finally {
+		previews.dispose(); await db.close()
+		await fs.rm(dir, { recursive: true, force: true })
+	}
+})

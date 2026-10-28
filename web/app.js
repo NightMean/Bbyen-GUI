@@ -96,6 +96,7 @@
     const active = connection.mode === 'cookie'
     state.combined = active && connection.apiEnrichment
     state.apiConnection = connection.mode === 'youtube'
+    $('cookie-keep-api-label').hidden = !state.apiConnection
     $('connection-status').textContent = active ? `${state.combined ? text.connectionCombined : text.connectionCookie}: ${connection.connection?.name || ''}` : connection.mode === 'youtube' ? text.connectionApi : text.connectionManual
     const warnings = []
     if (connection.connection?.stale) warnings.push(text.connectionStale)
@@ -661,26 +662,28 @@
     finally { $('cookie-input').value = ''; $('cookie-file').value = ''; button.disabled = false }
   })
   $('cookie-profile').addEventListener('change', () => { state.cookieEpoch++; state.cookiePreview = null; $('cookie-review').hidden = true })
+  $('cookie-keep-api').addEventListener('change', () => { state.cookieEpoch++; state.cookiePreview = null; $('cookie-review').hidden = true })
   $('cookie-compare').addEventListener('click', async () => {
     const candidateId = state.cookieCandidate, profileId = $('cookie-profile').value, epoch = state.cookieEpoch
+    const keepApi = state.apiConnection && $('cookie-keep-api').checked
     if (!candidateId || !profileId) return
     $('cookie-compare').disabled = true; $('cookie-review').hidden = true; state.cookiePreview = null
     try {
-      const preview = await post('/api/cookies/compare', { candidateId, profileId })
+      const preview = await post('/api/cookies/compare', { candidateId, profileId, keepApi })
       if (epoch !== state.cookieEpoch) return
       state.cookiePreview = preview.previewId
-      $('cookie-details').textContent = [state.apiConnection ? text.cookieFromApi : '', describeChannels(text.cookieStart, preview.start), describeChannels(text.cookieStop, preview.stop), describeChannels(text.cookieContinue, preview.continuing)].filter(Boolean).join('\n\n')
+      $('cookie-details').textContent = [state.apiConnection ? (keepApi ? text.cookieCombineHelp : text.cookieFromApi) : '', describeChannels(text.cookieStart, preview.start), describeChannels(text.cookieStop, preview.stop), describeChannels(text.cookieContinue, preview.continuing)].filter(Boolean).join('\n\n')
       $('cookie-review').hidden = false; showNotice('')
-    } catch { if (epoch === state.cookieEpoch) showNotice(text.cookieError) }
+    } catch { if (epoch === state.cookieEpoch) showNotice(keepApi ? text.cookieCombinedError : text.cookieError) }
     finally { $('cookie-compare').disabled = false }
   })
   $('cookie-activate').addEventListener('click', async () => {
     if (!state.cookieCandidate || !state.cookiePreview) return
     $('cookie-activate').disabled = true
     try {
-      await post('/api/cookies/activate', { candidateId: state.cookieCandidate, previewId: state.cookiePreview })
+      const result = await post('/api/cookies/activate', { candidateId: state.cookieCandidate, previewId: state.cookiePreview })
       state.cookieCandidate = null; state.cookiePreview = null; $('cookie-profiles').hidden = true; $('cookie-review').hidden = true
-      try { renderConnection(await request('/api/cookies/status')) } catch { showNotice(text.loadError); return }
+      renderConnection(result.connection)
       showNotice(text.cookieConnected)
     } catch { $('cookie-review').hidden = true; state.cookiePreview = null; showNotice(text.cookieError) }
     finally { $('cookie-activate').disabled = false }

@@ -9,7 +9,8 @@ export const activateConfirmedCookie = async (
 	config: Config, store: CookieConnectionStore, previews: CookiePreviewService,
 	candidateId: string, previewId: string,
 	options?: { directory: string, sourceRevision: () => Promise<string>,
-		recover: () => Promise<boolean> },
+		recover: () => Promise<boolean>,
+		verifyApiProfile?: (channelId: string) => Promise<void> },
 ): Promise<void> => {
 	if (config.apiEnrichment) {
 		throw new Error('Disable API enrichment before changing cookie profiles.')
@@ -22,6 +23,9 @@ export const activateConfirmedCookie = async (
 		throw new Error('OAuth cleanup must be available before switching.')
 	}
 	const candidate = await previews.confirm(candidateId, previewId)
+	if (candidate.keepApi && (!fromApi || !options?.verifyApiProfile)) {
+		throw new Error('Combined tracking requires an active API account.')
+	}
 	await secureCookieStorage(config.database.filename)
 	if (options && candidate.sourceRevision !== await options.sourceRevision()) {
 		throw new Error('Source changed; review the switch again.')
@@ -34,9 +38,16 @@ export const activateConfirmedCookie = async (
 						candidate.sourceRevision !== await options.sourceRevision()) {
 					throw new Error('Source changed; review the switch again.')
 				}
+				if (candidate.keepApi) {
+					await options.verifyApiProfile!(candidate.profile.channelId!)
+					if (candidate.sourceRevision !== await options.sourceRevision()) {
+						throw new Error('Source changed; review the switch again.')
+					}
+				}
 				const hash = await oauthTokenHash(options.directory)
 				await store.activate(candidate.cookieHeader, candidate.profile,
-					candidate.channels, hash ?? undefined)
+					candidate.channels, candidate.keepApi ? undefined : hash ?? undefined,
+					candidate.keepApi ? candidate.profile.channelId! : undefined)
 				activated = true
 			})
 		} catch (error) {
@@ -51,9 +62,10 @@ export const activateConfirmedCookie = async (
 			candidate.channels)
 	}
 	config.mode = 'cookie'
+	config.apiEnrichment = candidate.keepApi
 	config.cookieStale = candidate.channels.some(channel =>
 		channel.notificationState === 'unknown')
-	if (fromApi && options) {
+	if (fromApi && options && !candidate.keepApi) {
 		try { await options.recover() } catch {
 			// The durable cleanup record will be retried and shown in Settings.
 		}
