@@ -266,6 +266,14 @@ account (the subscriptions will come from whatever account you use):
 1. After authenticating in the website, Google should automatically redirect you to your server, which will transfer the authentication code. In this case you will see a message "Authorization successful. You may now close this tab.".
 If this does not work (if you see "Unable to connect"), please copy/paste the URL from the browser address bar into the console.
 
+The existing Desktop OAuth client continues to work for reads. To grant the
+additional YouTube management permission needed for unsubscribe, run
+`npm run login -- --manage` using that same client and complete Google consent.
+This replaces the token only after a refresh token and the requested permission
+are received. The command uses a loopback callback with state and PKCE. For a
+remote browser, paste the full failed localhost callback URL into the terminal
+on the service host. Never share that URL with anyone else.
+
 Normal runs (`npm start`) never launch the browser. If YouTube credentials are
 missing or rejected, the service stays running, reports the failed refresh, and
 retries authorization on a later scheduled run. Use `npm run login` to

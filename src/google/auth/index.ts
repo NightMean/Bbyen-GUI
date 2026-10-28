@@ -1,10 +1,11 @@
 import fs from 'fs/promises'
 import path from 'path'
 import http from 'http'
-import { parse as parseURL } from 'url'
+import { randomBytes, createHash } from 'crypto'
 
 import open from 'open'
-import { Credentials, OAuth2Client } from 'google-auth-library'
+import { CodeChallengeMethod, Credentials, OAuth2Client }
+	from 'google-auth-library'
 
 import readline from './readline'
 
@@ -13,7 +14,9 @@ import { CONFIG_DIR, CONFIG_FILE } from '../../config'
 import { updateJsonFile } from '../../lib/jsonFile'
 import { DeviceClient } from '../deviceAuthorization'
 
-const SCOPES = [ 'https://www.googleapis.com/auth/youtube.readonly' ]
+const READ_SCOPE = 'https://www.googleapis.com/auth/youtube.readonly'
+const MANAGE_SCOPE = 'https://www.googleapis.com/auth/youtube'
+const LOGIN_TIMEOUT_MS = 10 * 60_000
 const TOKEN_FILE = path.join(CONFIG_DIR, '.google-auth-token.json')
 
 // Thrown when no valid token exists and interactive login is not permitted.
@@ -57,13 +60,14 @@ export const storeDeviceToken = async (
  * Store given token to `TOKEN_FILE`
  */
 
-const storeToken = async (token: Credentials) => {
-	const file = TOKEN_FILE
-	const dir = path.dirname(file)
-
-	return await fs.mkdir(dir)
-		.catch(err => { if (err.code !== 'EEXIST') throw err })
-		.then(() => fs.writeFile(file, JSON.stringify(token)))
+const storeToken = async (token: Credentials, expected: unknown) => {
+	await fs.mkdir(path.dirname(TOKEN_FILE), { recursive: true })
+	await updateJsonFile(TOKEN_FILE, current => {
+		if (JSON.stringify(current) !== JSON.stringify(expected)) {
+			throw new AuthError('Authorization changed; retry login.')
+		}
+		return token
+	}, { createIfMissing: true })
 }
 
 
@@ -73,16 +77,25 @@ const storeToken = async (token: Credentials) => {
  * Authorize by printing a URL and pasting back a code
  */
 
-const genAuthToken = async (oauth2Client: OAuth2Client) => {
+const genAuthToken = async (oauth2Client: OAuth2Client, manage: boolean) => {
 	const logger = await setupLogger({ label: 'google-auth' })
+	let previous: unknown
+	try { previous = await readJson(TOKEN_FILE) } catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+		previous = {}
+	}
+	const state = randomBytes(32).toString('base64url')
+	const verifier = randomBytes(32).toString('base64url')
+	const challenge = createHash('sha256').update(verifier).digest('base64url')
 
 	const authUrl = oauth2Client.generateAuthUrl({
 		access_type: 'offline',
 		prompt: 'consent',
-		scope: SCOPES,
+		scope: [manage ? MANAGE_SCOPE : READ_SCOPE],
+		state, code_challenge_method: CodeChallengeMethod.S256,
+		code_challenge: challenge,
 	})
 
-	logger.debug(`Opening authorization url: ${authUrl}`)
 	console.log(
 		'Authenticating. If a browser window is not automatically opened, ' +
 		`please open the following link: ${authUrl}`)
@@ -96,11 +109,18 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 	// rejections thrown before the first await).
 	const port = (await loadConfig()).port
 	let server: http.Server
+	let callbackResponse: http.ServerResponse | undefined
+	let exchangeStarted = false
 	const manualAbort = new AbortController()
 	const automatedMethod: Promise<Credentials> =
 		new Promise((resolve, reject) => {
 			server = http.createServer(async (req, res) => {
-				if (!req.url?.startsWith('/authorization_code')) {
+				let callback: URL
+				try { callback = new URL(req.url ?? '/', 'http://localhost') } catch {
+					res.writeHead(400).end('Invalid authorization response.')
+					return
+				}
+				if (callback.pathname !== '/authorization_code') {
 					res.writeHead(404).end()
 					return
 				}
@@ -110,24 +130,30 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 					return
 				}
 
-				const queryParams = parseURL(req.url, true)
-				const code = queryParams.query.code as string
+				const code = callback.searchParams.get('code')
+				if (callback.searchParams.get('state') !== state || !code) {
+					res.writeHead(400).end('Invalid authorization response.')
+					return
+				}
+				if (exchangeStarted) {
+					res.writeHead(409).end('Authorization is already being processed.')
+					return
+				}
+				exchangeStarted = true
 
 				try {
 					logger.info('Creating tokens from code')
-					const { tokens } = await oauth2Client.getToken(code)
-					res.writeHead(200)
-						.end('Authorization successful. You may now close this tab.')
+					const { tokens } = await oauth2Client.getToken({ code,
+						codeVerifier: verifier })
+					callbackResponse = res
 					resolve(tokens)
 				} catch (err) {
-					console.error(err)
-					res.writeHead(500).end(`Authorization failed. ${err}`)
-					reject(err)
+					res.writeHead(500).end('Authorization failed. Please try again.')
+					reject(new AuthError('Authorization failed. Please try again.'))
 				}
-				server.close()
 			})
 			server.on('error', reject)
-			server.listen(port)
+			server.listen(port, 'localhost')
 		})
 
 	// Also support copy/pasting the code if the automatic method does not work
@@ -138,21 +164,58 @@ const genAuthToken = async (oauth2Client: OAuth2Client) => {
 	)
 		// Support pasting the full URL, which is more convenient than manually
 		// extracting the code
-		.then(url => /^https?:\/\//i.test(url)
-			? parseURL(url, true).query.code as string
-			: url)
-		.then(code => oauth2Client.getToken(code))
+		.then(value => {
+			const url = new URL(value)
+			if (url.protocol !== 'http:' || url.hostname !== 'localhost' ||
+					url.port !== String(port) || url.pathname !== '/authorization_code' ||
+					url.searchParams.get('state') !== state ||
+					!url.searchParams.get('code')) {
+				throw new AuthError('Invalid authorization response; retry login.')
+			}
+			if (exchangeStarted) {
+				// The loopback callback already owns the single-use code.
+				return new Promise<never>(() => undefined)
+			}
+			exchangeStarted = true
+			return oauth2Client.getToken({ code: url.searchParams.get('code')!,
+				codeVerifier: verifier }).catch(() => {
+				throw new AuthError('Authorization failed. Please try again.')
+			})
+		})
 		.then(({ tokens }) => tokens)
 
+	let timeout: NodeJS.Timeout
+	const expired = new Promise<never>((_, reject) => {
+		timeout = setTimeout(() => reject(new AuthError('Login timed out.')),
+			LOGIN_TIMEOUT_MS)
+	})
 	try {
-		const tokens = await Promise.race([automatedMethod, manualMethod])
+		const tokens = await Promise.race([automatedMethod, manualMethod, expired])
 		if (!tokens.refresh_token) {
 			throw new AuthError('Login returned no refresh token; retry consent.')
 		}
+		if (manage && !tokens.scope?.split(/\s+/).includes(MANAGE_SCOPE)) {
+			throw new AuthError('YouTube management permission was not granted.')
+		}
 		logger.info('Storing tokens')
-		await storeToken(tokens)
+		await storeToken(tokens, previous)
+		try {
+			callbackResponse?.writeHead(200)
+				.end('Authorization successful. You may now close this tab.')
+		} catch {
+			// The stored grant remains valid if the browser disconnects.
+		}
 		return tokens
+	} catch (error) {
+		try {
+			callbackResponse?.writeHead(500)
+				.end('Authorization failed. Please retry.')
+		} catch {
+			// Preserve the original error if the browser disconnected.
+		}
+		throw error
 	} finally {
+		clearTimeout(timeout!)
 		manualAbort.abort()
 		server!.close()
 	}
@@ -197,7 +260,8 @@ const getToken = async () => {
  */
 
 const authorize = async (
-	{ interactive }: { interactive: boolean } = { interactive: false },
+	{ interactive, manage = false }: { interactive: boolean, manage?: boolean }
+	= { interactive: false },
 ) => {
 	const config = await loadConfig()
 	const stored = interactive ? undefined : await getToken()
@@ -223,7 +287,7 @@ const authorize = async (
 	)
 
 	oauth2Client.setCredentials(interactive
-		? await genAuthToken(oauth2Client) : stored)
+		? await genAuthToken(oauth2Client, manage) : stored)
 
 	return oauth2Client
 }
