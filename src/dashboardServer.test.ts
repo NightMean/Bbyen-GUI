@@ -19,6 +19,8 @@ test('serves persisted data and rejects unsupported requests', async () => {
 	await db.run(`INSERT INTO video_observations
 		(videoId, channelId, title, emailOutcome)
 		VALUES ('video', 'channel', 'Example', 'sent')`)
+	await db.run('UPDATE video_observations SET publishedAt=? WHERE videoId=?',
+		'2026-03-28T23:30:00.000Z', 'video')
 	await db.run(`INSERT INTO incidents (id, source, category, openedAt,
 		lastObservedAt, occurrences, emailState)
 		VALUES ('incident', 'smtp', 'other', '2026-01-01',
@@ -33,6 +35,10 @@ test('serves persisted data and rejects unsupported requests', async () => {
 		expect(channels.data.channels[0].channelTitle).toBe('Test')
 		expect((await axios.get(`${base}/api/videos`)).data.videos[0].title)
 			.toBe('Example')
+		const counts = await axios.get(`${base}/api/videos`, {
+			params: { timeZone: 'Europe/Bratislava' },
+		})
+		expect(counts.data.dailyCounts).toEqual({ '2026-03-29': 1 })
 		const filtered = await axios.get(`${base}/api/videos?search=nomatch`)
 		expect(filtered.data.total).toBe(0)
 		expect((await axios.get(`${base}/api/videos?limit=0`,

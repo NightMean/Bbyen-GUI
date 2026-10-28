@@ -350,6 +350,10 @@ currently monitored channels and deleting the stored connection and the matching
 after preview is retained and must be removed separately before reconnecting.
 Environment variables and copies or backups of cookies are not deleted.
 API-to-cookie and combined mode remain unavailable.
+The Videos page can show counts per local calendar day for the current filters.
+Counts include all matching pages and use the observation time when a publish
+time is unavailable.
+
 In cookie and API modes, channel mute controls affect BBYEN email only; they do
 not change the YouTube subscription or bell. Preferences are kept across source
 switches, and unmuting does not resend videos discovered while muted.

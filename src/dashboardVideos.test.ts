@@ -51,3 +51,39 @@ test('rejects invalid and repeated query parameters', () => {
 		expect(() => parseVideoQuery(new URLSearchParams(input))).toThrow()
 	}
 })
+
+
+test('counts filtered videos by viewer calendar day across DST and pages',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		try {
+			await db.run(`INSERT INTO subscriptions
+				(channelId, channelThumbnail, channelTitle)
+				VALUES ('channel', '', 'C')`)
+			for (const [id, date, title] of [
+				['a', '2026-03-28T22:59:00.000Z', 'Match'],
+				['b', '2026-03-28T23:01:00.000Z', 'Match'],
+				['c', '2026-03-29T21:59:00.000Z', 'Match'],
+				['d', '2026-03-29T22:01:00.000Z', 'Different'],
+			]) {
+				await db.run(`INSERT INTO video_observations
+					(videoId, channelId, title, publishedAt, emailOutcome)
+					VALUES (?, 'channel', ?, ?, 'sent')`, id, title, date)
+			}
+			const query = parseVideoQuery(new URLSearchParams({
+				timeZone: 'Europe/Bratislava', limit: '1', search: 'Match',
+			}))
+			const result = await listDashboardVideos(db, query)
+			expect(result.total).toBe(3)
+			expect(result.videos).toHaveLength(1)
+			expect(result.dailyCounts).toEqual({
+				'2026-03-28': 1, '2026-03-29': 2,
+			})
+			query.offset = 1
+			expect((await listDashboardVideos(db, query)).dailyCounts)
+				.toEqual(result.dailyCounts)
+			expect(() => parseVideoQuery(new URLSearchParams({
+				timeZone: 'invalid/zone',
+			}))).toThrow()
+		} finally { await db.close() }
+	})

@@ -9,11 +9,12 @@ interface VideoQuery {
 	channelId?: string,
 	search?: string,
 	contentType?: 'video' | 'short' | 'livestream' | 'unknown',
+	timeZone?: string,
 }
 
 export const parseVideoQuery = (params: URLSearchParams): VideoQuery => {
 	const allowed = new Set(['limit', 'offset', 'from', 'until', 'channelId',
-		'search', 'contentType'])
+		'search', 'contentType', 'timeZone'])
 	for (const key of params.keys()) {
 		if (!allowed.has(key) || params.getAll(key).length !== 1) {
 			throw new Error('Invalid video filter.')
@@ -52,8 +53,16 @@ export const parseVideoQuery = (params: URLSearchParams): VideoQuery => {
 	const contentType = params.get('contentType') ?? undefined
 	if (contentType !== undefined && !['video', 'short', 'livestream', 'unknown']
 		.includes(contentType)) throw new Error('Invalid content type.')
+	const timeZone = params.get('timeZone') ?? undefined
+	if (timeZone !== undefined) {
+		if (timeZone.length > 100) throw new Error('Invalid time zone.')
+		try { new Intl.DateTimeFormat('en', { timeZone }) } catch {
+			throw new Error('Invalid time zone.')
+		}
+	}
 	return { limit, offset: number('offset', 0, 1_000_000), from, until,
-		channelId, search, contentType: contentType as VideoQuery['contentType'] }
+		channelId, search, contentType: contentType as VideoQuery['contentType'],
+		timeZone }
 }
 
 export const listDashboardVideos = async (
@@ -97,7 +106,28 @@ export const listDashboardVideos = async (
 		FROM video_observations${where}
 		ORDER BY COALESCE(publishedAt, observedAt) DESC, videoId LIMIT ? OFFSET ?`,
 	...values, query.limit, query.offset)
+	const dailyCounts: Record<string, number> = Object.create(null)
+	if (query.timeZone) {
+		const formatter = new Intl.DateTimeFormat('en-US', {
+			timeZone: query.timeZone, year: 'numeric', month: '2-digit',
+			day: '2-digit',
+		})
+		let rowError: Error | null = null
+		await db.each(`SELECT COALESCE(publishedAt, observedAt) AS moment
+			FROM video_observations${where}`, ...values,
+		(err: Error | null, row: { moment: string } | null) => {
+			if (err) { rowError = err; return }
+			const date = new Date(row?.moment ?? '')
+			if (!Number.isFinite(date.getTime())) return
+			const parts = formatter.formatToParts(date)
+			const part = (name: string) =>
+				parts.find(item => item.type === name)?.value
+			const day = `${part('year')}-${part('month')}-${part('day')}`
+			dailyCounts[day] = (dailyCounts[day] ?? 0) + 1
+		})
+		if (rowError) throw rowError
+	}
 	return { videos, total: total.count, limit: query.limit,
 		offset: query.offset, durationSeconds: total.durationSeconds,
-		unknownDurationCount: total.unknownDurationCount }
+		unknownDurationCount: total.unknownDurationCount, dailyCounts }
 }

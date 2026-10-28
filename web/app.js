@@ -75,6 +75,7 @@
     $('results').hidden = page === 'settings'
     $('paging').hidden = true
     $('dates').hidden = page !== 'videos'
+    $('daily-counts').hidden = page !== 'videos'
     $('channel-filter-label').hidden = page !== 'channels'
     $('filter-label').hidden = page !== 'videos' || !state.channel
     $('cookie-stale').hidden = true
@@ -268,6 +269,7 @@
   const load = async () => {
     const sequence = ++state.sequence
     $('results').replaceChildren(element('p', 'empty', text.loading))
+    if (state.page === 'videos') $('daily-count-list').replaceChildren(element('li', '', text.loading))
     try {
       if (state.page === 'settings') {
         const [data, history, schedule, general, connection] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule'), request('/api/settings'), request('/api/cookies/status')])
@@ -392,12 +394,14 @@
       }
       const from = $('from').value, through = $('through').value
       if (!from || !through || from > through || through > localDate(new Date())) {
-        if (sequence === state.sequence) { $('results').replaceChildren(element('p', 'empty', text.invalidDates)); $('paging').hidden = true }
+        if (sequence === state.sequence) { $('daily-count-list').replaceChildren(); $('results').replaceChildren(element('p', 'empty', text.invalidDates)); $('paging').hidden = true }
         return
       }
       const start = new Date(`${from}T00:00:00`)
       const end = new Date(`${through}T00:00:00`); end.setDate(end.getDate()+1)
       const params = new URLSearchParams({ from: start.toISOString(), until: end.toISOString(), limit: String(size), offset: String(state.offset) })
+      const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
+      if (timeZone) params.set('timeZone', timeZone)
       if (state.channel) params.set('channelId', state.channel.channelId)
       if ($('search').value.trim()) params.set('search', $('search').value.trim())
       if ($('content-type').value) params.set('contentType', $('content-type').value)
@@ -407,6 +411,8 @@
       state.total = data.total
       state.duration = data.durationSeconds; state.unknownDurations = data.unknownDurationCount; updateWatchTime()
       $('list-label').textContent = `${data.total} ${text.videos}`
+      const counts = Object.entries(data.dailyCounts || {}).sort(([a], [b]) => b.localeCompare(a))
+      $('daily-count-list').replaceChildren(...(counts.length ? counts.map(([day, count]) => element('li', '', `${day}: ${count}`)) : [element('li', '', timeZone ? text.dailyCountsEmpty : text.dailyCountsUnavailable)]))
       $('results').replaceChildren(...(data.videos.length ? data.videos.map(v => renderVideo(v, channels)) : [element('p', 'empty', text.emptyVideos)]))
       $('paging').hidden = data.total <= size
       $('previous').disabled = state.offset === 0
@@ -418,7 +424,7 @@
         const clear = element('button', 'quiet', text.showAll); clear.type = 'button'
         clear.addEventListener('click', () => { state.channel = null; state.offset = 0; load() }); filter.append(clear)
       }
-    } catch { if (sequence === state.sequence) { if (state.page === 'settings') showNotice(text.loadError); else $('results').replaceChildren(element('p', 'empty', text.loadError)) } }
+    } catch { if (sequence === state.sequence) { if (state.page === 'videos') $('daily-count-list').replaceChildren(element('li', '', text.loadError)); if (state.page === 'settings') showNotice(text.loadError); else $('results').replaceChildren(element('p', 'empty', text.loadError)) } }
   }
   $('videos-nav').addEventListener('click', () => setPage('videos'))
   $('channels-nav').addEventListener('click', () => setPage('channels'))
