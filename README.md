@@ -360,7 +360,12 @@ currently monitored channels and deleting the stored connection and the matching
 `CONFIG_DIR/cookies.txt` file. Cleanup is retried after a restart; a file changed
 after preview is retained and must be removed separately before reconnecting.
 Environment variables and copies or backups of cookies are not deleted.
-API-to-cookie and combined mode remain unavailable.
+API-to-cookie and combined mode remain unavailable. Google may authorize a
+different YouTube channel from the one selected in the browser, depending on
+the account’s default channel. The app must verify the canonical channel IDs
+before combining sources. See
+[YouTube’s default-channel guidance](https://support.google.com/youtube/answer/6019090)
+if the profiles differ.
 The Videos page can show counts per local calendar day for the current filters.
 Counts include all matching pages and use the observation time when a publish
 time is unavailable.
