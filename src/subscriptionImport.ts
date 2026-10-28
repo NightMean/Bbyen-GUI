@@ -47,7 +47,8 @@ export const parseSubscriptionImport = (value: unknown): ParsedImport => {
 				}
 				if (seen.has(data.id)) throw new Error('Duplicate channel ID.')
 				const entry: ChannelEntry = { id: data.id }
-				for (const field of ['notify', 'notifyOnFirstScan'] as const) {
+				for (const field of ['notify', 'notifyOnFirstScan',
+					'manualPolicyExcluded'] as const) {
 					if (data[field] !== undefined) {
 						if (typeof data[field] !== 'boolean') {
 							throw new Error('Invalid notification setting.')

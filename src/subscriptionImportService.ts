@@ -7,7 +7,8 @@ import {
 	IMPORT_LISTS, ImportedLists, ParsedImport, parseSubscriptionImport,
 } from './subscriptionImport'
 
-const FIELDS = ['notify', 'notifyOnFirstScan', 'initialBacklog'] as const
+const FIELDS = ['notify', 'notifyOnFirstScan', 'initialBacklog',
+	'manualPolicyExcluded'] as const
 const MAX_PREVIEWS = 10
 const PREVIEW_LIFETIME_MS = 10 * 60_000
 

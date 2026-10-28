@@ -10,7 +10,7 @@ import { updateJsonFile } from './lib/jsonFile'
 
 export type ApiChannelList = 'allowlist' | 'blocklist'
 
-const normalizeLists = async (value: unknown) => {
+export const normalizeApiChannelLists = async (value: unknown) => {
 	const lists = parseChannelLists(value)
 	const normalize = async (id: string) => assertChannelId(id)
 	return { ...lists,
@@ -25,8 +25,8 @@ const normalizeLists = async (value: unknown) => {
 	}
 }
 
-const applyLists = (config: Config,
-	lists: Awaited<ReturnType<typeof normalizeLists>>) => {
+export const applyApiChannelLists = (config: Config,
+	lists: Awaited<ReturnType<typeof normalizeApiChannelLists>>) => {
 	config.whitelistedChannelIds = lists.whitelistedChannelIds
 	config.blacklistedChannelIds = lists.blacklistedChannelIds
 	config.manualChannelIds = lists.manualChannelIds
@@ -38,17 +38,17 @@ const applyLists = (config: Config,
 	]))
 }
 
-type NormalizedLists = Awaited<ReturnType<typeof normalizeLists>>
+type NormalizedLists = Awaited<ReturnType<typeof normalizeApiChannelLists>>
 
 const updateApiLists = async (filename: string, config: Config,
 	update: (lists: NormalizedLists) => NormalizedLists): Promise<void> => {
 	try {
 		const updated = await updateJsonFile(filename, async value =>
-			update(await normalizeLists(value)))
-		applyLists(config, updated)
+			update(await normalizeApiChannelLists(value)))
+		applyApiChannelLists(config, updated)
 	} catch (error) {
 		// The replacement can succeed before cleanup reports an error.
-		try { applyLists(config, await normalizeLists(
+		try { applyApiChannelLists(config, await normalizeApiChannelLists(
 			JSON.parse(await fs.readFile(filename, 'utf8')))) }
 		catch { /* Keep the original failure and current runtime state. */ }
 		throw error

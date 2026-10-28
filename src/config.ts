@@ -36,6 +36,7 @@ export interface EmailConfig {
 export interface ChannelEntry {
 	id: string,
 	notify?: boolean,
+	manualPolicyExcluded?: boolean,
 	notifyOnFirstScan?: boolean,
 	initialBacklog?: BacklogPolicy,
 }
@@ -43,6 +44,7 @@ export interface ChannelEntry {
 export type RawChannelEntry = string | {
 	id: string,
 	notify?: boolean,
+	manualPolicyExcluded?: boolean,
 	notifyOnFirstScan?: boolean,
 	initialBacklog?: BacklogPolicy,
 }
@@ -52,6 +54,7 @@ export interface Config {
 	mode: 'youtube' | 'whitelist' | 'cookie',
 	/** Runtime-only: cookie authority with matching Google API enrichment. */
 	apiEnrichment?: boolean,
+	manualTransitionPending?: boolean,
 	cookieStale?: boolean,
 	confirmUnsubscribe?: boolean,
 	notifyTitleChanges?: boolean,
@@ -258,6 +261,7 @@ export const buildChannelSettingsMap = (
 	const map = new Map<string, ChannelEntry>()
 	for (const entry of entries ?? []) {
 		if (entry.initialBacklog !== undefined || entry.notify !== undefined ||
+				entry.manualPolicyExcluded !== undefined ||
 				entry.notifyOnFirstScan !== undefined) {
 			map.set(entry.id, entry)
 		}

@@ -94,8 +94,11 @@ export class ManualSourceSwitch {
 					...(lists.manualChannelIds ?? []),
 				])
 				const settings = new Map(all.map(entry => [entry.id, entry]))
-				const tracked = current.channels.map(item =>
-					settings.get(item.channelId) ?? { id: item.channelId })
+				const tracked = current.channels.map(item => {
+					const entry = settings.get(item.channelId) ?? { id: item.channelId }
+					return entry.manualPolicyExcluded ? { ...entry,
+						manualPolicyExcluded: false } : entry
+				})
 				return { ...lists, whitelistedChannelIds: tracked,
 					manualChannelIds: tracked, savedChannelSettings: all }
 			})

@@ -3,6 +3,7 @@ import { ChannelEntry, Config } from './config'
 interface ExportedChannel {
 	id: string,
 	notify?: boolean,
+	manualPolicyExcluded?: boolean,
 	notifyOnFirstScan?: boolean,
 	initialBacklog?: ChannelEntry['initialBacklog'],
 }
@@ -13,6 +14,8 @@ export const exportSubscriptions = (config: Config) => {
 		if (!entries) return null
 		return entries.map(entry => ({ id: entry.id,
 			...(entry.notify !== undefined ? { notify: entry.notify } : {}),
+			...(entry.manualPolicyExcluded !== undefined
+				? { manualPolicyExcluded: entry.manualPolicyExcluded } : {}),
 			...(entry.notifyOnFirstScan !== undefined
 				? { notifyOnFirstScan: entry.notifyOnFirstScan } : {}),
 			...(entry.initialBacklog !== undefined

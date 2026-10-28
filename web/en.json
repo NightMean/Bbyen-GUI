@@ -1,4 +1,7 @@
 {
+  "source_source-switch": "Connection change",
+  "apiManualHelp": "The channels below will remain monitored using their public feeds. The Google authorization will be deleted. YouTube account synchronization and API video details will stop. Channels excluded by the current API email policy remain paused for email.", "apiManualExcluded": "email paused", "manualTransitionPending": "The confirmed switch to manual tracking is still recovering. Changes and refreshes are paused while BBYEN retries. Check the service log if this persists.",
+  "field_manualPolicyExcluded": "Email paused by the previous API selection",
   "apiSourcePreview": "Review switch to YouTube API", "apiSourceApply": "Confirm API tracking", "apiSourceHelp": "The Google account will control the subscription list. Cookie bell controls will stop and the saved cookie will be deleted. Video history and channel settings will remain. Email selection follows your API allowlist or blocklist.", "apiSourceDone": "YouTube API tracking is active.",
   "cookieKeepApi": "Keep the Google API connection and add cookie bell tracking", "cookieCombineHelp": "The Google authorization will be kept for API metadata. The selected cookie profile controls which channels are monitored, and must match the Google profile. Review the channel changes below.", "cookieCombinedError": "Could not compare these connections. Check that Google and the selected cookie use the same YouTube profile, then try again.",
   "subscribedAt": "Subscribed on YouTube",

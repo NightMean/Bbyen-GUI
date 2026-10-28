@@ -144,6 +144,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		}
 	}
 	const runSubscriptions = async (): Promise<RefreshResult> => {
+		if (deps.config.manualTransitionPending) return unavailable('other')
 		const mailers = await getMailers()
 		if (deps.config.mode === 'cookie') {
 			if (!deps.refreshCookies) return unavailable('other')
@@ -195,12 +196,14 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		return result
 	}
 	const runCookieSubscriptions = async (): Promise<RefreshResult> => {
+		if (deps.config.manualTransitionPending) return unavailable('other')
 		if (deps.config.mode !== 'cookie' || !deps.refreshCookies) {
 			return unavailable('other')
 		}
 		return deps.refreshCookies(await getMailers())
 	}
 	const runVideos = async (): Promise<RefreshResult> => {
+		if (deps.config.manualTransitionPending) return unavailable('other')
 		const mailers = await getMailers()
 		if (!mailers) return unavailable('other')
 		const authorization = await getAuth(mailers)
@@ -227,6 +230,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 				errorCategory: 'auth' } : result
 	}
 	const runRssVideos = async (): Promise<RefreshResult> => {
+		if (deps.config.manualTransitionPending) return unavailable('other')
 		const mailers = await getMailers()
 		if (!mailers) return unavailable('other')
 		return parseFeedsAndNotify({ db: deps.db, service: deps.service,

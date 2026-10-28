@@ -25,7 +25,8 @@ export const parseChannelLists = (value: unknown): ChannelLists => {
 			if (typeof id !== 'string' || !id.trim()) {
 				throw new Error(`${key} entries need a nonempty string ID.`)
 			}
-			for (const flag of ['notify', 'notifyOnFirstScan']) {
+			for (const flag of ['notify', 'notifyOnFirstScan',
+				'manualPolicyExcluded']) {
 				if (typeof entry === 'object' && entry[flag] !== undefined &&
 						typeof entry[flag] !== 'boolean') {
 					throw new Error(`${key}.${flag} must be a boolean.`)

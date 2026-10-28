@@ -74,7 +74,7 @@ const updateManualChannel = async (
 			...(change.initialBacklog
 				? { initialBacklog: change.initialBacklog } : {}),
 		} :
-			{ id: channelId, notify: change.notify }
+			{ id: channelId, notify: change.notify, manualPolicyExcluded: false }
 		return { ...current,
 			whitelistedChannelIds: mergeChannelEntries([...whitelist, update]),
 			blacklistedChannelIds: blacklist,

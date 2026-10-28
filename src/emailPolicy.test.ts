@@ -16,6 +16,10 @@ test('allowlist, blocklist, and mute have independent effects', () => {
 	expect(block('allowed', { id: 'allowed', notify: false })).toBe('muted')
 	expect(makeEmailEligibility({ ...base, mode: 'whitelist',
 		emailSelectionPolicy: 'allowlist' })('other')).toBe('eligible')
+	expect(makeEmailEligibility({ ...base, mode: 'whitelist' })('other',
+		{ id: 'other', manualPolicyExcluded: true })).toBe('muted')
+	expect(block('other', { id: 'other', manualPolicyExcluded: true }))
+		.toBe('eligible')
 	expect(makeEmailEligibility({ ...base, whitelistedChannelIds: [],
 		emailSelectionPolicy: 'allowlist' })('other')).toBe('excluded')
 	expect(makeEmailEligibility({ ...base, blacklistedChannelIds: [],

@@ -392,8 +392,17 @@ From cookie or combined mode, Settings can also review a switch to API-only
 tracking. It preserves the Google grant, deletes the stored cookie and matching
 legacy cookie file, and retains channel history. If the API omits subscriptions
 confirmed by the cookie, the switch is refused and the previous tracking source
-remains active. Manual-to-API and API-to-manual switching still require
-additional implementation.
+remains active. In API mode, Settings can also switch to manual tracking:
+the currently tracked channels become the manual whitelist, the OAuth grant
+is deleted, and channels excluded by the API email policy remain paused for
+email. Their original channel mute preferences and API lists are retained; use
+the channel's email control to resume a paused channel. The confirmed switch
+is journaled across its database and configuration files. If recovery is
+pending, refreshes and edits pause while the service retries; check the service
+log and preserve any external edits if recovery cannot complete. A pending
+recovery is also recorded as an incident and follows the failure-email setting.
+Manual-to-API
+switching still requires additional implementation.
 
 Google may authorize a
 different YouTube channel from the one selected in the browser, depending on

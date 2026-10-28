@@ -21,6 +21,9 @@ export const makeEmailEligibility = (
 		[])
 	return (channelId, entry) => {
 		if (entry?.notify === false) return 'muted'
+		if (config.mode === 'whitelist' && entry?.manualPolicyExcluded) {
+			return 'muted'
+		}
 		if (config.mode !== 'youtube' || !config.emailSelectionPolicy) {
 			return 'eligible'
 		}

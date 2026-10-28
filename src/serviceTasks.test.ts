@@ -128,6 +128,21 @@ test('uses cookie reconciliation without OAuth credentials', async () => {
 	expect(loadAuth).not.toHaveBeenCalled()
 })
 
+test('pauses refreshes while a confirmed manual switch is recovering',
+	async () => {
+		const loadAuth = vi.fn()
+		const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+			config: { mode: 'youtube', manualTransitionPending: true,
+				logging: { emailOnError: true } } as Config,
+			logger, loadAuth, loadMailers: vi.fn().mockResolvedValue(mailers) })
+		expect((await tasks.runSubscriptions()).status).toBe('failed')
+		expect((await tasks.runVideos()).status).toBe('failed')
+		expect((await tasks.runRssVideos()).status).toBe('failed')
+		expect(loadAuth).not.toHaveBeenCalled()
+		expect(updateSubscriptions).not.toHaveBeenCalled()
+		expect(parseFeedsAndNotify).not.toHaveBeenCalled()
+	})
+
 test('combined mode preserves cookie tracking when Google identity fails',
 	async () => {
 		const refreshCookies = vi.fn().mockResolvedValue(success)

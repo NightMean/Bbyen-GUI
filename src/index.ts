@@ -61,6 +61,9 @@ import { refreshCombinedMetadata } from './combinedMetadata'
 import { readAccountIdentity, sameAccount } from './google/accountIdentity'
 import { withAuthorizationTimeout } from './google/desktopAuthorization'
 import { ApiSourceSwitch } from './apiSourceSwitch'
+import { ApiManualSwitch, recoverApiManualSwitch } from './apiManualSwitch'
+import { normalizeApiChannelLists } from './apiChannelLists'
+import fs from 'fs/promises'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -76,9 +79,28 @@ const startService = async (existingServer?: Server) => {
 	let schedule: RefreshSchedule | undefined
 	try {
 		const service = google.youtube('v3')
-		const raw = await loadValidatedConfigRaw()
+		let raw = await loadValidatedConfigRaw()
 		db = await database.init(raw.database)
 		const databaseConnection = db
+		let recoveredManual = false
+		try {
+			if (await recoverApiManualSwitch(db, CONFIG_DIR, CONFIG_FILE,
+				CHANNELS_FILE)) {
+				recoveredManual = true
+				raw = await loadValidatedConfigRaw()
+			}
+		} catch (error) {
+			logger.error('Manual source recovery failed. Check config.json, ' +
+				'channels.json and their lock files; preserve any external edits.')
+			try {
+				const reporter = new IncidentReporter(db, logger)
+				await reporter.notify('other', error, { source: 'source-switch',
+					emailOnError: raw.logging.emailOnError, logger,
+					sendErrorEmail: async message => (await mailer.init(
+						await loadEmailConfig())).sendErrorEmail(message) })
+			} catch { logger.warn('Could not report source recovery failure.') }
+			throw error
+		}
 		await recoverPendingVideoEmails(db)
 		const cookieStore = new CookieConnectionStore(db)
 		try { await recoverCookieCleanup(db, CONFIG_DIR) } catch {
@@ -96,6 +118,7 @@ const startService = async (existingServer?: Server) => {
 			resolveEmail: false,
 		})
 		config.apiEnrichment = false
+		config.manualTransitionPending = false
 		if (cookieStatus) {
 			config.mode = 'cookie'
 			config.cookieStale = cookieStatus.stale
@@ -123,6 +146,7 @@ const startService = async (existingServer?: Server) => {
 		const alerts = new IncidentReporter(db, logger, undefined,
 			() => config.notifyRecoveries === true)
 		await alerts.recoverInterrupted()
+		if (recoveredManual) await alerts.clear(['other'], 'source-switch')
 		const titleAlerts = new TitleAlerts(db, async () => {
 			const email = await mailer.init(await loadEmailConfig())
 			return alert => email.sendTitleAlert({ ...alert,
@@ -212,6 +236,15 @@ const startService = async (existingServer?: Server) => {
 		const apiSourceSwitch = new ApiSourceSwitch(db, config, cookieStore,
 			cookiePreviews, service, () => authorize(), authorizationRevision,
 			CONFIG_DIR, CONFIG_FILE)
+		const reportManualRecovery = () => alerts.notify('other', new Error(
+			'Confirmed manual source switch is awaiting recovery.'), {
+			source: 'source-switch', emailOnError: config.logging.emailOnError,
+			logger, sendErrorEmail: async message => (await mailer.init(
+				await loadEmailConfig())).sendErrorEmail(message),
+		})
+		const apiManualSwitch = new ApiManualSwitch(db, config, CONFIG_DIR,
+			CONFIG_FILE, CHANNELS_FILE, authorizationRevision, Date.now,
+			reportManualRecovery)
 		const verifyApiProfile = async (channelId: string) => {
 			if (config.mode !== 'youtube') throw new Error('API mode is unavailable.')
 			const revision = await authorizationRevision()
@@ -227,6 +260,7 @@ const startService = async (existingServer?: Server) => {
 			config,
 			combinedMode,
 			apiSourceSwitch,
+			apiManualSwitch,
 			verifyApiProfile,
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),
@@ -274,7 +308,9 @@ const startService = async (existingServer?: Server) => {
 			channelNotify: id => config.mode === 'cookie' ||
 				config.mode === 'youtube' ||
 				config.whitelistedChannelIds?.some(c => c.id === id)
-				? config.channelSettingsById?.get(id)?.notify !== false : null,
+				? config.channelSettingsById?.get(id)?.notify !== false &&
+					!(config.mode === 'whitelist' &&
+						config.channelSettingsById?.get(id)?.manualPolicyExcluded) : null,
 			emailSettings: () => ({ settings: publicEmailSettings(config),
 				userFromEnvironment: process.env.BBYEN_EMAIL_USER !== undefined,
 				passFromEnvironment: process.env.BBYEN_EMAIL_PASS !== undefined }),
@@ -324,6 +360,30 @@ const startService = async (existingServer?: Server) => {
 				.catch(() => logger.warn('Cookie cleanup is pending.')),
 			60_000,
 			false,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('api-manual-recovery', async () => {
+				if (!config.manualTransitionPending) return
+				let lists = await recoverApiManualSwitch(databaseConnection, CONFIG_DIR,
+					CONFIG_FILE, CHANNELS_FILE)
+				if (!lists) {
+					const current = JSON.parse(await fs.readFile(CONFIG_FILE, 'utf8'))
+					if (current.mode !== 'whitelist') {
+						throw new Error('Manual source recovery is incomplete.')
+					}
+					lists = await normalizeApiChannelLists(
+						JSON.parse(await fs.readFile(CHANNELS_FILE, 'utf8')))
+				}
+				apiManualSwitch.finishRuntime(lists)
+				await recoverOAuthCleanup(databaseConnection, CONFIG_DIR)
+				await alerts.clear(['other'], 'source-switch')
+			}).catch(async () => {
+				logger.warn('Manual source recovery is pending.')
+				try { await reportManualRecovery() } catch {
+					logger.warn('Could not report source recovery failure.')
+				}
+			}),
+			60_000, false,
 		)
 		setIntervalInstant(
 			() => jobs.maintenance('oauth-cleanup', async () => {

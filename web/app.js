@@ -54,6 +54,7 @@
     state.cookieCandidate = null; state.cookiePreview = null; state.manualPreview = null
     state.combinedPreview = null; $('combined-review').hidden = true
     state.apiSourcePreview = null; $('api-source-review').hidden = true
+    state.apiManualPreview = null; $('api-manual-review').hidden = true
     $('cookie-input').value = ''; $('cookie-file').value = ''
     $('cookie-profiles').hidden = true; $('cookie-review').hidden = true; $('manual-review').hidden = true
     state.page = page; state.offset = 0
@@ -103,9 +104,10 @@
     if (connection.connection?.stale) warnings.push(text.connectionStale)
     if (connection.cleanupPending) warnings.push(text.cleanupPending)
     if (connection.oauthCleanupPending) warnings.push(text.oauthCleanupPending)
+    if (connection.manualTransitionPending) warnings.push(text.manualTransitionPending)
     if (connection.environmentCookie) warnings.push(text.environmentCookie)
     $('connection-warning').textContent = warnings.join(' ')
-    $('cookie-connect').hidden = state.combined || connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
+    $('cookie-connect').hidden = connection.manualTransitionPending || state.combined || connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
     $('manual-switch').hidden = !active || state.combined
     $('desktop-oauth').hidden = state.apiConnection || state.combined || connection.oauthCleanupPending
     $('desktop-oauth-command').textContent = `node oauth-helper.cjs ${window.location.origin}`
@@ -113,6 +115,7 @@
     $('identity-result').textContent = ''
     $('combined-switch').hidden = !active
     $('api-source-switch').hidden = !active
+    $('api-manual-switch').hidden = !state.apiConnection || connection.manualTransitionPending
     $('combined-preview').textContent = state.combined ? text.combinedDisable : text.combinedEnable
   }
   const postSourceSwitch = async (url, body) => {
@@ -121,6 +124,29 @@
     if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : text.cookieError)
     return data
   }
+  $('api-manual-preview').addEventListener('click', async () => {
+    const epoch = state.cookieEpoch
+    state.apiManualPreview = null; $('api-manual-review').hidden = true; $('api-manual-preview').disabled = true
+    try {
+      const result = await postSourceSwitch('/api/source/manual/preview', {})
+      if (epoch !== state.cookieEpoch) return
+      state.apiManualPreview = result.previewId
+      $('api-manual-details').textContent = `${text.apiManualHelp}\n\n${text.cookieContinue} (${result.continuing.length})\n${result.continuing.map(item => `  ${item.title || item.channelId}${item.manualPolicyExcluded ? ` · ${text.apiManualExcluded}` : ''}`).join('\n')}`
+      $('api-manual-review').hidden = false
+    } catch (error) { if (epoch === state.cookieEpoch) showNotice(error.message) }
+    finally { $('api-manual-preview').disabled = false }
+  })
+  $('api-manual-apply').addEventListener('click', async () => {
+    if (!state.apiManualPreview) return
+    $('api-manual-apply').disabled = true
+    try {
+      const result = await postSourceSwitch('/api/source/manual/apply', { previewId: state.apiManualPreview })
+      state.apiManualPreview = null; $('api-manual-review').hidden = true
+      renderConnection({ ...state.connection, mode: result.pending ? 'youtube' : 'whitelist', manualTransitionPending: result.pending, oauthCleanupPending: result.cleanupPending })
+      showNotice(result.pending ? text.manualTransitionPending : result.cleanupPending ? text.oauthCleanupPending : text.manualDone)
+    } catch (error) { state.apiManualPreview = null; $('api-manual-review').hidden = true; showNotice(error.message) }
+    finally { $('api-manual-apply').disabled = false }
+  })
   $('api-source-preview').addEventListener('click', async () => {
     const epoch = state.cookieEpoch
     state.apiSourcePreview = null; $('api-source-review').hidden = true; $('api-source-preview').disabled = true

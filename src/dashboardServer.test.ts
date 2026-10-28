@@ -94,6 +94,44 @@ test('validates the listening port', () => {
 	expect(() => dashboardPort('65536')).toThrow()
 })
 
+test('does not execute a queued write after a source switch enters recovery',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		const jobs = new RefreshCoordinator(db, { warn: () => undefined })
+		const config = { mode: 'youtube',
+			emailSelectionPolicy: 'allowlist' } as Config
+		let started!: () => void, release!: () => void
+		const entered = new Promise<void>(resolve => { started = resolve })
+		const resume = new Promise<void>(resolve => { release = resolve })
+		let added = false
+		const actions = { config, manualMode: () => false,
+			add: async () => { added = true }, refresh: () => undefined,
+			apiManualSwitch: { apply: async () => {
+				started(); await resume; config.manualTransitionPending = true
+				return { pending: true, cleanupPending: false }
+			} } } as never
+		const server = createDashboardServer(db, jobs, actions)
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+		const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+		try {
+			const switching = axios.post(`${base}/api/source/manual/apply`,
+				{ previewId: 'fixture' })
+			await entered
+			const writing = axios.post(`${base}/api/channels`,
+				{ channelId: 'UC0000000000000000000001' },
+				{ validateStatus: () => true })
+			release()
+			await switching
+			expect((await writing).status).toBeGreaterThanOrEqual(400)
+			expect(added).toBe(false)
+		} finally {
+			release()
+			await new Promise<void>((resolve, reject) => server.close(error =>
+				error ? reject(error) : resolve()))
+			await db.close()
+		}
+	})
+
 test('validates writes and schedules refresh after saving', async () => {
 	const db = await init({ filename: ':memory:' })
 	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
@@ -203,6 +241,12 @@ test('validates writes and schedules refresh after saving', async () => {
 		const oauth = await axios.post(`${base}/api/oauth/desktop/start`,
 			{ port: 3040 })
 		expect(oauth.data).toEqual({ id: 'fixture', url: '3040' })
+		config.manualTransitionPending = true
+		expect((await axios.post(`${base}/api/refresh`, { kind: 'videos' },
+			{ validateStatus: () => true })).status).toBe(503)
+		expect((await axios.get(`${base}/api/cookies/status`))
+			.data.manualTransitionPending).toBe(true)
+		config.manualTransitionPending = false
 		expect((await axios.post(`${base}/api/oauth/desktop/finish`, {}))
 			.data.authorized).toBe(true)
 		expect((await axios.get(`${base}/oauth-helper.cjs`)).status).toBe(200)

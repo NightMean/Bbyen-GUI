@@ -33,6 +33,7 @@ import { RemoteDesktopAuth } from './remoteDesktopAuth'
 import { CombinedMode } from './combinedMode'
 import { ApiSourceSwitch, IncompleteApiSnapshot, UnconfirmedCookieSnapshot }
 	from './apiSourceSwitch'
+import { ApiManualSwitch } from './apiManualSwitch'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -64,6 +65,7 @@ interface ChannelActions {
 	remoteDesktopAuth?: RemoteDesktopAuth,
 	combinedMode?: CombinedMode,
 	apiSourceSwitch?: ApiSourceSwitch,
+	apiManualSwitch?: ApiManualSwitch,
 	verifyApiProfile?: (channelId: string) => Promise<void>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
@@ -119,6 +121,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/combined/apply' ||
 			url.pathname === '/api/source/api/preview' ||
 			url.pathname === '/api/source/api/apply' ||
+			url.pathname === '/api/source/manual/preview' ||
+			url.pathname === '/api/source/manual/apply' ||
 			url.pathname === '/api/cookies/cancel' ||
 			url.pathname === '/api/cookies/manual/preview' ||
 			url.pathname === '/api/cookies/manual/apply' ||
@@ -130,6 +134,18 @@ export const createDashboardHandler = (
 			send(403, { error: 'Request origin or content type is invalid.' })
 			return
 		}
+		if (actions.config.manualTransitionPending) {
+			send(503, { error: 'A confirmed source switch is recovering. ' +
+				'Please wait for recovery or check the service log.' })
+			return
+		}
+		const writeMaintenance = <T>(work: () => Promise<T>): Promise<T> =>
+			jobs.maintenance(randomUUID(), () => {
+				if (actions.config.manualTransitionPending) {
+					throw new Error('Source transition is recovering.')
+				}
+				return work()
+			})
 		let body = ''
 		request.setEncoding('utf8')
 		request.on('data', chunk => {
@@ -156,6 +172,23 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname.startsWith('/api/source/manual/')) {
+				const source = actions.apiManualSwitch
+				if (!source) {
+					send(503, { error: 'Manual source switch is unavailable.' }); return
+				}
+				const preview = data.previewId
+				if (url.pathname.endsWith('/apply') &&
+						(typeof preview !== 'string' || !preview)) {
+					send(400, { error: 'Source preview is missing.' }); return
+				}
+				void writeMaintenance(async () =>
+					url.pathname.endsWith('/preview') ? source.review() :
+						source.apply(preview as string)).then(result => send(200, result),
+					() => send(409, { error: 'Could not verify the manual switch. ' +
+						'Review the current connection again.' }))
+				return
+			}
 			if (url.pathname.startsWith('/api/source/api/')) {
 				const source = actions.apiSourceSwitch
 				if (!source) {
@@ -166,7 +199,7 @@ export const createDashboardHandler = (
 						(typeof preview !== 'string' || !preview)) {
 					send(400, { error: 'Source preview is missing.' }); return
 				}
-				void jobs.maintenance(randomUUID(), async () =>
+				void writeMaintenance(async () =>
 					url.pathname.endsWith('/preview') ? source.review() :
 						source.apply(preview as string)).then(result => {
 					send(200, result)
@@ -195,7 +228,7 @@ export const createDashboardHandler = (
 						(typeof preview !== 'string' || !preview)) {
 					send(400, { error: 'Connection preview is missing.' }); return
 				}
-				void jobs.maintenance(randomUUID(), async () =>
+				void writeMaintenance(async () =>
 					url.pathname.endsWith('/preview')
 						? mode.review(direction as 'enable' | 'disable')
 						: mode.apply(preview as string)).then(result => {
@@ -216,7 +249,7 @@ export const createDashboardHandler = (
 					await remote.finish(data.id, data.state, data.code)
 					return { authorized: true }
 				}
-				void jobs.maintenance(randomUUID(), work).then(
+				void writeMaintenance(work).then(
 					result => send(200, result),
 					() => send(422, { error: 'Google authorization failed. Check the ' +
 						'client and selected YouTube profile, then try again.' }))
@@ -227,13 +260,13 @@ export const createDashboardHandler = (
 					if (!actions.compareIdentities || actions.config.mode !== 'cookie') {
 						send(409, { error: 'A cookie connection is required.' }); return
 					}
-					void jobs.maintenance(randomUUID(), () =>
+					void writeMaintenance(() =>
 						actions.compareIdentities!()).then(result => send(200, result),
 						() => send(422, { error: 'Could not verify both connections.' }))
 					return
 				}
 				if (url.pathname === '/api/cookies/manual/preview') {
-					void jobs.maintenance(randomUUID(), () =>
+					void writeMaintenance(() =>
 						actions.manualSwitch.preview()).then(result => send(200, result),
 						() => send(409, { error: 'Could not preview the source switch.' }))
 					return
@@ -243,7 +276,7 @@ export const createDashboardHandler = (
 						send(400, { error: 'Source switch preview is missing.' }); return
 					}
 					const preview = data.previewId
-					void jobs.maintenance(randomUUID(), () =>
+					void writeMaintenance(() =>
 						actions.manualSwitch.apply(preview)).then(result =>
 						send(200, { switched: true, ...result }), () => send(409, {
 						error: 'Could not confirm the switch. Review the preview again.',
@@ -283,7 +316,7 @@ export const createDashboardHandler = (
 						send(409, { error: 'API tracking is unavailable.' }); return
 					}
 					const verify = data.keepApi ? actions.verifyApiProfile : undefined
-					void jobs.maintenance(randomUUID(), () =>
+					void writeMaintenance(() =>
 						actions.cookiePreviews.compare(candidate, profile, verify)).then(
 						result => send(200, result), () => send(422, {
 							error: 'Could not compare channels for this profile.',
@@ -294,7 +327,7 @@ export const createDashboardHandler = (
 					send(400, { error: 'Cookie comparison is missing.' }); return
 				}
 				const preview = data.previewId
-				void jobs.maintenance(randomUUID(), async () => {
+				void writeMaintenance(async () => {
 					await actions.activateCookie(candidate, preview)
 					return { mode: actions.config.mode,
 						apiEnrichment: !!actions.config.apiEnrichment,
@@ -316,7 +349,7 @@ export const createDashboardHandler = (
 					send(400, { error: 'Choose a confirmation setting.' }); return
 				}
 				const enabled = data.confirmUnsubscribe
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.saveUnsubscribePreference(enabled)).then(() =>
 					send(200, { confirmUnsubscribe: enabled }), () => send(500, {
 					error: 'Could not confirm the saved setting.',
@@ -327,7 +360,7 @@ export const createDashboardHandler = (
 				try { parseGeneralSettings(data.settings) } catch {
 					send(400, { error: 'Enter valid settings.' }); return
 				}
-				void jobs.maintenance(randomUUID(), async () => {
+				void writeMaintenance(async () => {
 					const input = data.settings as Record<string, unknown>
 					const settings = parseGeneralSettings({ ...input,
 						emailSelectionPolicy: input.emailSelectionPolicy ??
@@ -369,7 +402,7 @@ export const createDashboardHandler = (
 				} catch {
 					send(400, { error: 'Enter valid refresh intervals.' }); return
 				}
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.saveSchedule(intervals))
 					.then(() => send(200, { intervals }), () => send(500, {
 						error: 'Could not confirm saved intervals. Reload before retrying.',
@@ -380,7 +413,7 @@ export const createDashboardHandler = (
 				try { parseSubscriptionImport(data.importData) } catch {
 					send(400, { error: 'Subscription file is invalid.' }); return
 				}
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.imports.preview(data.importData)).then(result =>
 					send(200, result), () => send(500, {
 					error: 'Could not preview the current channel configuration.',
@@ -395,7 +428,7 @@ export const createDashboardHandler = (
 						typeof data.acceptPartial !== 'boolean') {
 					send(400, { error: 'Invalid import confirmation.' }); return
 				}
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.imports.apply(id, choice, data.acceptPartial as boolean))
 					.then(() => {
 						actions.refresh('subscriptions'); send(200, { applied: true })
@@ -407,7 +440,7 @@ export const createDashboardHandler = (
 				return
 			}
 			if (url.pathname === '/api/email/test') {
-				void jobs.maintenance(randomUUID(), actions.testEmail).then(
+				void writeMaintenance(actions.testEmail).then(
 					outcome => send(200, { outcome }),
 					() => send(500, { error: 'Could not confirm the test outcome.' }))
 				return
@@ -417,7 +450,7 @@ export const createDashboardHandler = (
 				try { settings = parseEmailSettings(data.settings) } catch {
 					send(400, { error: 'Enter valid email settings.' }); return
 				}
-				void jobs.maintenance(randomUUID(), () => actions.saveEmail(settings))
+				void writeMaintenance(() => actions.saveEmail(settings))
 					.then(() => send(200, { saved: true }),
 						() => send(500, { error: 'Could not save email settings.' }))
 				return
@@ -427,7 +460,7 @@ export const createDashboardHandler = (
 					send(400, { error: 'Check credentials and environment settings.' })
 					return
 				}
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.saveCredentials(data.credentials))
 					.then(() => send(200, { saved: true }), () => send(500, {
 						error: 'Could not save credentials. Check service storage.',
@@ -471,7 +504,7 @@ export const createDashboardHandler = (
 					send(400, { error: 'Choose a list and membership.' }); return
 				}
 				const list = data.list, included = data.included
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.setApiList(id, list, included)).then(() =>
 					send(200, { channelId: id, list, included }), () => send(409, {
 					error: 'Could not save the channel list. Reload and try again.',
@@ -485,14 +518,14 @@ export const createDashboardHandler = (
 					send(400, { error: 'Notification setting is unavailable.' })
 					return
 				}
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.setNotify(id, data.notify as boolean)).then(() =>
 					send(200, { channelId: id, notify: data.notify }),
 				() => send(500, { error: 'Could not save notification setting.' }))
 				return
 			}
 			if (url.pathname === '/api/channels/bell/review') {
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.bellActions.review(id))
 					.then(result => send(200, result), () => send(409, {
 						error: 'Could not verify the account and bell state.',
@@ -500,7 +533,7 @@ export const createDashboardHandler = (
 				return
 			}
 			if (url.pathname === '/api/channels/subscription/undo/acknowledge') {
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.subscriptionActions.acknowledgeUndo(id)).then(() =>
 					send(200, { acknowledged: true }), () => send(409, {
 					error: 'Review unresolved YouTube requests first.',
@@ -508,7 +541,7 @@ export const createDashboardHandler = (
 				return
 			}
 			if (url.pathname === '/api/channels/subscription/undo') {
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.config.mode === 'youtube' && actions.apiSubscriptionActions
 						? actions.apiSubscriptionActions.undo(id).then(subscription =>
 							({ subscription, bell: 'unavailable' }))
@@ -525,7 +558,7 @@ export const createDashboardHandler = (
 				return
 			}
 			if (url.pathname === '/api/channels/subscription/review') {
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.config.mode === 'youtube' && actions.apiSubscriptionActions
 						? actions.apiSubscriptionActions.review(id)
 						: actions.subscriptionActions.review(id)).then(result =>
@@ -541,7 +574,7 @@ export const createDashboardHandler = (
 				}
 				const subscribed = data.subscribed
 				if (url.pathname.endsWith('/acknowledge')) {
-					void jobs.maintenance(randomUUID(), () =>
+					void writeMaintenance(() =>
 						actions.config.mode === 'youtube' && actions.apiSubscriptionActions
 							? actions.apiSubscriptionActions.acknowledge(id, subscribed)
 							: actions.subscriptionActions.acknowledge(id, subscribed))
@@ -555,7 +588,7 @@ export const createDashboardHandler = (
 						}))
 					return
 				}
-				void jobs.maintenance(randomUUID(), () => {
+				void writeMaintenance(() => {
 					if (actions.config.mode === 'youtube') {
 						if (!actions.apiSubscriptionActions || subscribed) {
 							throw new Error('API subscription action is unavailable.')
@@ -581,14 +614,14 @@ export const createDashboardHandler = (
 				}
 				const preference: BellNotificationPreference = data.preference
 				if (url.pathname.endsWith('/acknowledge')) {
-					void jobs.maintenance(randomUUID(), () =>
+					void writeMaintenance(() =>
 						actions.bellActions.acknowledge(id, preference)).then(() =>
 						send(200, { acknowledged: true }), () => send(409, {
 						error: 'Could not verify the account and bell state.',
 					}))
 					return
 				}
-				void jobs.maintenance(randomUUID(), () =>
+				void writeMaintenance(() =>
 					actions.bellActions.change(id, preference)).then(outcome =>
 					send(200, { outcome }), () => send(409, {
 					error: 'Could not verify or change this YouTube bell.',
@@ -601,7 +634,7 @@ export const createDashboardHandler = (
 					send(400, { error: 'Manual removal is unavailable.' })
 					return
 				}
-				void jobs.maintenance(randomUUID(), () => actions.remove(id))
+				void writeMaintenance(() => actions.remove(id))
 					.then(() => {
 						actions.refresh('subscriptions')
 						send(202, { channelId: id })
@@ -617,7 +650,7 @@ export const createDashboardHandler = (
 				send(400, { error: 'Invalid initial video preference.' })
 				return
 			}
-			void jobs.maintenance(randomUUID(), async () => {
+			void writeMaintenance(async () => {
 				if (!actions.manualMode() && !(actions.config.mode === 'youtube' &&
 						actions.config.emailSelectionPolicy)) return false
 				await actions.add(id, backlog)
@@ -722,6 +755,7 @@ export const createDashboardHandler = (
 	void jobs.maintenance(randomUUID(), async () => {
 		if (url.pathname === '/api/cookies/status') {
 			return { mode: actions!.config.mode,
+				manualTransitionPending: !!actions!.config.manualTransitionPending,
 				apiEnrichment: !!actions!.config.apiEnrichment,
 				connection: await actions!.cookieStatus(),
 				cleanupPending: await actions!.cookieCleanupPending(),

@@ -5,11 +5,14 @@ test('parses legacy lists and discards unrelated configuration', () => {
 	const id = 'UCabcdefghijklmnopqrstuv'
 	const parsed = parseSubscriptionImport({ whitelistedChannelIds: [id],
 		blacklistedChannelIds: [{ id, notify: false,
+			manualPolicyExcluded: true,
 			initialBacklog: { mode: 'newest', count: 2 } }],
 		email: { auth: { pass: 'fixture-private' } }, cookies: 'fixture-private' })
 	expect(parsed.lists.whitelistedChannelIds).toEqual([{ id }])
 	expect(parsed.lists.blacklistedChannelIds?.[0].initialBacklog)
 		.toEqual({ mode: 'newest', count: 2 })
+	expect(parsed.lists.blacklistedChannelIds?.[0].manualPolicyExcluded)
+		.toBe(true)
 	expect(parsed.problems).toEqual([])
 	expect(JSON.stringify(parsed)).not.toContain('fixture-private')
 })

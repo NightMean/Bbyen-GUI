@@ -80,6 +80,32 @@ test('rejects a stale source preview before deleting cookies', async () => {
 		await fs.rm(dir, { recursive: true, force: true }) }
 })
 
+test('does not retain an old API policy pause when leaving cookie mode',
+	async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-switch-'))
+		const configFile = path.join(dir, 'config.json')
+		const channelsFile = path.join(dir, 'channels.json')
+		const db = await init({ filename: path.join(dir, 'database.sqlite') })
+		const config = { mode: 'cookie' } as Config
+		const previews = new CookiePreviewService(db)
+		try {
+			await fs.writeFile(configFile, JSON.stringify({ mode: 'whitelist' }))
+			await fs.writeFile(channelsFile, JSON.stringify({ whitelistedChannelIds: [
+				{ id: first, manualPolicyExcluded: true },
+			] }))
+			await new CookieConnectionStore(db).activate(
+				'SAPISID=synthetic-fixture', profile, channels)
+			const source = new ManualSourceSwitch(db, config, configFile,
+				channelsFile, dir, previews)
+			await source.apply((await source.preview()).previewId)
+			expect(config.channelSettingsById?.get(first)?.manualPolicyExcluded)
+				.toBe(false)
+		} finally {
+			previews.dispose(); await db.close()
+			await fs.rm(dir, { recursive: true, force: true })
+		}
+	})
+
 test('retains a changed legacy cookie during deferred cleanup', async () => {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-cleanup-'))
 	const db = await init({ filename: path.join(dir, 'database.sqlite') })

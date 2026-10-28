@@ -6,6 +6,24 @@ const first = 'UC0000000000000000000001'
 const second = 'UC0000000000000000000002'
 const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
 
+test('reports and deduplicates source-switch failures with safe context',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		try {
+			const sendErrorEmail = vi.fn().mockResolvedValue(undefined)
+			const reporter = new IncidentReporter(db, logger)
+			const deps = { source: 'source-switch', emailOnError: true, logger,
+				sendErrorEmail }
+			await reporter.notify('other', new Error('private fixture'), deps)
+			await reporter.notify('other', new Error('private fixture'), deps)
+			expect(sendErrorEmail).toHaveBeenCalledTimes(1)
+			expect(sendErrorEmail.mock.calls[0][0].message)
+				.toContain('Connection change')
+			expect(JSON.stringify(sendErrorEmail.mock.calls))
+				.not.toContain('private fixture')
+		} finally { await db.close() }
+	})
+
 test('deduplicates channel incidents across recreation', async () => {
 	const db = await init({ filename: ':memory:' })
 	try {
