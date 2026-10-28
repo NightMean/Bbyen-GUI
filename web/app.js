@@ -109,7 +109,7 @@
     if (connection.environmentCookie) warnings.push(text.environmentCookie)
     $('connection-warning').textContent = warnings.join(' ')
     $('cookie-connect').hidden = connection.manualTransitionPending || state.combined || connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
-    $('manual-switch').hidden = !active || state.combined
+    $('manual-switch').hidden = !active
     $('desktop-oauth').hidden = state.apiConnection || state.combined || connection.oauthCleanupPending
     $('desktop-oauth-command').textContent = `node oauth-helper.cjs ${window.location.origin}`
     $('identity-check').hidden = !active
@@ -778,7 +778,7 @@
       const preview = await post('/api/cookies/manual/preview', {})
       if (epoch !== state.cookieEpoch) return
       state.manualPreview = preview.previewId
-      $('manual-details').textContent = [text.manualHelp, preview.legacyCookieFile ? text.manualFileDelete : '', text.manualExternal, describeChannels(text.cookieContinue, preview.continuing)].filter(Boolean).join('\n\n')
+      $('manual-details').textContent = [text.manualHelp, preview.combined ? text.manualCombined : '', preview.legacyCookieFile ? text.manualFileDelete : '', text.manualExternal, describeChannels(text.cookieContinue, preview.continuing)].filter(Boolean).join('\n\n')
       $('manual-review').hidden = false; showNotice('')
     } catch { showNotice(text.cookieError) }
     finally { $('manual-preview').disabled = false }

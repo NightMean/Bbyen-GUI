@@ -10,6 +10,9 @@ import { legacyCookieHash, recoverCookieCleanup } from './cookieCleanup'
 import { assertChannelId } from './lib/channelId'
 import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
 import { updateJsonFile } from './lib/jsonFile'
+import {
+	oauthTokenHash, recordOAuthCleanup, recoverOAuthCleanup, withOAuthTokenLock,
+} from './oauthCleanup'
 
 const hash = (value: unknown) => createHash('sha256')
 	.update(JSON.stringify(value)).digest('hex')
@@ -20,6 +23,8 @@ interface Snapshot {
 	configHash: string,
 	channelsHash: string,
 	legacyHash: string | null,
+	combined: boolean,
+	tokenHash: string | null,
 }
 
 /** Preview and apply a cookie-to-manual transition, retaining preferences. */
@@ -37,8 +42,7 @@ export class ManualSourceSwitch {
 	private async snapshot(): Promise<Snapshot> {
 		const connection = await this.db.get(
 			'SELECT generation FROM cookie_connection WHERE id=1')
-		if (!connection || this.config.mode !== 'cookie' ||
-				this.config.apiEnrichment) {
+		if (!connection || this.config.mode !== 'cookie') {
 			throw new Error('Cookie mode is not active.')
 		}
 		const rows = await this.db.all(`SELECT channelId, channelTitle
@@ -49,7 +53,9 @@ export class ManualSourceSwitch {
 		const general = JSON.parse(await fs.readFile(this.configFile, 'utf8'))
 		const lists = JSON.parse(await fs.readFile(this.channelsFile, 'utf8'))
 		parseChannelLists(lists)
-		return { generation: connection.generation, channels,
+		const combined = !!this.config.apiEnrichment
+		return { generation: connection.generation, channels, combined,
+			tokenHash: combined ? await oauthTokenHash(this.directory) : null,
 			configHash: hash(general), channelsHash: hash(lists),
 			legacyHash: await legacyCookieHash(this.directory) }
 	}
@@ -60,6 +66,7 @@ export class ManualSourceSwitch {
 		this.previews.clear()
 		this.previews.set(id, { snapshot, expiresAt: this.clock() + 10 * 60_000 })
 		return { previewId: id, continuing: snapshot.channels,
+			combined: snapshot.combined,
 			legacyCookieFile: snapshot.legacyHash !== null,
 			environmentCookie: process.env.YOUTUBE_COOKIE !== undefined }
 	}
@@ -69,65 +76,87 @@ export class ManualSourceSwitch {
 		if (!preview || preview.expiresAt <= this.clock()) {
 			throw new Error('Manual switch preview expired.')
 		}
-		await this.db.exec('PRAGMA secure_delete=ON')
-		await this.db.exec('BEGIN IMMEDIATE')
 		let changedLists: Awaited<ReturnType<typeof normalizeLists>> | undefined
-		try {
-			const current = await this.snapshot()
-			if (hash(current) !== hash(preview.snapshot)) {
-				throw new Error('Source data changed; preview again.')
-			}
-			await updateJsonFile(this.configFile, value => {
-				if (hash(value) !== preview.snapshot.configHash || !value ||
+		let committed = false
+		const transition = async () => {
+			await this.db.exec('PRAGMA secure_delete=ON')
+			await this.db.exec('BEGIN IMMEDIATE')
+			try {
+				const current = await this.snapshot()
+				if (hash(current) !== hash(preview.snapshot)) {
+					throw new Error('Source data changed; preview again.')
+				}
+				await updateJsonFile(this.configFile, value => {
+					if (hash(value) !== preview.snapshot.configHash || !value ||
 						typeof value !== 'object' || Array.isArray(value)) {
-					throw new Error('Configuration changed; preview again.')
-				}
-				return { ...value, mode: 'whitelist' }
-			})
-			changedLists = await updateJsonFile(this.channelsFile, async value => {
-				if (hash(value) !== preview.snapshot.channelsHash) {
-					throw new Error('Channel lists changed; preview again.')
-				}
-				const lists = await normalizeLists(value)
-				const all = mergeChannelEntries([...(lists.savedChannelSettings ?? []),
-					...(lists.whitelistedChannelIds ?? []),
-					...(lists.manualChannelIds ?? []),
-				])
-				const settings = new Map(all.map(entry => [entry.id, entry]))
-				const tracked = current.channels.map(item => {
-					const entry = settings.get(item.channelId) ?? { id: item.channelId }
-					return entry.manualPolicyExcluded ? { ...entry,
-						manualPolicyExcluded: false } : entry
+						throw new Error('Configuration changed; preview again.')
+					}
+					return { ...value, mode: 'whitelist' }
 				})
-				return { ...lists, whitelistedChannelIds: tracked,
-					manualChannelIds: tracked, savedChannelSettings: all }
-			})
-			await this.db.run(SQL`INSERT INTO cookie_cleanup (id, legacyHash)
+				changedLists = await updateJsonFile(this.channelsFile, async value => {
+					if (hash(value) !== preview.snapshot.channelsHash) {
+						throw new Error('Channel lists changed; preview again.')
+					}
+					const lists = await normalizeLists(value)
+					const all = mergeChannelEntries([
+						...(lists.savedChannelSettings ?? []),
+						...(lists.whitelistedChannelIds ?? []),
+						...(lists.manualChannelIds ?? []),
+					])
+					const settings = new Map(all.map(entry => [entry.id, entry]))
+					const tracked = current.channels.map(item => {
+						const entry = settings.get(item.channelId) ?? { id: item.channelId }
+						return entry.manualPolicyExcluded ? { ...entry,
+							manualPolicyExcluded: false } : entry
+					})
+					return { ...lists, whitelistedChannelIds: tracked,
+						manualChannelIds: tracked, savedChannelSettings: all }
+				})
+				await this.db.run(SQL`INSERT INTO cookie_cleanup (id, legacyHash)
 				VALUES (1, ${current.legacyHash}) ON CONFLICT(id) DO UPDATE SET
 				legacyHash=excluded.legacyHash;`)
-			const removed = await this.db.run(SQL`DELETE FROM cookie_connection
+				if (current.combined) {
+					if (current.tokenHash) {
+						await recordOAuthCleanup(this.db, current.tokenHash)
+					}
+					await this.db.run('DELETE FROM combined_connection WHERE id=1')
+				}
+				const removed = await this.db.run(SQL`DELETE FROM cookie_connection
 				WHERE id=1 AND generation=${current.generation};`)
-			if (!removed.changes) throw new Error('Cookie connection changed.')
-			await this.db.exec('COMMIT')
-		} catch (err) {
-			try { await this.db.exec('ROLLBACK') } catch {
-				console.warn('Could not roll back the source switch.')
+				if (!removed.changes) throw new Error('Cookie connection changed.')
+				await this.db.exec('COMMIT')
+				committed = true
+			} catch (err) {
+				try { await this.db.exec('ROLLBACK') } catch {
+					console.warn('Could not roll back the source switch.')
+				}
+				try {
+					const active = await this.db.get('SELECT id FROM cookie_connection')
+					if (!active && changedLists) committed = true
+				} catch {
+					this.config.cookieStale = true
+					console.warn('Could not verify the source switch outcome.')
+				}
+				throw err
 			}
-			try {
-				const active = await this.db.get('SELECT id FROM cookie_connection')
-				if (!active && changedLists) this.applyRuntime(changedLists)
-			} catch {
-				this.config.cookieStale = true
-				console.warn('Could not verify the source switch outcome.')
-			}
-			throw err
 		}
+		try {
+			if (preview.snapshot.combined) {
+				await withOAuthTokenLock(this.directory, transition)
+			} else await transition()
+		} catch (error) { if (!committed) throw error }
 		this.applyRuntime(changedLists!)
 		let cleaned = false
 		try {
 			cleaned = await recoverCookieCleanup(this.db, this.directory)
 		} catch {
 			console.warn('Cookie cleanup is pending.')
+		}
+		if (preview.snapshot.combined) {
+			try {
+				cleaned = await recoverOAuthCleanup(this.db, this.directory) && cleaned
+			}
+			catch { cleaned = false; console.warn('OAuth cleanup is pending.') }
 		}
 		return { cleanupPending: !cleaned }
 	}
@@ -136,6 +165,7 @@ export class ManualSourceSwitch {
 		changedLists: Awaited<ReturnType<typeof normalizeLists>>,
 	) {
 		this.config.mode = 'whitelist'
+		this.config.apiEnrichment = false
 		this.config.cookieStale = false
 		this.config.whitelistedChannelIds = changedLists.whitelistedChannelIds
 		this.config.blacklistedChannelIds = changedLists.blacklistedChannelIds

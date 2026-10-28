@@ -384,8 +384,10 @@ subscription dates when available. API errors and missing metadata are reported
 without replacing the cookie snapshot. When API quota is exhausted, cookie
 checks and RSS video checks continue while API requests back off. Switching
 back to cookie-only mode deletes the saved OAuth grant, retaining history and
-the Google client file. To change the cookie profile or switch to manual mode,
-first switch to cookie-only mode. When adding cookies in API mode, select
+the Google client file. To change the cookie profile, first switch to
+cookie-only mode. Switching combined mode directly to manual tracking deletes
+both the cookie and the saved OAuth grant while retaining channel history.
+When adding cookies in API mode, select
 "Keep the Google API connection" to retain the grant and enable combined mode;
 the account identities are checked before the preview and again on confirmation.
 From cookie or combined mode, Settings can also review a switch to API-only

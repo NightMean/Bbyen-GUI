@@ -80,6 +80,53 @@ test('rejects a stale source preview before deleting cookies', async () => {
 		await fs.rm(dir, { recursive: true, force: true }) }
 })
 
+test('switches combined tracking to manual and removes both connections',
+	async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-combined-'))
+		const configFile = path.join(dir, 'config.json')
+		const channelsFile = path.join(dir, 'channels.json')
+		const token = path.join(dir, '.google-auth-token.json')
+		const db = await init({ filename: path.join(dir, 'database.sqlite') })
+		const config = { mode: 'cookie', apiEnrichment: true } as Config
+		const previews = new CookiePreviewService(db)
+		try {
+			await fs.writeFile(configFile, JSON.stringify({ mode: 'whitelist' }))
+			await fs.writeFile(channelsFile, '{"whitelistedChannelIds":[]}')
+			await fs.writeFile(token, 'fixture-token')
+			await new CookieConnectionStore(db).activate(
+				'SAPISID=synthetic-fixture', profile, channels)
+			await db.run('INSERT INTO combined_connection (id, profileKey) ' +
+				'VALUES (1, ?)', profile.channelId)
+			const source = new ManualSourceSwitch(db, config, configFile,
+				channelsFile, dir, previews)
+			const preview = await source.preview()
+			expect(preview.combined).toBe(true)
+			await fs.writeFile(token, 'replacement-token')
+			await expect(source.apply(preview.previewId)).rejects.toThrow(/changed/)
+			expect(await new CookieConnectionStore(db).status()).not.toBeNull()
+			expect(await db.get('SELECT id FROM combined_connection')).toBeDefined()
+			await db.exec(`CREATE TRIGGER reject_combined_delete BEFORE DELETE
+				ON combined_connection BEGIN
+				SELECT RAISE(ABORT, 'fixture failure'); END`)
+			await expect(source.apply((await source.preview()).previewId)).rejects
+				.toThrow()
+			expect(await new CookieConnectionStore(db).status()).not.toBeNull()
+			expect(await fs.readFile(token, 'utf8')).toBe('replacement-token')
+			expect(await db.get('SELECT id FROM oauth_cleanup')).toBeUndefined()
+			await db.exec('DROP TRIGGER reject_combined_delete')
+			const fresh = await source.preview()
+			expect(await source.apply(fresh.previewId))
+				.toEqual({ cleanupPending: false })
+			expect(config.mode).toBe('whitelist')
+			expect(config.apiEnrichment).toBe(false)
+			expect(await db.get('SELECT id FROM combined_connection')).toBeUndefined()
+			await expect(fs.stat(token)).rejects.toMatchObject({ code: 'ENOENT' })
+		} finally {
+			previews.dispose(); await db.close()
+			await fs.rm(dir, { recursive: true, force: true })
+		}
+	})
+
 test('does not retain an old API policy pause when leaving cookie mode',
 	async () => {
 		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-switch-'))
