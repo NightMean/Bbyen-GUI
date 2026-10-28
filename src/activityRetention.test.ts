@@ -39,6 +39,9 @@ test('prunes completed activity but retains active and unresolved work',
 				(id, profileKey, channelId, state, startedAt, finishedAt) VALUES
 				('pending', 'profile', 'fixture', 'pending', '2020', '2020'),
 				('done', 'profile', 'fixture', 'completed', '2020', '2020');
+			INSERT INTO api_subscription_actions VALUES
+				('pending', 'profile', 'fixture', 0, 'uncertain', '2020', '2020'),
+				('done', 'profile', 'fixture', 0, 'confirmed', '2020', '2020');
 			INSERT INTO refresh_runs (id, kind, status, startedAt, finishedAt) VALUES
 				('older', 'videos', 'completed', '2019', '2019'),
 				('latest', 'videos', 'completed', '2020', '2020');`)
@@ -55,6 +58,8 @@ test('prunes completed activity but retains active and unresolved work',
 			expect(await db.all('SELECT id FROM cookie_bell_actions'))
 				.toEqual([{ id: 'pending' }])
 			expect(await db.all('SELECT id FROM cookie_unsubscribe_undos'))
+				.toEqual([{ id: 'pending' }])
+			expect(await db.all('SELECT id FROM api_subscription_actions'))
 				.toEqual([{ id: 'pending' }])
 			expect(await db.all('SELECT id FROM refresh_runs'))
 				.toEqual([{ id: 'latest' }])

@@ -85,6 +85,16 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		startedAt TEXT NOT NULL,
 		finishedAt TEXT
 	);
+	CREATE TABLE IF NOT EXISTS api_subscription_actions (
+		id TEXT PRIMARY KEY,
+		profileKey TEXT NOT NULL,
+		channelId TEXT NOT NULL,
+		target INTEGER NOT NULL CHECK (target IN (0, 1)),
+		state TEXT NOT NULL CHECK (state IN
+			('pending', 'confirmed', 'uncertain', 'acknowledged')),
+		startedAt TEXT NOT NULL,
+		finishedAt TEXT
+	);
 	CREATE TABLE IF NOT EXISTS channel_added_batches (
 		id TEXT PRIMARY KEY,
 		observedAt TEXT NOT NULL,

@@ -58,6 +58,8 @@ export const pruneActivity = async (
 			WHERE finishedAt < ${cutoff} AND state IN ('completed', 'acknowledged');`)
 		await db.run(SQL`DELETE FROM cookie_subscription_actions
 			WHERE finishedAt < ${cutoff} AND state IN ('confirmed', 'acknowledged');`)
+		await db.run(SQL`DELETE FROM api_subscription_actions
+			WHERE finishedAt < ${cutoff} AND state IN ('confirmed', 'acknowledged');`)
 		await db.exec('COMMIT')
 	} catch (err) {
 		await db.exec('ROLLBACK')
