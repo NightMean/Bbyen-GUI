@@ -10,6 +10,7 @@ import {
 } from './google/desktopAuthorization'
 import { readAccountIdentity, sameAccount } from './google/accountIdentity'
 import { updateJsonFile } from './lib/jsonFile'
+import { ApiAccountIdentity } from './apiAccountIdentity'
 
 interface Session {
 	authorization: DesktopAuthorization,
@@ -18,6 +19,7 @@ interface Session {
 	combined: boolean,
 	cookieGeneration?: string,
 	cookieChannelId?: string | null,
+	apiChannelId?: string,
 	timer: NodeJS.Timeout,
 	busy: boolean,
 }
@@ -29,7 +31,8 @@ export class RemoteDesktopAuth {
 		private readonly store: CookieConnectionStore,
 		private readonly service: youtube_v3.Youtube,
 		private readonly directory: string,
-		private readonly revision: () => Promise<string>) {}
+		private readonly revision: () => Promise<string>,
+		private readonly apiIdentity?: ApiAccountIdentity) {}
 
 	private remove(id: string): void {
 		const session = this.sessions.get(id)
@@ -40,8 +43,7 @@ export class RemoteDesktopAuth {
 	async start(port: unknown) {
 		if (typeof port !== 'number' || !Number.isInteger(port) ||
 				port < 1024 || port > 65535) throw new Error('Invalid callback port.')
-		if (this.config.mode === 'youtube' ||
-				await this.store.oauthCleanupPending()) {
+		if (await this.store.oauthCleanupPending()) {
 			throw new Error('Authorization cannot be changed in this mode.')
 		}
 		if (this.sessions.size >= 3) throw new Error('Too many login attempts.')
@@ -50,6 +52,11 @@ export class RemoteDesktopAuth {
 		const revision = await this.revision()
 		const cookie = mode === 'cookie' ? await this.store.read() : null
 		if (mode === 'cookie' && !cookie) throw new Error('Cookie unavailable.')
+		const apiChannelId = mode === 'youtube' ?
+			await this.apiIdentity?.expected() : undefined
+		if (mode === 'youtube' && !apiChannelId) {
+			throw new Error('The active API account cannot be verified.')
+		}
 		const file = await fs.readFile(path.join(this.directory,
 			'google-credentials.json'), 'utf8')
 		if (file.length > 64 * 1024) throw new Error('Google client is invalid.')
@@ -68,6 +75,7 @@ export class RemoteDesktopAuth {
 		const timer = setTimeout(() => this.remove(id), 10 * 60_000)
 		timer.unref()
 		this.sessions.set(id, { authorization, revision, mode, combined,
+			apiChannelId,
 			cookieGeneration: cookie?.generation,
 			cookieChannelId: cookie?.profile.channelId, timer, busy: false })
 		return { id, url: authorization.url() }
@@ -91,6 +99,9 @@ export class RemoteDesktopAuth {
 			if (session.mode !== this.config.mode ||
 					session.combined !== !!this.config.apiEnrichment ||
 					session.revision !== await this.revision() ||
+					(session.mode === 'youtube' &&
+					(!sameAccount(identity.channelId, session.apiChannelId) ||
+					await this.apiIdentity?.stored() !== session.apiChannelId)) ||
 					(session.mode === 'cookie' && (!cookie ||
 					cookie.generation !== session.cookieGeneration ||
 					!sameAccount(identity.channelId, session.cookieChannelId)))) {
@@ -99,6 +110,8 @@ export class RemoteDesktopAuth {
 			await updateJsonFile(path.join(this.directory, '.google-auth-token.json'),
 				async () => {
 					if (session.revision !== await this.revision() ||
+							(session.mode === 'youtube' &&
+							await this.apiIdentity?.stored() !== session.apiChannelId) ||
 							this.sessions.get(id) !== session) {
 						throw new Error('Authorization changed; start again.')
 					}

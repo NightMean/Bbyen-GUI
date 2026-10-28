@@ -367,7 +367,7 @@ Settings reports that cleanup needs attention. Cleanup is retried after restart.
 Settings can compare the active cookie profile with an existing Google
 authorization without changing either connection. The comparison uses canonical
 channel IDs and refuses a result if either connection changes during the check.
-In manual, cookie, or combined mode, Settings offers a Desktop OAuth helper for a
+In every tracking mode, Settings offers a Desktop OAuth helper for a
 browser on another computer. Copy the original Desktop client credentials to
 `CONFIG_DIR/google-credentials.json`, download the helper to the browser PC,
 install Node.js 20 or newer there, and run the command shown in Settings. Open
@@ -377,7 +377,12 @@ protects the authorization code. The dashboard's network connection follows
 your existing HTTP or HTTPS configuration. In cookie mode, the selected Google
 profile must match the cookie profile, including when renewing a combined
 connection. This step saves the grant but does not
-switch tracking sources; API mode continues to use `npm run login` for renewal.
+switch tracking sources. In API mode the renewed grant must belong to the
+previously verified API account. BBYEN records that account when switching to
+API mode or when it first verifies an existing API connection. If an older
+installation has no saved account identity and its old grant has already
+expired, switch to manual tracking first, reconnect Google, and review the
+switch back to API mode. This retains channel history and manual tracking.
 In cookie mode, Settings can enable API enrichment after verifying that both
 connections identify the same YouTube channel. Cookie bell states continue to
 control monitoring; the API supplies video details, channel thumbnails, and

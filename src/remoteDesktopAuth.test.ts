@@ -35,7 +35,8 @@ const fixture = async (apiId = id) => {
 	vi.spyOn(OAuth2Client.prototype, 'getToken').mockResolvedValue({ tokens: {
 		refresh_token: 'refresh-fixture', scope }, res: null } as never)
 	return { manager: new RemoteDesktopAuth(config, store, service, directory,
-		revision), directory, config,
+		revision, { expected: async () => id, stored: async () => id } as never),
+	directory, config,
 	changeCookie: () => { generation = 'second' } }
 }
 
@@ -55,6 +56,29 @@ test('stores the original Desktop client grant only for a matching profile',
 				.rejects.toThrow()
 		} finally { await fs.rm(f.directory, { recursive: true }) }
 	})
+
+test('renews API mode only for its previously verified profile', async () => {
+	for (const matching of [true, false]) {
+		const f = await fixture(matching ? id : other)
+		f.config.mode = 'youtube'
+		try {
+			const token = path.join(f.directory, '.google-auth-token.json')
+			await fs.writeFile(token, '{"refresh_token":"previous-fixture"}')
+			const start = await f.manager.start(3040)
+			const state = new URL(start.url).searchParams.get('state')
+			if (matching) {
+				await f.manager.finish(start.id, state, 'code')
+				expect(JSON.parse(await fs.readFile(token, 'utf8')).refresh_token)
+					.toBe('refresh-fixture')
+			} else {
+				await expect(f.manager.finish(start.id, state, 'code'))
+					.rejects.toThrow()
+				expect(await fs.readFile(token, 'utf8'))
+					.toBe('{"refresh_token":"previous-fixture"}')
+			}
+		} finally { await fs.rm(f.directory, { recursive: true }) }
+	}
+})
 
 test('preserves prior authorization for mismatched or changed connections',
 	async () => {

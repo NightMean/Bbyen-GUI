@@ -41,6 +41,7 @@ import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { ApiSubscriptionActions } from './apiSubscriptionActions'
+import { ApiAccountIdentity } from './apiAccountIdentity'
 import {
 	setApiChannelNotify, setCookieChannelNotify,
 } from './channelPreferences'
@@ -178,8 +179,11 @@ const startService = async (existingServer?: Server) => {
 		const refreshCookies = createCookieRefresh({ store: cookieStore,
 			config, alerts, logger,
 			loadReplacement: () => readCookieFile(CONFIG_DIR) })
+		const apiIdentity = new ApiAccountIdentity(db, config, service,
+			() => authorize(), authorizationRevision)
 		const tasks = createServiceTasks({ db, service, config, logger,
 			initialAuth, alerts, refreshCookies,
+			verifyApiAuth: auth => apiIdentity.verify(auth),
 			verifyCombinedAuth: async auth => {
 				const connection = await cookieStore.read()
 				const revision = await authorizationRevision()
@@ -278,7 +282,7 @@ const startService = async (existingServer?: Server) => {
 			cookieCleanupPending: () => cookieStore.cleanupPending(),
 			oauthCleanupPending: () => cookieStore.oauthCleanupPending(),
 			remoteDesktopAuth: new RemoteDesktopAuth(config, cookieStore, service,
-				CONFIG_DIR, authorizationRevision),
+				CONFIG_DIR, authorizationRevision, apiIdentity),
 			compareIdentities: async () => {
 				if (await cookieStore.oauthCleanupPending()) {
 					throw new Error('Authorization cleanup is pending.')
@@ -292,7 +296,15 @@ const startService = async (existingServer?: Server) => {
 			subscriptionActions: new CookieSubscriptionActions(db, config,
 				cookieStore, tasks.runCookieSubscriptions),
 			apiSubscriptionActions: new ApiSubscriptionActions(db, config, service,
-				() => authorize({ interactive: false }), authorizationRevision),
+				async () => {
+					const revision = await authorizationRevision()
+					const auth = await authorize({ interactive: false })
+					if (revision !== await authorizationRevision()) {
+						throw new Error('Authorization changed.')
+					}
+					await apiIdentity.verify(auth)
+					return auth
+				}, authorizationRevision),
 			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
 				config, cookieStore, cookiePreviews, candidateId, previewId, {
 					directory: CONFIG_DIR, sourceRevision: cookieSourceRevision,
@@ -354,6 +366,10 @@ const startService = async (existingServer?: Server) => {
 			server.on('request', handler)
 		} else await listen(server)
 		server.on('error', () => logger.error('Dashboard server failed.'))
+		if (config.mode === 'youtube' && initialAuth) {
+			void jobs.maintenance('api-identity', () => apiIdentity.expected())
+				.catch(() => logger.warn('Could not verify the saved YouTube account.'))
+		}
 		if (config.kickoff.subscriptions) runRefresh('subscriptions')
 		if (config.kickoff.videos) runRefresh('videos')
 		setIntervalInstant(

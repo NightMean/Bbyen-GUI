@@ -35,6 +35,7 @@ interface TaskDependencies {
 	reportQuotaDurably?: (options: AlertDeps) => Promise<boolean>,
 	refreshCookies?: (mailers?: Mailers) => Promise<RefreshResult>,
 	verifyCombinedAuth?: (auth: OAuth2Client) => Promise<void>,
+	verifyApiAuth?: (auth: OAuth2Client) => Promise<unknown>,
 	refreshCombinedMetadata?: (auth: OAuth2Client) => Promise<{
 		matched: number, total: number,
 	}>,
@@ -96,6 +97,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 					if (!deps.verifyCombinedAuth) throw new Error('Identity unavailable.')
 					await deps.verifyCombinedAuth(auth)
 				}
+				if (deps.config.mode === 'youtube') await deps.verifyApiAuth?.(auth)
 				await alerts.clear(['auth', 'quota'], 'service-auth')
 				return { auth }
 			}
@@ -128,11 +130,11 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 				if (!deps.verifyCombinedAuth) throw new Error('Identity unavailable.')
 				await deps.verifyCombinedAuth(loaded)
 			}
+			if (deps.config.mode === 'youtube') await deps.verifyApiAuth?.(loaded)
 			await alerts.clear(['auth', 'quota'], 'service-auth')
 			return { auth: loaded }
 		} catch (error) {
-			const category = deps.config.apiEnrichment &&
-				classifyError(error) === 'quota' ? 'quota' : 'auth'
+			const category = classifyError(error) === 'quota' ? 'quota' : 'auth'
 			await jobAlerts.notify(category, new Error(
 				'YouTube authorization unavailable; reconnect the account.'), {
 				source: 'service-auth',

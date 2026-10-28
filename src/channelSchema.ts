@@ -56,6 +56,10 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 		id INTEGER PRIMARY KEY CHECK (id = 1),
 		profileKey TEXT NOT NULL
 	);
+	CREATE TABLE IF NOT EXISTS api_account_identity (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		channelId TEXT NOT NULL
+	);
 	CREATE TABLE IF NOT EXISTS combined_subscription_metadata (
 		profileKey TEXT NOT NULL,
 		channelId TEXT NOT NULL,

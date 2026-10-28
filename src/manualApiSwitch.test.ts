@@ -83,6 +83,8 @@ test('adds API subscriptions and restores saved allowlist membership',
 			expect(await f.switcher.apply(preview.previewId))
 				.toEqual({ pending: false })
 			expect(f.config.mode).toBe('youtube')
+			expect(await f.db.get('SELECT channelId FROM api_account_identity'))
+				.toEqual({ channelId: profile })
 			expect(f.config.whitelistedChannelIds?.map(item => item.id).sort())
 				.toEqual([first, inactive, newlyManual].sort())
 			const manualOnly = new Set([second, newlyManual])
