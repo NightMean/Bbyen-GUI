@@ -441,8 +441,11 @@ Undo restores the subscription, but the YouTube Data API cannot restore its bell
 setting. If YouTube does not promptly confirm a request, review its current
 state before attempting another change. These requests appear in Activity.
 
-In cookie mode, adding a channel subscribes on YouTube and the Channels page can
-unsubscribe. The Channels page can request available YouTube bell options;
+In cookie mode, adding a channel confirms the selected YouTube profile and
+subscribes on YouTube. An optional, enabled-by-default choice also requests
+the All bell after the subscription is confirmed. If the bell cannot be
+confirmed, the dashboard reports the partial outcome for review. The Channels
+page can unsubscribe and request available YouTube bell options;
 monitoring starts when All is confirmed. Some channels do not offer a changeable
 bell. The app uses the action supplied by YouTube for the selected profile and
 channel, and refuses a missing or ambiguous action. If confirmation is delayed,

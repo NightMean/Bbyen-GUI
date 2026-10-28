@@ -520,6 +520,7 @@
       $('add').disabled = !all.manualMode && !all.cookieMode && !all.apiMode
       $('add').textContent = all.manualMode || all.cookieMode || all.apiMode ? text.add : text.addManualOnly
       $('cookie-add-help').hidden = !all.cookieMode
+      $('cookie-add-bell-label').hidden = !all.cookieMode
       $('api-add-help').hidden = !all.apiMode
       $('backlog-label').hidden = $('backlog').hidden = all.cookieMode
       $('backlog-count-label').hidden = all.cookieMode || $('backlog').value !== 'newest'
@@ -798,12 +799,15 @@
   $('confirm-add').addEventListener('click', async () => {
     const body = { channelId: $('resolved-id').textContent }
     if (state.cookieMode) {
-      if (!window.confirm(text.subscribeConfirm)) return
       $('confirm-add').disabled = true; $('review-add-subscription').hidden = true
       try {
-        const result = await post('/api/channels/subscription', { ...body, subscribed: true })
+        const status = await request('/api/cookies/status')
+        if (status.mode !== 'cookie' || !status.connection?.channelId) throw new Error('Connection unavailable')
+        const bell = $('cookie-add-bell').checked
+        if (!window.confirm(`${text.subscribeConfirm}\n${text.cookieProfile}: ${status.connection.name} (${status.connection.channelId})\n${$('resolved-id').textContent}\n${bell ? text.cookieAddBell : ''}`)) return
+        const result = await post('/api/channels/subscription', { ...body, subscribed: true, profileId: status.connection.channelId, ...(bell ? { preference: 'all' } : {}) })
         if (result.outcome === 'uncertain') { $('review-add-subscription').hidden = false; showNotice(text.subscriptionUncertain); return }
-        showNotice(text.subscriptionSaved)
+        showNotice(bell && result.bell !== 'confirmed' && result.bell !== 'unchanged' ? text.subscriptionPartial : bell ? text.subscriptionAllSaved : text.subscriptionSaved)
         $('add-panel').hidden = true; $('channel-input').value = ''; load()
       } catch { $('review-add-subscription').hidden = false; showNotice(text.subscriptionError) }
       finally { $('confirm-add').disabled = false }

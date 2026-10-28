@@ -1,6 +1,6 @@
 import { AddressInfo } from 'net'
 import axios from 'axios'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { init } from './database'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
 import { RefreshCoordinator } from './refreshCoordinator'
@@ -93,6 +93,45 @@ test('validates the listening port', () => {
 	expect(() => dashboardPort('3031x')).toThrow()
 	expect(() => dashboardPort('65536')).toThrow()
 })
+
+test('confirms the cookie profile before subscribing and setting the bell',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		const jobs = new RefreshCoordinator(db, { warn: () => undefined })
+		const profileId = 'UC0000000000000000000001'
+		const channelId = 'UC0000000000000000000002'
+		const subscribe = vi.fn().mockResolvedValue('confirmed')
+		const bell = vi.fn().mockResolvedValue('confirmed')
+		const actions = { config: { mode: 'cookie' },
+			cookieStatus: async () => ({ channelId: profileId }),
+			subscriptionActions: { change: subscribe }, bellActions: { change: bell },
+		} as never
+		const server = createDashboardServer(db, jobs, actions)
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+		const port = (server.address() as AddressInfo).port
+		const url = `http://127.0.0.1:${port}/api/channels/subscription`
+		const body = { channelId, profileId, subscribed: true, preference: 'all' }
+		try {
+			const response = await axios.post(url, body)
+			expect(response.data).toEqual({ outcome: 'confirmed', bell: 'confirmed' })
+			expect(bell).toHaveBeenCalledWith(channelId, 'all')
+			const mismatch = await axios.post(url, { ...body, profileId: channelId },
+				{ validateStatus: () => true })
+			expect(mismatch.status).toBe(409)
+			expect(subscribe).toHaveBeenCalledTimes(1)
+			bell.mockRejectedValueOnce(new Error('unavailable'))
+			expect((await axios.post(url, body)).data)
+				.toEqual({ outcome: 'confirmed', bell: 'unavailable' })
+			subscribe.mockResolvedValueOnce('uncertain')
+			expect((await axios.post(url, body)).data)
+				.toEqual({ outcome: 'uncertain', bell: null })
+			expect(bell).toHaveBeenCalledTimes(2)
+		} finally {
+			await new Promise<void>((resolve, reject) => server.close(err =>
+				err ? reject(err) : resolve()))
+			await db.close()
+		}
+	})
 
 test('does not execute a queued write after a source switch enters recovery',
 	async () => {

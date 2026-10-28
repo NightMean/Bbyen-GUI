@@ -74,6 +74,8 @@ interface ChannelActions {
 	apiSubscriptionActions?: ApiSubscriptionActions,
 }
 
+type SubscriptionResult = string | { outcome: string, bell?: string | null }
+
 /** Dashboard API. Database work shares the refresh queue. */
 export const createDashboardHandler = (
 	db: sqlite.Database, jobs: RefreshCoordinator, actions?: ChannelActions,
@@ -594,6 +596,14 @@ export const createDashboardHandler = (
 					send(400, { error: 'Choose a valid subscription action.' }); return
 				}
 				const subscribed = data.subscribed
+				if ((data.profileId !== undefined &&
+						(!subscribed || typeof data.profileId !== 'string' ||
+						!isChannelId(data.profileId))) ||
+						(data.preference !== undefined &&
+						(data.preference !== 'all' || !subscribed ||
+						!data.profileId))) {
+					send(400, { error: 'Invalid account or bell action.' }); return
+				}
 				if (url.pathname.endsWith('/acknowledge')) {
 					void writeMaintenance(() =>
 						actions.config.mode === 'youtube' && actions.apiSubscriptionActions
@@ -609,19 +619,38 @@ export const createDashboardHandler = (
 						}))
 					return
 				}
-				void writeMaintenance(() => {
-					if (actions.config.mode === 'youtube') {
-						if (!actions.apiSubscriptionActions || subscribed) {
-							throw new Error('API subscription action is unavailable.')
+				void writeMaintenance<SubscriptionResult>(
+					() => {
+						if (actions.config.mode === 'youtube') {
+							if (!actions.apiSubscriptionActions || subscribed) {
+								throw new Error('API subscription action is unavailable.')
+							}
+							return actions.apiSubscriptionActions.unsubscribe(id)
 						}
-						return actions.apiSubscriptionActions.unsubscribe(id)
-					}
-					return actions.subscriptionActions.change(id, subscribed)
-				}).then(outcome => {
+						if (data.profileId !== undefined) {
+							return (async () => {
+								const profile = await actions.cookieStatus() as
+								{ channelId?: string } | null
+								if (actions.config.mode !== 'cookie' ||
+									profile?.channelId !== data.profileId) {
+									throw new Error('YouTube profile changed.')
+								}
+								const outcome = await actions.subscriptionActions
+									.change(id, true)
+								if (data.preference !== 'all') return { outcome }
+								if (outcome === 'uncertain') return { outcome, bell: null }
+								let bell: string
+								try { bell = await actions.bellActions.change(id, 'all') }
+								catch { bell = 'unavailable' }
+								return { outcome, bell }
+							})()
+						}
+						return actions.subscriptionActions.change(id, subscribed)
+					}).then(outcome => {
 					if (actions.config.mode === 'youtube') {
 						actions.refresh('subscriptions')
 					}
-					send(200, { outcome })
+					send(200, typeof outcome === 'string' ? { outcome } : outcome)
 				}, () => send(409, {
 					error: 'Could not verify the account and subscription.',
 				}))
