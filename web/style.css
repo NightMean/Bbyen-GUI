@@ -13,3 +13,5 @@
 dialog{max-width:min(480px,90vw);border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);padding:26px}dialog::backdrop{background:#0009}dialog .check{display:flex;align-items:center;gap:8px;margin:20px 0}dialog .input-row{justify-content:flex-end}
 
 .channel-row{flex-wrap:wrap}.channel-bell{display:grid;gap:4px;color:var(--muted);font-size:.75rem;font-weight:700}
+
+.search-channels{margin:0 0 20px}.search-channels h2{font-size:.9rem;margin:0 0 10px}.search-channels div{display:flex;flex-wrap:wrap;gap:8px}.search-channels p{flex-basis:100%;margin:2px 0}

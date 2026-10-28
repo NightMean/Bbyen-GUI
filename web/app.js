@@ -69,6 +69,7 @@
     showNotice('')
     $('toolbar').hidden = page === 'activity' || page === 'settings'
     $('video-options').hidden = page !== 'videos'
+    $('search-channels').hidden = true
     $('results').classList.toggle('video-grid', page === 'videos' && localStorage.getItem('bbyen-layout') === 'grid')
     $('settings-panel').hidden = page !== 'settings'
     $('list-heading').hidden = page === 'settings'
@@ -280,7 +281,10 @@
   const load = async () => {
     const sequence = ++state.sequence
     $('results').replaceChildren(element('p', 'empty', text.loading))
-    if (state.page === 'videos') $('daily-count-list').replaceChildren(element('li', '', text.loading))
+    if (state.page === 'videos') {
+      $('search-channels').hidden = true
+      $('daily-count-list').replaceChildren(element('li', '', text.loading))
+    }
     try {
       if (state.page === 'settings') {
         const [data, history, schedule, general, connection] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule'), request('/api/settings'), request('/api/cookies/status')])
@@ -418,6 +422,18 @@
         $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode, all.apiMode, all.manualMode, apiActions)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
         $('paging').hidden = true; return
       }
+      const searchTerm = $('search').value.trim().toLocaleLowerCase()
+      const matchingChannels = !state.channel && searchTerm
+        ? all.channels.filter(channel => !channel.deleted && (channel.channelTitle || channel.channelId).toLocaleLowerCase().includes(searchTerm)) : []
+      $('search-channels').hidden = !matchingChannels.length
+      $('search-channel-list').replaceChildren(...matchingChannels.slice(0, 8).map(channel => {
+        const button = element('button', 'outline', channel.channelTitle || channel.channelId)
+        button.type = 'button'; button.addEventListener('click', () => {
+          state.channel = channel; $('search').value = ''; setPage('videos')
+        })
+        return button
+      }))
+      if (matchingChannels.length > 8) $('search-channel-list').append(element('p', 'meta', text.moreMatchingChannels))
       const from = $('from').value, through = $('through').value
       if (!from || !through || from > through || through > localDate(new Date())) {
         if (sequence === state.sequence) { $('daily-count-list').replaceChildren(); $('results').replaceChildren(element('p', 'empty', text.invalidDates)); $('paging').hidden = true }

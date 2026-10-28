@@ -139,7 +139,9 @@ configuration controls are still under development. Set
 `BBYEN_DASHBOARD_PORT` to change the listening port and update the Compose
 port mapping to match. This endpoint has no login or built-in HTTPS; configure
 network access and any HTTPS proxy for your environment.
-Video results support list and grid layouts and estimate watch time at the
+Video search also suggests matching tracked channels; selecting one filters the
+video list to that channel. Video results support list and grid layouts and
+estimate watch time at the
 selected playback speed, with a count of videos whose duration is unknown.
 The type filter distinguishes detected livestreams from unclassified videos;
 RSS alone cannot reliably identify Shorts or ordinary video categories.
