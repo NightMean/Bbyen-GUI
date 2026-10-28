@@ -14,3 +14,4 @@ cookies*.txt
 *.json.*.tmp
 data/
 google-device-credentials.json
+client_secret*.json
