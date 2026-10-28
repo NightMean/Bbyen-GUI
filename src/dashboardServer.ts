@@ -480,12 +480,13 @@ export const createDashboardHandler = (
 				return
 			}
 			void jobs.maintenance(randomUUID(), async () => {
-				if (!actions.manualMode()) return false
+				if (!actions.manualMode() && !(actions.config.mode === 'youtube' &&
+						actions.config.emailSelectionPolicy)) return false
 				await actions.add(id, backlog)
 				return true
 			}).then(added => {
 				if (!added) {
-					send(409, { error: 'Adding channels is available in manual mode.' })
+					send(409, { error: 'Channel addition is unavailable in this mode.' })
 					return
 				}
 				actions.refresh('subscriptions')

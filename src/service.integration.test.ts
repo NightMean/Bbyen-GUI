@@ -253,6 +253,20 @@ test('service remains up when OAuth credentials are missing', async () => {
 			.data.channels[0]
 		expect(afterUnmute.emailStatus)
 			.toBe('excluded')
+		const addedId = 'UC0000000000000000000003'
+		const added = await axios.post(`${base}/api/channels`, {
+			channelId: addedId, initialBacklog: { mode: 'none' },
+		})
+		expect(added.status).toBe(202)
+		const afterAdd = JSON.parse(await fs.readFile(
+			path.join(directory, 'channels.json'), 'utf8'))
+		expect(afterAdd.whitelistedChannelIds).toEqual([
+			{ id: addedId, initialBacklog: { mode: 'none' } },
+		])
+		expect(afterAdd.manualChannelIds).toEqual([
+			{ id: addedId, initialBacklog: { mode: 'none' } },
+		])
+		expect(afterAdd.blacklistedChannelIds).toEqual([{ id: channelId }])
 
 
 	} finally {

@@ -366,9 +366,10 @@
       if (sequence !== state.sequence) return
       state.cookieMode = all.cookieMode
       state.confirmUnsubscribe = all.confirmUnsubscribe
-      $('add').disabled = !all.manualMode && !all.cookieMode
-      $('add').textContent = all.manualMode || all.cookieMode ? text.add : text.addManualOnly
+      $('add').disabled = !all.manualMode && !all.cookieMode && !all.apiMode
+      $('add').textContent = all.manualMode || all.cookieMode || all.apiMode ? text.add : text.addManualOnly
       $('cookie-add-help').hidden = !all.cookieMode
+      $('api-add-help').hidden = !all.apiMode
       $('backlog-label').hidden = $('backlog').hidden = all.cookieMode
       $('backlog-count-label').hidden = all.cookieMode || $('backlog').value !== 'newest'
       if (state.page === 'channels') {
