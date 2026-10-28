@@ -41,6 +41,7 @@ import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { setCookieChannelNotify } from './cookieChannelPreferences'
+import { setApiChannelList } from './apiChannelLists'
 import { saveUnsubscribePreference } from './unsubscribePreference'
 import { TitleAlerts } from './titleAlerts'
 import { ChannelAddedAlerts } from './channelAddedAlerts'
@@ -171,6 +172,8 @@ const startService = async (existingServer?: Server) => {
 				? setCookieChannelNotify(databaseConnection, CHANNELS_FILE, config,
 					id, notify)
 				: setManualChannelNotify(CHANNELS_FILE, config, id, notify),
+			setApiList: (id, list, included) => setApiChannelList(
+				databaseConnection, CHANNELS_FILE, config, id, list, included),
 			remove: id => removeManualChannel(CHANNELS_FILE, config, id),
 			manualMode: () => config.mode === 'whitelist',
 			manualNotify: id => config.mode === 'cookie' ||

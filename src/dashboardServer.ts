@@ -26,12 +26,16 @@ import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { BellNotificationPreference } from './lib/innertubeChannels'
+import { ApiChannelList } from './apiChannelLists'
+import { makeEmailEligibility } from './emailPolicy'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
 	resolve: (input: string) => Promise<string>,
 	refresh: (kind: RefreshKind) => void,
 	setNotify: (channelId: string, notify: boolean) => Promise<void>,
+	setApiList: (channelId: string, list: ApiChannelList,
+		included: boolean) => Promise<void>,
 	remove: (channelId: string) => Promise<void>,
 	manualMode: () => boolean,
 	manualNotify: (channelId: string) => boolean | null,
@@ -75,6 +79,7 @@ export const createDashboardHandler = (
 			(url.pathname === '/api/channels' ||
 			url.pathname === '/api/channels/resolve' ||
 			url.pathname === '/api/channels/notify' ||
+			url.pathname === '/api/channels/email-list' ||
 			url.pathname === '/api/channels/remove' ||
 			url.pathname === '/api/channels/bell' ||
 			url.pathname === '/api/channels/bell/review' ||
@@ -122,7 +127,7 @@ export const createDashboardHandler = (
 				conflictChoice?: unknown, acceptPartial?: unknown,
 				intervals?: unknown, cookie?: unknown, candidateId?: unknown,
 				profileId?: unknown, preference?: unknown, subscribed?: unknown,
-				confirmUnsubscribe?: unknown } = {}
+				confirmUnsubscribe?: unknown, list?: unknown, included?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -349,6 +354,19 @@ export const createDashboardHandler = (
 			const id = data.channelId
 			if (typeof id !== 'string' || !isChannelId(id)) {
 				send(400, { error: 'A valid channel ID is required.' })
+				return
+			}
+			if (url.pathname === '/api/channels/email-list') {
+				if ((data.list !== 'allowlist' && data.list !== 'blocklist') ||
+						typeof data.included !== 'boolean') {
+					send(400, { error: 'Choose a list and membership.' }); return
+				}
+				const list = data.list, included = data.included
+				void jobs.maintenance(randomUUID(), () =>
+					actions.setApiList(id, list, included)).then(() =>
+					send(200, { channelId: id, list, included }), () => send(409, {
+					error: 'Could not save the channel list. Reload and try again.',
+				}))
 				return
 			}
 			if (url.pathname === '/api/channels/notify') {
@@ -616,12 +634,30 @@ export const createDashboardHandler = (
 				AND s.subscribed=1) AS cookieSubscribed
 				FROM subscriptions ORDER BY channelTitle, channelId`)
 			const manualMode = actions?.manualMode() ?? false
-			return { manualMode, cookieMode: actions?.config.mode === 'cookie',
+			const apiMode = actions?.config.mode === 'youtube' &&
+				!!actions.config.emailSelectionPolicy
+			const allowed = new Set(
+				actions?.config.whitelistedChannelIds?.map(c => c.id))
+			const blocked = new Set(
+				actions?.config.blacklistedChannelIds?.map(c => c.id))
+			const manualOnly = apiMode ? new Set<string>((await db.all(`
+				SELECT channelId FROM channel_sources
+				WHERE manual=1 AND apiSubscribed=0`))
+				.map(row => row.channelId as string)) : new Set<string>()
+			const eligibility = actions
+				? makeEmailEligibility(actions.config, manualOnly) : null
+			return { manualMode, apiMode,
+				cookieMode: actions?.config.mode === 'cookie',
 				confirmUnsubscribe: actions?.config.confirmUnsubscribe !== false,
 				cookieStale: !!actions?.config.cookieStale,
 				channels: channels.map(channel => ({ ...channel,
 					muted: actions?.config.channelSettingsById?.get(
 						channel.channelId)?.notify === false,
+					...(apiMode ? { allowlisted: allowed.has(channel.channelId),
+						blocklisted: blocked.has(channel.channelId),
+						emailStatus: eligibility?.(channel.channelId,
+							actions?.config.channelSettingsById?.get(channel.channelId)),
+					} : {}),
 					...(manualMode || (actions?.config.mode === 'cookie' &&
 						channel.cookieSubscribed)
 						? { notify: actions?.manualNotify(channel.channelId) }

@@ -139,7 +139,7 @@
     if (video.sentAt) outcome.append(element('div', '', displayDate(video.sentAt)))
     row.append(thumb, body, outcome); return row
   }
-  const renderChannel = (channel, cookieMode) => {
+  const renderChannel = (channel, cookieMode, apiMode) => {
     const row = element('article', 'channel-row')
     const img = element('img', 'avatar'); img.alt = ''; img.loading = 'lazy'
     const source = safeImage(channel.channelThumbnail); if (source) img.src = source
@@ -243,6 +243,21 @@
         try { await post('/api/channels/remove', { channelId: channel.channelId }); showNotice(text.removed); load() }
         catch { showNotice(text.removeError) } finally { remove.disabled = false }
       }); row.append(remove)
+    }
+    if (apiMode) {
+      const status = channel.emailStatus === 'excluded' ? (channel.blocklisted ? text.apiExcludedBlock : text.apiExcludedAllow) : channel.emailStatus === 'muted' ? text.apiMuted : text.apiEligible
+      info.append(element('div', 'channel-detail', status))
+      for (const list of ['allowlist', 'blocklist']) {
+        const present = list === 'allowlist' ? channel.allowlisted : channel.blocklisted
+        const label = list === 'allowlist' ? (present ? text.removeAllow : text.addAllow) : (present ? text.removeBlock : text.addBlock)
+        const toggle = element('button', 'outline', label)
+        toggle.type = 'button'; toggle.addEventListener('click', async () => {
+          toggle.disabled = true
+          try { await post('/api/channels/email-list', { channelId: channel.channelId, list, included: !present }); showNotice(text.saved); load() }
+          catch { showNotice(text.settingError); load() }
+          finally { toggle.disabled = false }
+        }); row.append(toggle)
+      }
     }
     if (/^UC[\w-]{22}$/.test(channel.channelId)) {
       const link = makeLink(text.openChannel, `https://www.youtube.com/channel/${channel.channelId}`)
@@ -371,7 +386,7 @@
         if (sequence !== state.sequence) return
         $('list-label').textContent = `${found.length} ${text.channels}`
         $('cookie-stale').hidden = !all.cookieMode || !all.cookieStale
-        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
+        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode, all.apiMode)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
         $('paging').hidden = true; return
       }
       const from = $('from').value, through = $('through').value

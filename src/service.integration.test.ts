@@ -191,6 +191,10 @@ test('service remains up when OAuth credentials are missing', async () => {
 	await fs.writeFile(path.join(directory, 'channels.json'),
 		JSON.stringify({ whitelistedChannelIds: [] }))
 	const db = await init({ filename })
+	const channelId = 'UC0000000000000000000002'
+	await db.run(`INSERT INTO subscriptions
+		(channelId, channelTitle, channelThumbnail) VALUES (?, 'Fixture', '')`,
+	channelId)
 	await db.close()
 	const child = spawn(process.execPath,
 		['-r', 'ts-node/register/transpile-only', 'src/index.ts'], {
@@ -229,6 +233,17 @@ test('service remains up when OAuth credentials are missing', async () => {
 		const saved = JSON.parse(await fs.readFile(
 			path.join(directory, 'config.json'), 'utf8'))
 		expect(saved.emailSelectionPolicy).toBe('blocklist')
+		await axios.post(`${base}/api/channels/email-list`, {
+			channelId, list: 'blocklist', included: true,
+		})
+		const channels = (await axios.get(`${base}/api/channels`)).data
+		expect(channels.apiMode).toBe(true)
+		expect(channels.channels[0]).toMatchObject({ blocklisted: true,
+			emailStatus: 'excluded' })
+		const lists = JSON.parse(await fs.readFile(
+			path.join(directory, 'channels.json'), 'utf8'))
+		expect(lists.blacklistedChannelIds).toEqual([{ id: channelId }])
+
 
 	} finally {
 		child.kill()

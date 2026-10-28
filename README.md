@@ -94,8 +94,9 @@ Dashboard Settings accepts separate intervals such as `6 hours` or `3 days` and
 replaces the running timers after the new settings are saved.
 In API mode, Settings also selects allowlist or blocklist email eligibility.
 An empty allowlist sends no subscription emails; an empty blocklist permits all
-otherwise eligible channels. Existing lists remain separate and can be imported
-under Subscriptions. Switching policy requests a channel refresh without
+otherwise eligible channels. Existing lists remain separate and can be edited
+per channel or imported under Subscriptions. Removing an allowlist entry retains
+its channel-specific settings for later use. Switching policy requests a channel refresh without
 changing YouTube subscriptions or bells. Legacy configurations retain their
 existing selection until a policy is explicitly chosen.
 

@@ -146,6 +146,7 @@ test('validates writes and schedules refresh after saving', async () => {
 		add: async id => { calls.push(id) },
 		resolve: async input => input,
 		setNotify: async (id, notify) => { calls.push(`${id}:${notify}`) },
+		setApiList: async () => undefined,
 		remove: async id => { calls.push(`remove:${id}`) },
 		manualMode: () => config.mode === 'whitelist',
 		manualNotify: () => true,
