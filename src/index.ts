@@ -55,6 +55,7 @@ import { readCookieFile } from './cookieFile'
 import { CookieFileRecovery } from './cookieFileRecovery'
 import { oauthTokenHash, recoverOAuthCleanup } from './oauthCleanup'
 import { compareConnectionIdentities } from './combinedIdentity'
+import { RemoteDesktopAuth } from './remoteDesktopAuth'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -179,6 +180,8 @@ const startService = async (existingServer?: Server) => {
 			cookieStatus: () => cookieStore.status(),
 			cookieCleanupPending: () => cookieStore.cleanupPending(),
 			oauthCleanupPending: () => cookieStore.oauthCleanupPending(),
+			remoteDesktopAuth: new RemoteDesktopAuth(config, cookieStore, service,
+				CONFIG_DIR, authorizationRevision),
 			compareIdentities: async () => {
 				if (await cookieStore.oauthCleanupPending()) {
 					throw new Error('Authorization cleanup is pending.')

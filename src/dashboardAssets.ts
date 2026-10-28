@@ -14,6 +14,8 @@ export const serveDashboardAsset = (
 			'application/javascript; charset=utf-8'] as [string, string] } : {}),
 		'/style.css': ['style.css', 'text/css; charset=utf-8'],
 		'/en.json': ['en.json', 'application/json; charset=utf-8'],
+		'/oauth-helper.cjs': ['oauth-helper.cjs',
+			'application/octet-stream'] as [string, string],
 	}
 	const asset = assets[url.pathname]
 	if (request.method !== 'GET' || !asset || url.search) return false

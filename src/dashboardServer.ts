@@ -29,6 +29,7 @@ import { ApiSubscriptionActions } from './apiSubscriptionActions'
 import { BellNotificationPreference } from './lib/innertubeChannels'
 import { ApiChannelList } from './apiChannelLists'
 import { makeEmailEligibility } from './emailPolicy'
+import { RemoteDesktopAuth } from './remoteDesktopAuth'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -57,6 +58,7 @@ interface ChannelActions {
 	cookieCleanupPending: () => Promise<boolean>,
 	oauthCleanupPending?: () => Promise<boolean>,
 	compareIdentities?: () => Promise<unknown>,
+	remoteDesktopAuth?: RemoteDesktopAuth,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
 	apiSubscriptionActions?: ApiSubscriptionActions,
@@ -105,6 +107,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/cookies/compare' ||
 			url.pathname === '/api/cookies/activate' ||
 			url.pathname === '/api/cookies/compare-identity' ||
+			url.pathname === '/api/oauth/desktop/start' ||
+			url.pathname === '/api/oauth/desktop/finish' ||
 			url.pathname === '/api/cookies/cancel' ||
 			url.pathname === '/api/cookies/manual/preview' ||
 			url.pathname === '/api/cookies/manual/apply' ||
@@ -132,7 +136,8 @@ export const createDashboardHandler = (
 				conflictChoice?: unknown, acceptPartial?: unknown,
 				intervals?: unknown, cookie?: unknown, candidateId?: unknown,
 				profileId?: unknown, preference?: unknown, subscribed?: unknown,
-				confirmUnsubscribe?: unknown, list?: unknown, included?: unknown } = {}
+				confirmUnsubscribe?: unknown, list?: unknown, included?: unknown,
+				port?: unknown, id?: unknown, state?: unknown, code?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -140,6 +145,22 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname.startsWith('/api/oauth/desktop/')) {
+				if (!actions.remoteDesktopAuth) {
+					send(503, { error: 'Google authorization is unavailable.' }); return
+				}
+				const remote = actions.remoteDesktopAuth
+				const work = async (): Promise<unknown> => {
+					if (url.pathname.endsWith('/start')) return remote.start(data.port)
+					await remote.finish(data.id, data.state, data.code)
+					return { authorized: true }
+				}
+				void jobs.maintenance(randomUUID(), work).then(
+					result => send(200, result),
+					() => send(422, { error: 'Google authorization failed. Check the ' +
+						'client and selected YouTube profile, then try again.' }))
+				return
+			}
 			if (url.pathname.startsWith('/api/cookies/')) {
 				if (url.pathname === '/api/cookies/compare-identity') {
 					if (!actions.compareIdentities || actions.config.mode !== 'cookie') {

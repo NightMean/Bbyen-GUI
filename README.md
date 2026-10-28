@@ -367,6 +367,16 @@ Settings reports that cleanup needs attention. Cleanup is retried after restart.
 Settings can compare the active cookie profile with an existing Google
 authorization without changing either connection. The comparison uses canonical
 channel IDs and refuses a result if either connection changes during the check.
+In manual or cookie mode, Settings also offers a Desktop OAuth helper for a
+browser on another computer. Copy the original Desktop client credentials to
+`CONFIG_DIR/google-credentials.json`, download the helper to the browser PC,
+install Node.js 20 or newer there, and run the command shown in Settings. Open
+the helper's Google link on that same PC. The helper receives the callback on
+that PC's loopback interface and sends the single-use response to BBYEN; PKCE
+protects the authorization code. The dashboard's network connection follows
+your existing HTTP or HTTPS configuration. In cookie mode, the selected Google
+profile must match the cookie profile. This step saves the grant but does not
+switch tracking sources; API mode continues to use `npm run login` for renewal.
 Combined mode remains unavailable. Google may authorize a
 different YouTube channel from the one selected in the browser, depending on
 the account’s default channel. The app must verify the canonical channel IDs

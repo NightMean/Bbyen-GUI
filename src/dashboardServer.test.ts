@@ -124,6 +124,10 @@ test('validates writes and schedules refresh after saving', async () => {
 		imports: new SubscriptionImportService('unused', {} as Config),
 		cookiePreviews,
 		cookieStatus: () => cookieStore.status(),
+		remoteDesktopAuth: {
+			start: async (port: unknown) => ({ id: 'fixture', url: String(port) }),
+			finish: async () => undefined,
+		} as never,
 		compareIdentities: async () => ({ matches: true,
 			api: { channelId: id, title: 'API' },
 			cookie: { channelId: id, name: 'Cookie' } }),
@@ -184,6 +188,12 @@ test('validates writes and schedules refresh after saving', async () => {
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 	try {
+		const oauth = await axios.post(`${base}/api/oauth/desktop/start`,
+			{ port: 3040 })
+		expect(oauth.data).toEqual({ id: 'fixture', url: '3040' })
+		expect((await axios.post(`${base}/api/oauth/desktop/finish`, {}))
+			.data.authorized).toBe(true)
+		expect((await axios.get(`${base}/oauth-helper.cjs`)).status).toBe(200)
 		expect((await axios.post(`${base}/api/cookies/compare-identity`, {},
 			{ validateStatus: () => true })).status).toBe(409)
 		const exported = await axios.get(`${base}/api/subscriptions/export`)

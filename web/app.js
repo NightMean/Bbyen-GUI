@@ -102,6 +102,8 @@
     $('connection-warning').textContent = warnings.join(' ')
     $('cookie-connect').hidden = connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
     $('manual-switch').hidden = !active
+    $('desktop-oauth').hidden = state.apiConnection || connection.oauthCleanupPending
+    $('desktop-oauth-command').textContent = `node oauth-helper.cjs ${window.location.origin}`
     $('identity-check').hidden = !active
     $('identity-result').textContent = ''
   }
