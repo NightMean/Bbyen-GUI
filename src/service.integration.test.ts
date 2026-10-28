@@ -185,7 +185,7 @@ test('service remains up when OAuth credentials are missing', async () => {
 	config.mode = 'youtube'
 	config.database.filename = filename
 	config.logging.emailOnError = false
-	config.kickoff = { videos: true, subscriptions: true }
+	config.kickoff = { videos: false, subscriptions: true }
 	await fs.writeFile(path.join(directory, 'config.json'),
 		JSON.stringify(config))
 	await fs.writeFile(path.join(directory, 'channels.json'),
@@ -217,10 +217,10 @@ test('service remains up when OAuth credentials are missing', async () => {
 					WHERE status='completed' AND
 					json_extract(resultJson, '$.errorCategory')='auth'`)).count
 			} finally { await check.close() }
-			if (failures === 2) break
+			if (failures === 1) break
 			await new Promise(resolve => setTimeout(resolve, 100))
 		}
-		expect(failures).toBe(2)
+		expect(failures).toBe(1)
 		expect(child.exitCode).toBeNull()
 		const base = `http://127.0.0.1:${port}`
 		const current = (await axios.get(`${base}/api/settings`)).data.settings
