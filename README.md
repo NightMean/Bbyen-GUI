@@ -388,7 +388,12 @@ the Google client file. To change the cookie profile or switch to manual mode,
 first switch to cookie-only mode. When adding cookies in API mode, select
 "Keep the Google API connection" to retain the grant and enable combined mode;
 the account identities are checked before the preview and again on confirmation.
-Other source-switch directions still require additional implementation.
+From cookie or combined mode, Settings can also review a switch to API-only
+tracking. It preserves the Google grant, deletes the stored cookie and matching
+legacy cookie file, and retains channel history. If the API omits subscriptions
+confirmed by the cookie, the switch is refused and the previous tracking source
+remains active. Manual-to-API and API-to-manual switching still require
+additional implementation.
 
 Google may authorize a
 different YouTube channel from the one selected in the browser, depending on

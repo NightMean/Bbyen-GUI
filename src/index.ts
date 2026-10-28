@@ -60,6 +60,7 @@ import { CombinedMode } from './combinedMode'
 import { refreshCombinedMetadata } from './combinedMetadata'
 import { readAccountIdentity, sameAccount } from './google/accountIdentity'
 import { withAuthorizationTimeout } from './google/desktopAuthorization'
+import { ApiSourceSwitch } from './apiSourceSwitch'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -208,6 +209,9 @@ const startService = async (existingServer?: Server) => {
 			CHANNELS_FILE, CONFIG_DIR, cookiePreviews)
 		const combinedMode = new CombinedMode(db, config, cookieStore, service,
 			() => authorize(), authorizationRevision, CONFIG_DIR)
+		const apiSourceSwitch = new ApiSourceSwitch(db, config, cookieStore,
+			cookiePreviews, service, () => authorize(), authorizationRevision,
+			CONFIG_DIR, CONFIG_FILE)
 		const verifyApiProfile = async (channelId: string) => {
 			if (config.mode !== 'youtube') throw new Error('API mode is unavailable.')
 			const revision = await authorizationRevision()
@@ -222,6 +226,7 @@ const startService = async (existingServer?: Server) => {
 		const handler = createDashboardHandler(db, jobs, {
 			config,
 			combinedMode,
+			apiSourceSwitch,
 			verifyApiProfile,
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),

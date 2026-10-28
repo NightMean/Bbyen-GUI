@@ -1,4 +1,5 @@
 {
+  "apiSourcePreview": "Review switch to YouTube API", "apiSourceApply": "Confirm API tracking", "apiSourceHelp": "The Google account will control the subscription list. Cookie bell controls will stop and the saved cookie will be deleted. Video history and channel settings will remain. Email selection follows your API allowlist or blocklist.", "apiSourceDone": "YouTube API tracking is active.",
   "cookieKeepApi": "Keep the Google API connection and add cookie bell tracking", "cookieCombineHelp": "The Google authorization will be kept for API metadata. The selected cookie profile controls which channels are monitored, and must match the Google profile. Review the channel changes below.", "cookieCombinedError": "Could not compare these connections. Check that Google and the selected cookie use the same YouTube profile, then try again.",
   "subscribedAt": "Subscribed on YouTube",
   "source_combined-api": "YouTube API metadata",

@@ -31,6 +31,8 @@ import { ApiChannelList } from './apiChannelLists'
 import { makeEmailEligibility } from './emailPolicy'
 import { RemoteDesktopAuth } from './remoteDesktopAuth'
 import { CombinedMode } from './combinedMode'
+import { ApiSourceSwitch, IncompleteApiSnapshot, UnconfirmedCookieSnapshot }
+	from './apiSourceSwitch'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -61,6 +63,7 @@ interface ChannelActions {
 	compareIdentities?: () => Promise<unknown>,
 	remoteDesktopAuth?: RemoteDesktopAuth,
 	combinedMode?: CombinedMode,
+	apiSourceSwitch?: ApiSourceSwitch,
 	verifyApiProfile?: (channelId: string) => Promise<void>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
@@ -114,6 +117,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/oauth/desktop/finish' ||
 			url.pathname === '/api/combined/preview' ||
 			url.pathname === '/api/combined/apply' ||
+			url.pathname === '/api/source/api/preview' ||
+			url.pathname === '/api/source/api/apply' ||
 			url.pathname === '/api/cookies/cancel' ||
 			url.pathname === '/api/cookies/manual/preview' ||
 			url.pathname === '/api/cookies/manual/apply' ||
@@ -151,6 +156,31 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname.startsWith('/api/source/api/')) {
+				const source = actions.apiSourceSwitch
+				if (!source) {
+					send(503, { error: 'API source switch is unavailable.' }); return
+				}
+				const preview = data.previewId
+				if (url.pathname.endsWith('/apply') &&
+						(typeof preview !== 'string' || !preview)) {
+					send(400, { error: 'Source preview is missing.' }); return
+				}
+				void jobs.maintenance(randomUUID(), async () =>
+					url.pathname.endsWith('/preview') ? source.review() :
+						source.apply(preview as string)).then(result => {
+					send(200, result)
+					if (url.pathname.endsWith('/apply')) actions.refresh('videos')
+				}, error => send(409, { error:
+					error instanceof UnconfirmedCookieSnapshot
+						? 'Cookie data is unconfirmed. Refresh the cookie connection first.'
+						: error instanceof IncompleteApiSnapshot
+							? 'YouTube API omitted subscriptions confirmed by the cookie. ' +
+						'Cookie tracking remains active; retry later.'
+							: 'Could not verify the source switch. Check the Google ' +
+								'account and review again.' }))
+				return
+			}
 			if (url.pathname.startsWith('/api/combined/')) {
 				const mode = actions.combinedMode
 				if (!mode) {

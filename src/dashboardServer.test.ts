@@ -11,6 +11,7 @@ import { CookieConnectionStore } from './cookieConnection'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
+import { IncompleteApiSnapshot } from './apiSourceSwitch'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -135,6 +136,9 @@ test('validates writes and schedules refresh after saving', async () => {
 			review: async () => ({ previewId: 'fixture', continuing: [] }),
 			apply: async () => { config.apiEnrichment = true
 				return { cleanupPending: false, apiEnrichment: true } },
+		} as never,
+		apiSourceSwitch: {
+			review: async () => { throw new IncompleteApiSnapshot('fixture') },
 		} as never,
 		compareIdentities: async () => ({ matches: true,
 			api: { channelId: id, title: 'API' },
@@ -261,6 +265,10 @@ test('validates writes and schedules refresh after saving', async () => {
 		})
 		const cookieStatus = await axios.get(`${base}/api/cookies/status`)
 		expect(cookieStatus.data.mode).toBe('cookie')
+		const incomplete = await axios.post(`${base}/api/source/api/preview`, {},
+			{ validateStatus: () => true })
+		expect(incomplete.status).toBe(409)
+		expect(incomplete.data.error).toMatch(/omitted subscriptions/)
 		expect((await axios.post(`${base}/api/combined/preview`,
 			{ direction: 'invalid' }, { validateStatus: () => true })).status)
 			.toBe(400)

@@ -53,6 +53,7 @@
     if (state.cookieCandidate) void post('/api/cookies/cancel', { candidateId: state.cookieCandidate }).catch(() => {})
     state.cookieCandidate = null; state.cookiePreview = null; state.manualPreview = null
     state.combinedPreview = null; $('combined-review').hidden = true
+    state.apiSourcePreview = null; $('api-source-review').hidden = true
     $('cookie-input').value = ''; $('cookie-file').value = ''
     $('cookie-profiles').hidden = true; $('cookie-review').hidden = true; $('manual-review').hidden = true
     state.page = page; state.offset = 0
@@ -111,8 +112,38 @@
     $('identity-check').hidden = !active
     $('identity-result').textContent = ''
     $('combined-switch').hidden = !active
+    $('api-source-switch').hidden = !active
     $('combined-preview').textContent = state.combined ? text.combinedDisable : text.combinedEnable
   }
+  const postSourceSwitch = async (url, body) => {
+    const response = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    const data = await response.json()
+    if (!response.ok) throw new Error(typeof data.error === 'string' ? data.error : text.cookieError)
+    return data
+  }
+  $('api-source-preview').addEventListener('click', async () => {
+    const epoch = state.cookieEpoch
+    state.apiSourcePreview = null; $('api-source-review').hidden = true; $('api-source-preview').disabled = true
+    try {
+      const result = await postSourceSwitch('/api/source/api/preview', {})
+      if (epoch !== state.cookieEpoch) return
+      state.apiSourcePreview = result.previewId
+      $('api-source-details').textContent = [text.apiSourceHelp, result.legacyCookieFile ? text.manualFileDelete : '', result.environmentCookie ? text.manualExternal : '', describeChannels(text.cookieStart, result.start), describeChannels(text.cookieStop, result.stop), describeChannels(text.cookieContinue, result.continuing)].filter(Boolean).join('\n\n')
+      $('api-source-review').hidden = false
+    } catch (error) { if (epoch === state.cookieEpoch) showNotice(error.message) }
+    finally { $('api-source-preview').disabled = false }
+  })
+  $('api-source-apply').addEventListener('click', async () => {
+    if (!state.apiSourcePreview) return
+    $('api-source-apply').disabled = true
+    try {
+      const result = await postSourceSwitch('/api/source/api/apply', { previewId: state.apiSourcePreview })
+      state.apiSourcePreview = null; $('api-source-review').hidden = true
+      renderConnection({ ...state.connection, mode: 'youtube', apiEnrichment: false, connection: null, cleanupPending: result.cleanupPending })
+      showNotice(result.cleanupPending ? text.cleanupPending : text.apiSourceDone)
+    } catch (error) { state.apiSourcePreview = null; $('api-source-review').hidden = true; showNotice(error.message) }
+    finally { $('api-source-apply').disabled = false }
+  })
   $('combined-preview').addEventListener('click', async () => {
     const epoch = state.cookieEpoch
     state.combinedPreview = null; $('combined-preview').disabled = true; $('combined-review').hidden = true

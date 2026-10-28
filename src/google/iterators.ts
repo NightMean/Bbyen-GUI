@@ -73,6 +73,7 @@ async function* _genericIterator(
 export const subscriptionIterator = (
 	service: youtube_v3.Youtube,
 	auth: OAuth2Client,
+	options?: MethodOptions,
 ) =>
 	_genericIterator(service.subscriptions.list.bind(service), {
 		auth,
@@ -80,7 +81,7 @@ export const subscriptionIterator = (
 		order: 'alphabetical',
 		mine: true,
 		maxResults: 50,
-	})
+	}, options)
 
 /** Verify known channel IDs when a listing omits them. */
 export const subscriptionMembershipIterator = (
