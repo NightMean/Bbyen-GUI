@@ -15,6 +15,7 @@ interface Session {
 	authorization: DesktopAuthorization,
 	revision: string,
 	mode: Config['mode'],
+	combined: boolean,
 	cookieGeneration?: string,
 	cookieChannelId?: string | null,
 	timer: NodeJS.Timeout,
@@ -39,12 +40,13 @@ export class RemoteDesktopAuth {
 	async start(port: unknown) {
 		if (typeof port !== 'number' || !Number.isInteger(port) ||
 				port < 1024 || port > 65535) throw new Error('Invalid callback port.')
-		if (this.config.mode === 'youtube' || this.config.apiEnrichment ||
+		if (this.config.mode === 'youtube' ||
 				await this.store.oauthCleanupPending()) {
 			throw new Error('Authorization cannot be changed in this mode.')
 		}
 		if (this.sessions.size >= 3) throw new Error('Too many login attempts.')
 		const mode = this.config.mode
+		const combined = !!this.config.apiEnrichment
 		const revision = await this.revision()
 		const cookie = mode === 'cookie' ? await this.store.read() : null
 		if (mode === 'cookie' && !cookie) throw new Error('Cookie unavailable.')
@@ -55,7 +57,8 @@ export class RemoteDesktopAuth {
 		if (typeof credentials?.client_id !== 'string' || !credentials.client_id ||
 				typeof credentials.client_secret !== 'string' ||
 				!credentials.client_secret) throw new Error('Google client is invalid.')
-		if (mode !== this.config.mode || revision !== await this.revision()) {
+		if (mode !== this.config.mode || combined !== !!this.config.apiEnrichment ||
+				revision !== await this.revision()) {
 			throw new Error('Connection changed; start again.')
 		}
 		const oauth = new OAuth2Client(credentials.client_id,
@@ -64,7 +67,7 @@ export class RemoteDesktopAuth {
 		const id = randomBytes(32).toString('base64url')
 		const timer = setTimeout(() => this.remove(id), 10 * 60_000)
 		timer.unref()
-		this.sessions.set(id, { authorization, revision, mode,
+		this.sessions.set(id, { authorization, revision, mode, combined,
 			cookieGeneration: cookie?.generation,
 			cookieChannelId: cookie?.profile.channelId, timer, busy: false })
 		return { id, url: authorization.url() }
@@ -86,6 +89,7 @@ export class RemoteDesktopAuth {
 				readAccountIdentity(this.service, client))
 			const cookie = session.mode === 'cookie' ? await this.store.read() : null
 			if (session.mode !== this.config.mode ||
+					session.combined !== !!this.config.apiEnrichment ||
 					session.revision !== await this.revision() ||
 					(session.mode === 'cookie' && (!cookie ||
 					cookie.generation !== session.cookieGeneration ||

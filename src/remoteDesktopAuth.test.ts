@@ -75,3 +75,28 @@ test('preserves prior authorization for mismatched or changed connections',
 			} finally { await fs.rm(f.directory, { recursive: true }) }
 		}
 	})
+
+test('renews combined authorization only for the saved cookie profile',
+	async () => {
+		for (const reason of ['matching', 'mismatch', 'mode-change']) {
+			const f = await fixture(reason === 'mismatch' ? other : id)
+			f.config.apiEnrichment = true
+			try {
+				const token = path.join(f.directory, '.google-auth-token.json')
+				await fs.writeFile(token, '{"refresh_token":"previous-fixture"}')
+				const start = await f.manager.start(3040)
+				const state = new URL(start.url).searchParams.get('state')
+				if (reason === 'mode-change') f.config.apiEnrichment = false
+				if (reason === 'matching') {
+					await f.manager.finish(start.id, state, 'code')
+					expect(JSON.parse(await fs.readFile(token, 'utf8')).refresh_token)
+						.toBe('refresh-fixture')
+				} else {
+					await expect(f.manager.finish(start.id, state, 'code'))
+						.rejects.toThrow()
+					expect(await fs.readFile(token, 'utf8'))
+						.toBe('{"refresh_token":"previous-fixture"}')
+				}
+			} finally { await fs.rm(f.directory, { recursive: true }) }
+		}
+	})
