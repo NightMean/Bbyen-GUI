@@ -381,3 +381,10 @@ export const loadConfig = async (
 			])),
 	}
 }
+
+/** Validate the base configuration before opening its database at startup. */
+export const loadValidatedConfigRaw = async (): Promise<Config> => {
+	const config = await loadConfigRaw()
+	validateConfig(config)
+	return config
+}

@@ -35,6 +35,27 @@ export const recordOAuthCleanup = async (db: sqlite.Database, hash: string) => {
 		VALUES (1, ${hash});`)
 }
 
+/** Serialize with token writers while checking or deleting a generation. */
+export const withOAuthTokenLock = async <T>(
+	directory: string, work: () => Promise<T>,
+): Promise<T> => {
+	const lockPath = `${path.join(directory, TOKEN_NAME)}.lock`
+	const lock = await fs.open(lockPath, 'wx', 0o600)
+	let result!: T
+	let failure: unknown
+	try {
+		await lock.writeFile(String(process.pid))
+		result = await work()
+	} catch (error) {
+		failure = error
+	} finally {
+		try { await lock.close() } catch (error) { failure ??= error }
+		try { await fs.unlink(lockPath) } catch (error) { failure ??= error }
+	}
+	if (failure) throw failure
+	return result
+}
+
 /** Delete only the recorded generation while holding the shared writer lock. */
 export const recoverOAuthCleanup = async (
 	db: sqlite.Database, directory: string,
@@ -45,34 +66,20 @@ export const recoverOAuthCleanup = async (
 			!/^[a-f0-9]{64}$/.test(pending.tokenHash)) {
 		throw new Error('Stored authorization cleanup is invalid.')
 	}
-	const filename = path.join(directory, TOKEN_NAME)
-	const lockPath = `${filename}.lock`
-	let lock: Awaited<ReturnType<typeof fs.open>>
-	try { lock = await fs.open(lockPath, 'wx', 0o600) } catch (error) {
+	try {
+		return await withOAuthTokenLock(directory, async () => {
+			const latest = await db.get(
+				'SELECT tokenHash FROM oauth_cleanup WHERE id=1')
+			if (latest?.tokenHash !== pending.tokenHash) return false
+			const current = await oauthTokenHash(directory)
+			if (current !== null && current !== pending.tokenHash) return false
+			if (current !== null) await fs.unlink(path.join(directory, TOKEN_NAME))
+			const removed = await db.run(SQL`DELETE FROM oauth_cleanup WHERE id=1
+				AND tokenHash=${pending.tokenHash};`)
+			return !!removed.changes
+		})
+	} catch (error) {
 		if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false
 		throw error
 	}
-	let success = false
-	let failure: unknown
-	try {
-		await lock.writeFile(String(process.pid))
-		const latest = await db.get(
-			'SELECT tokenHash FROM oauth_cleanup WHERE id=1')
-		if (latest?.tokenHash === pending.tokenHash) {
-			const current = await oauthTokenHash(directory)
-			if (current === null || current === pending.tokenHash) {
-				if (current !== null) await fs.unlink(filename)
-				const removed = await db.run(SQL`DELETE FROM oauth_cleanup WHERE id=1
-					AND tokenHash=${pending.tokenHash};`)
-				success = !!removed.changes
-			}
-		}
-	} catch (error) {
-		failure = error
-	} finally {
-		try { await lock.close() } catch (error) { failure ??= error }
-		try { await fs.unlink(lockPath) } catch (error) { failure ??= error }
-	}
-	if (failure) throw failure
-	return success
 }

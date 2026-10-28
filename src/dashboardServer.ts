@@ -55,6 +55,7 @@ interface ChannelActions {
 	activateCookie: (candidateId: string, previewId: string) => Promise<void>,
 	manualSwitch: ManualSourceSwitch,
 	cookieCleanupPending: () => Promise<boolean>,
+	oauthCleanupPending?: () => Promise<boolean>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
 	apiSubscriptionActions?: ApiSubscriptionActions,
@@ -154,10 +155,6 @@ export const createDashboardHandler = (
 						send(200, { switched: true, ...result }), () => send(409, {
 						error: 'Could not confirm the switch. Review the preview again.',
 					}))
-					return
-				}
-				if (actions.config.mode === 'youtube') {
-					send(409, { error: 'API-to-cookie switching is unavailable.' })
 					return
 				}
 				if (url.pathname === '/api/cookies/inspect') {
@@ -617,6 +614,7 @@ export const createDashboardHandler = (
 			return { mode: actions!.config.mode,
 				connection: await actions!.cookieStatus(),
 				cleanupPending: await actions!.cookieCleanupPending(),
+				oauthCleanupPending: await actions!.oauthCleanupPending?.() ?? false,
 				environmentCookie: process.env.YOUTUBE_COOKIE !== undefined }
 		}
 		if (url.pathname === '/api/subscriptions/export') {

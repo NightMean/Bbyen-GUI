@@ -215,6 +215,7 @@ test('validates writes and schedules refresh after saving', async () => {
 		expect(calls).toContain(`${id}:false`)
 		await axios.post(`${base}/api/channels/remove`, { channelId: id })
 		expect(calls.slice(-2)).toEqual([`remove:${id}`, 'subscriptions'])
+		config.mode = 'youtube'
 		const inspected = await axios.post(`${base}/api/cookies/inspect`,
 			{ cookie: 'SAPISID=synthetic-fixture' })
 		expect(JSON.stringify(inspected.data)).not.toContain('synthetic-fixture')

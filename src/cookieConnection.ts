@@ -7,6 +7,7 @@ import {
 	extractSapisidFromCookie, ChannelBellState,
 } from './lib/innertubeChannels'
 import { ResolvedCookieProfile } from './lib/cookieProfiles'
+import { recordOAuthCleanup } from './oauthCleanup'
 
 export interface CookieConnection {
 	generation: string,
@@ -21,7 +22,7 @@ export class CookieConnectionStore {
 	constructor(private readonly db: sqlite.Database) {}
 
 	async activate(cookieHeader: string, profile: ResolvedCookieProfile,
-		channels: ChannelBellState[]): Promise<string> {
+		channels: ChannelBellState[], oauthHash?: string): Promise<string> {
 		if (!Array.isArray(channels) || !channels.length ||
 				typeof cookieHeader !== 'string' || cookieHeader.length > 256 * 1024 ||
 				!extractSapisidFromCookie(cookieHeader) || !profile.selectable ||
@@ -40,6 +41,7 @@ export class CookieConnectionStore {
 			if (await this.cleanupPending()) {
 				throw new Error('Previous cookie cleanup must finish first.')
 			}
+			if (oauthHash) await recordOAuthCleanup(this.db, oauthHash)
 			await reconcileCookieSnapshot(this.db, {
 				profileKey: profile.channelId, complete: true, activateProfile: true,
 				suppressNotifications: true, channels,
@@ -142,5 +144,9 @@ export class CookieConnectionStore {
 
 	async cleanupPending(): Promise<boolean> {
 		return !!await this.db.get('SELECT id FROM cookie_cleanup WHERE id=1')
+	}
+
+	async oauthCleanupPending(): Promise<boolean> {
+		return !!await this.db.get('SELECT id FROM oauth_cleanup WHERE id=1')
 	}
 }

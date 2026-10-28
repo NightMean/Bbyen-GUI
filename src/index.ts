@@ -3,7 +3,7 @@ import parseDuration from 'parse-duration'
 import { createServer, Server } from 'http'
 import {
 	CHANNELS_FILE, CONFIG_DIR, CONFIG_FILE, SECRETS_FILE, loadConfig,
-	loadConfigRaw, loadEmailConfig,
+	loadEmailConfig, loadValidatedConfigRaw,
 } from './config'
 import * as database from './database'
 import { recoverPendingVideoEmails } from './videoSchema'
@@ -53,6 +53,7 @@ import { IncidentReminders } from './incidentReminders'
 import { IncidentRecoveries } from './incidentRecoveries'
 import { readCookieFile } from './cookieFile'
 import { CookieFileRecovery } from './cookieFileRecovery'
+import { oauthTokenHash, recoverOAuthCleanup } from './oauthCleanup'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -68,14 +69,8 @@ const startService = async (existingServer?: Server) => {
 	let schedule: RefreshSchedule | undefined
 	try {
 		const service = google.youtube('v3')
-		const raw = await loadConfigRaw()
-		// A usable token still supports API fallback while normalizing channels.
-		const initialAuth = raw.mode === 'whitelist' ? undefined :
-			await authorize({ interactive: false }).catch(() => undefined)
-		const config = await loadConfig(service, initialAuth, {
-			resolveEmail: false,
-		})
-		db = await database.init(config.database)
+		const raw = await loadValidatedConfigRaw()
+		db = await database.init(raw.database)
 		const databaseConnection = db
 		await recoverPendingVideoEmails(db)
 		const cookieStore = new CookieConnectionStore(db)
@@ -83,9 +78,20 @@ const startService = async (existingServer?: Server) => {
 			logger.warn('Cookie cleanup is pending.')
 		}
 		const cookieStatus = await cookieStore.status()
+		// A persisted cookie connection overrides an older API-mode config.
+		const initialAuth = raw.mode !== 'youtube' || cookieStatus ? undefined :
+			await authorize({ interactive: false }).catch(() => undefined)
+		const config = await loadConfig(service, initialAuth, {
+			resolveEmail: false,
+		})
 		if (cookieStatus) {
 			config.mode = 'cookie'
 			config.cookieStale = cookieStatus.stale
+		}
+		if (config.mode !== 'youtube') {
+			try { await recoverOAuthCleanup(db, CONFIG_DIR) } catch {
+				logger.warn('YouTube authorization cleanup is pending.')
+			}
 		}
 
 		// Reject over-long intervals up front: Node's timer delay is a 32-bit
@@ -153,7 +159,17 @@ const startService = async (existingServer?: Server) => {
 		const activeSchedule = schedule
 		schedule.configure({ subscriptions: subscriptionsTimer,
 			videos: videosTimer })
-		const cookiePreviews = new CookiePreviewService(db)
+		const cookieSourceRevision = async () => {
+			if (config.mode === 'youtube') {
+				return `youtube:${await oauthTokenHash(CONFIG_DIR) ?? 'missing'}`
+			}
+			if (config.mode === 'cookie') {
+				return `cookie:${(await cookieStore.read())?.generation ?? 'missing'}`
+			}
+			return config.mode
+		}
+		const cookiePreviews = new CookiePreviewService(db, undefined, undefined,
+			cookieSourceRevision)
 		const manualSwitch = new ManualSourceSwitch(db, config, CONFIG_FILE,
 			CHANNELS_FILE, CONFIG_DIR, cookiePreviews)
 		const handler = createDashboardHandler(db, jobs, {
@@ -161,6 +177,7 @@ const startService = async (existingServer?: Server) => {
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),
 			cookieCleanupPending: () => cookieStore.cleanupPending(),
+			oauthCleanupPending: () => cookieStore.oauthCleanupPending(),
 			manualSwitch,
 			bellActions: new CookieBellActions(db, config, cookieStore,
 				tasks.runSubscriptions),
@@ -169,7 +186,10 @@ const startService = async (existingServer?: Server) => {
 			apiSubscriptionActions: new ApiSubscriptionActions(db, config, service,
 				() => authorize({ interactive: false }), authorizationRevision),
 			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
-				config, cookieStore, cookiePreviews, candidateId, previewId),
+				config, cookieStore, cookiePreviews, candidateId, previewId, {
+					directory: CONFIG_DIR, sourceRevision: cookieSourceRevision,
+					recover: () => recoverOAuthCleanup(databaseConnection, CONFIG_DIR),
+				}),
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),
 			add: (id, backlog) =>
 				addManualChannel(CHANNELS_FILE, config, id, backlog),
@@ -240,6 +260,14 @@ const startService = async (existingServer?: Server) => {
 				.catch(() => logger.warn('Cookie cleanup is pending.')),
 			60_000,
 			false,
+		)
+		setIntervalInstant(
+			() => jobs.maintenance('oauth-cleanup', async () => {
+				if (config.mode !== 'youtube') {
+					await recoverOAuthCleanup(databaseConnection, CONFIG_DIR)
+				}
+			}).catch(() => logger.warn('YouTube authorization cleanup is pending.')),
+			60_000, false,
 		)
 		setIntervalInstant(
 			() => jobs.maintenance('cookie-file-recovery', () => fileRecovery.check())

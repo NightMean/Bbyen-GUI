@@ -12,7 +12,8 @@ interface Candidate {
 	profiles: Map<string, ResolvedCookieProfile>,
 	expiresAt: number,
 	timer: NodeJS.Timeout,
-	preview?: { id: string, profileId: string, fingerprint: string },
+	preview?: { id: string, profileId: string, fingerprint: string,
+		sourceRevision: string },
 }
 
 interface PreviewDependencies {
@@ -30,7 +31,8 @@ export class CookiePreviewService {
 	constructor(private readonly db: sqlite.Database,
 		private readonly deps: PreviewDependencies = {
 			discover: discoverCookieProfiles, fetch: fetchCookieChannels,
-		}, private readonly clock: () => number = Date.now) {}
+		}, private readonly clock: () => number = Date.now,
+		private readonly sourceRevision: () => Promise<string> = async () => '') {}
 
 	private remove(id: string): void {
 		const candidate = this.candidates.get(id)
@@ -69,6 +71,7 @@ export class CookiePreviewService {
 
 	async compare(candidateId: string, profileId: string) {
 		const candidate = this.candidate(candidateId)
+		const sourceRevision = await this.sourceRevision()
 		const profile = candidate.profiles.get(profileId)
 		if (!profile?.selectable || !profile.channelId) {
 			throw new Error('Selected cookie profile is unavailable.')
@@ -80,12 +83,13 @@ export class CookiePreviewService {
 			throw new Error('Cookie preview expired.')
 		}
 		const comparison = await this.compareSnapshot(profile.channelId, channels)
-		if (this.candidate(candidateId) !== candidate) {
+		if (this.candidate(candidateId) !== candidate ||
+				sourceRevision !== await this.sourceRevision()) {
 			throw new Error('Cookie preview expired.')
 		}
 		const id = randomUUID()
 		candidate.preview = { id, profileId,
-			fingerprint: this.fingerprint(channels, comparison) }
+			fingerprint: this.fingerprint(channels, comparison), sourceRevision }
 		return { previewId: id, ...comparison }
 	}
 
@@ -154,12 +158,13 @@ export class CookiePreviewService {
 
 	async confirm(candidateId: string, previewId: string): Promise<{
 		cookieHeader: string, profile: ResolvedCookieProfile,
-		channels: ChannelBellState[],
+		channels: ChannelBellState[], sourceRevision: string,
 	}> {
 		const candidate = this.candidate(candidateId)
 		const preview = candidate.preview
 		const profile = preview && candidate.profiles.get(preview.profileId)
-		if (!preview || preview.id !== previewId || !profile?.channelId) {
+		if (!preview || preview.id !== previewId || !profile?.channelId ||
+				preview.sourceRevision !== await this.sourceRevision()) {
 			throw new Error('Cookie preview is no longer available.')
 		}
 		const channels = await this.deps.fetch({ cookie: candidate.cookieHeader,
@@ -173,12 +178,14 @@ export class CookiePreviewService {
 				candidate.preview !== preview) {
 			throw new Error('Cookie preview expired.')
 		}
-		if (this.fingerprint(channels, comparison) !== preview.fingerprint) {
+		if (this.fingerprint(channels, comparison) !== preview.fingerprint ||
+				preview.sourceRevision !== await this.sourceRevision()) {
 			delete candidate.preview
 			throw new Error('Channels changed; preview again before confirming.')
 		}
 		this.remove(candidateId)
-		return { cookieHeader: candidate.cookieHeader, profile, channels }
+		return { cookieHeader: candidate.cookieHeader, profile, channels,
+			sourceRevision: preview.sourceRevision }
 	}
 
 	cancel(id: string): void { this.remove(id) }

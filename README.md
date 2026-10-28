@@ -360,7 +360,11 @@ currently monitored channels and deleting the stored connection and the matching
 `CONFIG_DIR/cookies.txt` file. Cleanup is retried after a restart; a file changed
 after preview is retained and must be removed separately before reconnecting.
 Environment variables and copies or backups of cookies are not deleted.
-API-to-cookie and combined mode remain unavailable. Google may authorize a
+In API mode, Settings can preview a switch to cookie tracking. Confirming it
+stops API tracking and deletes the saved OAuth token; the Google client file
+is retained. If the token was replaced during cleanup, it is retained and
+Settings reports that cleanup needs attention. Cleanup is retried after restart.
+Combined mode remains unavailable. Google may authorize a
 different YouTube channel from the one selected in the browser, depending on
 the account’s default channel. The app must verify the canonical channel IDs
 before combining sources. See

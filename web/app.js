@@ -92,13 +92,15 @@
   }
   const renderConnection = connection => {
     const active = connection.mode === 'cookie'
+    state.apiConnection = connection.mode === 'youtube'
     $('connection-status').textContent = active ? `${text.connectionCookie}: ${connection.connection?.name || ''}` : connection.mode === 'youtube' ? text.connectionApi : text.connectionManual
     const warnings = []
     if (connection.connection?.stale) warnings.push(text.connectionStale)
     if (connection.cleanupPending) warnings.push(text.cleanupPending)
+    if (connection.oauthCleanupPending) warnings.push(text.oauthCleanupPending)
     if (connection.environmentCookie) warnings.push(text.environmentCookie)
     $('connection-warning').textContent = warnings.join(' ')
-    $('cookie-connect').hidden = connection.mode === 'youtube' || connection.cleanupPending
+    $('cookie-connect').hidden = connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
     $('manual-switch').hidden = !active
   }
   const describeChannels = (heading, channels) => `${heading} (${channels.length})\n${channels.map(channel => `  ${channel.title || channel.channelId}${channel.unconfirmed ? ` · ${text.cookieUnconfirmed}` : ''}`).join('\n')}`
@@ -625,7 +627,7 @@
       const preview = await post('/api/cookies/compare', { candidateId, profileId })
       if (epoch !== state.cookieEpoch) return
       state.cookiePreview = preview.previewId
-      $('cookie-details').textContent = [describeChannels(text.cookieStart, preview.start), describeChannels(text.cookieStop, preview.stop), describeChannels(text.cookieContinue, preview.continuing)].join('\n\n')
+      $('cookie-details').textContent = [state.apiConnection ? text.cookieFromApi : '', describeChannels(text.cookieStart, preview.start), describeChannels(text.cookieStop, preview.stop), describeChannels(text.cookieContinue, preview.continuing)].filter(Boolean).join('\n\n')
       $('cookie-review').hidden = false; showNotice('')
     } catch { if (epoch === state.cookieEpoch) showNotice(text.cookieError) }
     finally { $('cookie-compare').disabled = false }
