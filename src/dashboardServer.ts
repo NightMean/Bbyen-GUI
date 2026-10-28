@@ -38,7 +38,7 @@ interface ChannelActions {
 		included: boolean) => Promise<void>,
 	remove: (channelId: string) => Promise<void>,
 	manualMode: () => boolean,
-	manualNotify: (channelId: string) => boolean | null,
+	channelNotify: (channelId: string) => boolean | null,
 	emailSettings: () => { settings: PublicEmailSettings,
 		userFromEnvironment: boolean, passFromEnvironment: boolean },
 	saveEmail: (settings: PublicEmailSettings) => Promise<void>,
@@ -370,7 +370,8 @@ export const createDashboardHandler = (
 				return
 			}
 			if (url.pathname === '/api/channels/notify') {
-				if ((!actions.manualMode() && actions.config.mode !== 'cookie') ||
+				if ((!actions.manualMode() && actions.config.mode !== 'cookie' &&
+						actions.config.mode !== 'youtube') ||
 						typeof data.notify !== 'boolean') {
 					send(400, { error: 'Notification setting is unavailable.' })
 					return
@@ -658,9 +659,10 @@ export const createDashboardHandler = (
 						emailStatus: eligibility?.(channel.channelId,
 							actions?.config.channelSettingsById?.get(channel.channelId)),
 					} : {}),
-					...(manualMode || (actions?.config.mode === 'cookie' &&
+					...(manualMode || actions?.config.mode === 'youtube' ||
+						(actions?.config.mode === 'cookie' &&
 						channel.cookieSubscribed)
-						? { notify: actions?.manualNotify(channel.channelId) }
+						? { notify: actions?.channelNotify(channel.channelId) }
 						: {}),
 				})) }
 		}

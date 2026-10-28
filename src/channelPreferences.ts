@@ -18,6 +18,22 @@ export const setCookieChannelNotify = async (db: sqlite.Database,
 		JOIN cookie_connection c ON c.channelId=s.profileKey
 		WHERE c.id=1 AND s.channelId=${channelId} AND s.subscribed=1;`)
 	if (!subscribed) throw new Error('Channel is not a confirmed subscription.')
+	await saveChannelNotify(filename, config, channelId, notify)
+}
+
+export const setApiChannelNotify = async (db: sqlite.Database,
+	filename: string, config: Config, channelId: string, notify: boolean,
+): Promise<void> => {
+	assertChannelId(channelId)
+	if (config.mode !== 'youtube') throw new Error('API mode required.')
+	const tracked = await db.get(SQL`SELECT 1 FROM subscriptions
+		WHERE channelId=${channelId} AND deleted=0;`)
+	if (!tracked) throw new Error('Channel is not currently tracked.')
+	await saveChannelNotify(filename, config, channelId, notify)
+}
+
+const saveChannelNotify = async (filename: string, config: Config,
+	channelId: string, notify: boolean): Promise<void> => {
 	const apply = (lists: { whitelistedChannelIds?: ChannelEntry[],
 		blacklistedChannelIds?: ChannelEntry[], manualChannelIds?: ChannelEntry[],
 		savedChannelSettings?: ChannelEntry[] }) => {

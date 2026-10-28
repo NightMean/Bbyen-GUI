@@ -149,7 +149,7 @@ test('validates writes and schedules refresh after saving', async () => {
 		setApiList: async () => undefined,
 		remove: async id => { calls.push(`remove:${id}`) },
 		manualMode: () => config.mode === 'whitelist',
-		manualNotify: () => true,
+		channelNotify: () => true,
 		emailSettings: () => ({ settings: { host: 'smtp.example.test', port: 465,
 			secure: true, sendingContact: 'sender@example.test',
 			destination: 'recipient@example.test' }, userFromEnvironment: false,

@@ -243,6 +243,16 @@ test('service remains up when OAuth credentials are missing', async () => {
 		const lists = JSON.parse(await fs.readFile(
 			path.join(directory, 'channels.json'), 'utf8'))
 		expect(lists.blacklistedChannelIds).toEqual([{ id: channelId }])
+		await axios.post(`${base}/api/channels/notify`,
+			{ channelId, notify: false })
+		const muted = (await axios.get(`${base}/api/channels`)).data.channels[0]
+		expect(muted).toMatchObject({ notify: false, muted: true,
+			emailStatus: 'muted', blocklisted: true })
+		await axios.post(`${base}/api/channels/notify`, { channelId, notify: true })
+		const afterUnmute = (await axios.get(`${base}/api/channels`))
+			.data.channels[0]
+		expect(afterUnmute.emailStatus)
+			.toBe('excluded')
 
 
 	} finally {

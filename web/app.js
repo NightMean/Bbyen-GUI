@@ -139,7 +139,7 @@
     if (video.sentAt) outcome.append(element('div', '', displayDate(video.sentAt)))
     row.append(thumb, body, outcome); return row
   }
-  const renderChannel = (channel, cookieMode, apiMode) => {
+  const renderChannel = (channel, cookieMode, apiMode, manualMode) => {
     const row = element('article', 'channel-row')
     const img = element('img', 'avatar'); img.alt = ''; img.loading = 'lazy'
     const source = safeImage(channel.channelThumbnail); if (source) img.src = source
@@ -235,7 +235,7 @@
         catch { showNotice(text.settingError) } finally { mute.disabled = false }
       }); row.append(mute)
     }
-    if (!cookieMode && typeof channel.notify === 'boolean' && !channel.deleted) {
+    if (manualMode && typeof channel.notify === 'boolean' && !channel.deleted) {
       const remove = element('button', 'quiet', text.remove)
       remove.type = 'button'; remove.addEventListener('click', async () => {
         if (!window.confirm(text.removeConfirm)) return
@@ -386,7 +386,7 @@
         if (sequence !== state.sequence) return
         $('list-label').textContent = `${found.length} ${text.channels}`
         $('cookie-stale').hidden = !all.cookieMode || !all.cookieStale
-        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode, all.apiMode)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
+        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode, all.apiMode, all.manualMode)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
         $('paging').hidden = true; return
       }
       const from = $('from').value, through = $('through').value

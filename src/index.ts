@@ -40,7 +40,9 @@ import { recoverCookieCleanup } from './cookieCleanup'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
-import { setCookieChannelNotify } from './cookieChannelPreferences'
+import {
+	setApiChannelNotify, setCookieChannelNotify,
+} from './channelPreferences'
 import { setApiChannelList } from './apiChannelLists'
 import { saveUnsubscribePreference } from './unsubscribePreference'
 import { TitleAlerts } from './titleAlerts'
@@ -171,12 +173,16 @@ const startService = async (existingServer?: Server) => {
 			setNotify: (id, notify) => config.mode === 'cookie'
 				? setCookieChannelNotify(databaseConnection, CHANNELS_FILE, config,
 					id, notify)
-				: setManualChannelNotify(CHANNELS_FILE, config, id, notify),
+				: config.mode === 'youtube'
+					? setApiChannelNotify(databaseConnection, CHANNELS_FILE, config,
+						id, notify)
+					: setManualChannelNotify(CHANNELS_FILE, config, id, notify),
 			setApiList: (id, list, included) => setApiChannelList(
 				databaseConnection, CHANNELS_FILE, config, id, list, included),
 			remove: id => removeManualChannel(CHANNELS_FILE, config, id),
 			manualMode: () => config.mode === 'whitelist',
-			manualNotify: id => config.mode === 'cookie' ||
+			channelNotify: id => config.mode === 'cookie' ||
+				config.mode === 'youtube' ||
 				config.whitelistedChannelIds?.some(c => c.id === id)
 				? config.channelSettingsById?.get(id)?.notify !== false : null,
 			emailSettings: () => ({ settings: publicEmailSettings(config),

@@ -342,10 +342,14 @@ describe('video failure recovery', () => {
 			WHERE videoId='new-video'`)).toEqual({ emailOutcome: 'sent' })
 	})
 
-	test.each(['whitelist', 'cookie'] as const)(
+	test.each(['whitelist', 'cookie', 'youtube'] as const)(
 		'unmuting does not replay muted videos in %s mode', async mode => {
 			const muted = { ...config, mode, channelSettingsById:
 			new Map([['UCfixture', { id: 'UCfixture', notify: false }]]) }
+			list.mockResolvedValue({ data: { items: [{ snippet: {
+				title: 'Video', channelTitle: 'Creator',
+				thumbnails: { high: { url: 'thumb' } },
+			}, contentDetails: { duration: 'PT1M' } }] } })
 			await parseFeedsAndNotify({ ...args(), config: muted } as never)
 			vi.mocked(RSSParser.prototype.parseURL).mockResolvedValue({ items: [
 				{ videoId: 'new-video', title: 'Video',

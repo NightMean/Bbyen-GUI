@@ -5,7 +5,9 @@ import { expect, test, vi } from 'vitest'
 import { Config } from './config'
 import { init } from './database'
 import { CookieConnectionStore } from './cookieConnection'
-import { setCookieChannelNotify } from './cookieChannelPreferences'
+import {
+	setApiChannelNotify, setCookieChannelNotify,
+} from './channelPreferences'
 import { makeEmailEligibility } from './emailPolicy'
 
 const channel = 'UC0000000000000000000002'
@@ -77,3 +79,31 @@ test('reconciles runtime settings after a write reports cleanup failure',
 			await fs.rm(dir, { recursive: true, force: true })
 		}
 	})
+
+test('persists API email mute without changing list membership', async () => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-api-mute-'))
+	const file = path.join(dir, 'channels.json')
+	const db = await init({ filename: ':memory:' })
+	const config = { mode: 'youtube',
+		emailSelectionPolicy: 'blocklist' } as Config
+	try {
+		await fs.writeFile(file, JSON.stringify({ whitelistedChannelIds: [],
+			blacklistedChannelIds: [] }))
+		await db.run(`INSERT INTO subscriptions
+			(channelId, channelTitle, channelThumbnail) VALUES (?, 'Creator', '')`,
+		channel)
+		await setApiChannelNotify(db, file, config, channel, false)
+		expect(config.whitelistedChannelIds).toEqual([])
+		expect(config.blacklistedChannelIds).toEqual([])
+		expect(makeEmailEligibility(config)(channel,
+			config.channelSettingsById?.get(channel))).toBe('muted')
+		await setApiChannelNotify(db, file, config, channel, true)
+		expect(makeEmailEligibility(config)(channel,
+			config.channelSettingsById?.get(channel))).toBe('eligible')
+		await expect(setApiChannelNotify(db, file, config,
+			'UC0000000000000000000003', false)).rejects.toThrow()
+	} finally {
+		await db.close()
+		await fs.rm(dir, { recursive: true, force: true })
+	}
+})
