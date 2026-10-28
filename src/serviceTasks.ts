@@ -182,9 +182,10 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 					apiChecked: true }
 			}
 		}
-		const currentAuth = (await getAuth(mailers)).auth
+		const authorization = await getAuth(mailers)
+		const currentAuth = authorization.auth
 		if (deps.config.mode === 'youtube' && !currentAuth) {
-			return unavailable('auth')
+			return unavailable(authorization.category ?? 'auth')
 		}
 		const result = await updateSubscriptions({
 			db: deps.db, service: deps.service, auth: currentAuth,
@@ -210,26 +211,26 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		if (!mailers) return unavailable('other')
 		const authorization = await getAuth(mailers)
 		const currentAuth = authorization.auth
-		if (deps.config.apiEnrichment && authorization.category === 'quota') {
+		if (authorization.category === 'quota') {
 			return unavailable('quota')
 		}
-		if (deps.config.mode === 'youtube' && !currentAuth) {
-			return unavailable('auth')
-		}
+		const rssFallback = !currentAuth &&
+			(deps.config.mode === 'youtube' || !!deps.config.apiEnrichment)
 		const result = await parseFeedsAndNotify({
 			db: deps.db, service: deps.service, auth: currentAuth,
 			config: deps.config,
 			sendVideoEmail: mailers.sendVideoEmail,
 			sendErrorEmail: mailers.sendErrorEmail,
 			alerts: jobAlerts,
-			rssOnly: !!deps.config.apiEnrichment && !currentAuth,
+			rssOnly: rssFallback,
 		})
 		if (result.errorCategory === 'auth' && auth === currentAuth) {
 			auth = undefined
 		}
-		return deps.config.apiEnrichment && !currentAuth
+		return rssFallback
 			? { ...result, status: result.status === 'failed' ? 'failed' : 'partial',
-				errorCategory: 'auth' } : result
+				errorCategory: result.errorCategory ?? 'auth', apiChecked: false } :
+			result
 	}
 	const runRssVideos = async (): Promise<RefreshResult> => {
 		if (deps.config.manualTransitionPending) return unavailable('other')

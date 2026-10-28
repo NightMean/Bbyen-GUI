@@ -116,6 +116,32 @@ test('pauses video checks until SMTP becomes available', async () => {
 	expect(parseFeedsAndNotify).toHaveBeenCalledTimes(1)
 })
 
+test('checks API channels through RSS when authorization fails', async () => {
+	vi.mocked(parseFeedsAndNotify).mockResolvedValue(success)
+	const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+		config: { mode: 'youtube', logging: { emailOnError: false } } as Config,
+		logger, loadMailers: vi.fn().mockResolvedValue(mailers),
+		loadAuth: vi.fn().mockRejectedValue(new Error('expired')) })
+	expect(await tasks.runVideos()).toMatchObject({ status: 'partial',
+		errorCategory: 'auth', apiChecked: false })
+	expect(vi.mocked(parseFeedsAndNotify).mock.calls[0][0].rssOnly).toBe(true)
+})
+
+test('reports API account verification throttling to the quota scheduler',
+	async () => {
+		const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+			config: { mode: 'youtube', logging: { emailOnError: false } } as Config,
+			logger, loadMailers: vi.fn().mockResolvedValue(mailers),
+			loadAuth: vi.fn().mockResolvedValue({}),
+			verifyApiAuth: vi.fn().mockRejectedValue({ response: { status: 429 } }),
+		})
+		expect(await tasks.runSubscriptions()).toMatchObject({ status: 'failed',
+			errorCategory: 'quota' })
+		expect(await tasks.runVideos()).toMatchObject({ status: 'failed',
+			errorCategory: 'quota' })
+		expect(parseFeedsAndNotify).not.toHaveBeenCalled()
+	})
+
 test('uses cookie reconciliation without OAuth credentials', async () => {
 	const refreshCookies = vi.fn().mockResolvedValue(success)
 	const loadAuth = vi.fn()

@@ -310,6 +310,8 @@ Further retries continue at four-hour intervals without
 repeating the alert. Retry state survives restart; the scheduler checks for
 due retries approximately once per minute.
 During video API quota backoff, RSS checks continue using available feed data.
+If API authorization fails, video checks also continue through RSS for the
+last saved channel list and report a partial result until authorization recovers.
 Duration and livestream classification may be unavailable. On later API
 recovery, the service enriches retained observations without resending their
 video emails, including observations no longer present in the current feed.

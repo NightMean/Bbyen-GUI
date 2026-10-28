@@ -93,3 +93,44 @@ test('RSS continues during quota backoff and API recovery enriches videos',
 			await db.close()
 		}
 	})
+
+test('RSS persists videos through authorization failure and API recovery',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		const id = 'UC0000000000000000000001'
+		try {
+			await db.run(`INSERT INTO subscriptions
+				(channelId, channelTitle, channelThumbnail)
+				VALUES (?, 'Creator', 'img')`, id)
+			vi.spyOn(RSSParser.prototype, 'parseURL').mockResolvedValue({
+				title: 'Creator', items: [{ videoId: 'video', title: 'Video',
+					isoDate: '2026-01-01T00:00:00Z' }],
+			} as never)
+			const sendVideoEmail = vi.fn().mockResolvedValue(undefined)
+			const loadAuth = vi.fn().mockRejectedValueOnce(new Error('expired'))
+				.mockResolvedValue({})
+			const list = vi.fn().mockResolvedValue({ data: { items: [{
+				snippet: { title: 'Video', channelTitle: 'Creator',
+					publishedAt: '2026-01-01T00:00:00Z',
+					thumbnails: { high: { url: 'image' } } },
+				contentDetails: { duration: 'PT2M' },
+			}] } })
+			const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+				whitelistedChannelIds: [{ id }], blacklistedChannelIds: [],
+				notifyOnFirstScan: true,
+				logging: { emailOnError: false } } as unknown as Config
+			const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+			const tasks = createServiceTasks({ db, config, logger, loadAuth,
+				service: { videos: { list } } as never,
+				loadMailers: vi.fn().mockResolvedValue({ sendVideoEmail,
+					sendErrorEmail: vi.fn() }),
+			})
+			expect(await tasks.runVideos()).toMatchObject({ status: 'partial',
+				errorCategory: 'auth', apiChecked: false })
+			expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+			expect((await tasks.runVideos()).status).toBe('success')
+			expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+			expect(await db.get('SELECT durationSeconds FROM video_observations ' +
+				'WHERE videoId=?', 'video')).toEqual({ durationSeconds: 120 })
+		} finally { vi.restoreAllMocks(); await db.close() }
+	})
