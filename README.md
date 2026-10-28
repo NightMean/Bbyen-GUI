@@ -367,6 +367,12 @@ In cookie and API modes, channel mute controls affect BBYEN email only; they do
 not change the YouTube subscription or bell. Preferences are kept across source
 switches, and unmuting does not resend videos discovered while muted.
 
+In API mode with an explicit email policy and YouTube management permission,
+the Channels page can unsubscribe on YouTube and undo a confirmed unsubscribe.
+Undo restores the subscription, but the YouTube Data API cannot restore its bell
+setting. If YouTube does not promptly confirm a request, review its current
+state before attempting another change. These requests appear in Activity.
+
 In cookie mode, adding a channel subscribes on YouTube and the Channels page can
 unsubscribe. The Channels page can request available YouTube bell options;
 monitoring starts when All is confirmed. Some channels do not offer a changeable

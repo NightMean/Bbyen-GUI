@@ -104,6 +104,13 @@ test('validates writes and schedules refresh after saving', async () => {
 	const cookieStore = new CookieConnectionStore(db)
 	let bell: 'all' | 'personalized' = 'all'
 	let subscribed = false
+	const apiActions = {
+		status: async () => ({ profileKey: id, canManage: true }),
+		unsubscribe: async () => 'confirmed',
+		undo: async () => 'confirmed',
+		review: async () => ({ current: false, previousTarget: false }),
+		acknowledge: async () => undefined,
+	}
 	const cookiePreviews = new CookiePreviewService(db, {
 		discover: async () => ({ cookieHeader: 'SAPISID=synthetic-fixture',
 			profiles: [{ name: 'Profile', selected: true, selectable: true,
@@ -113,6 +120,7 @@ test('validates writes and schedules refresh after saving', async () => {
 	})
 	const server = createDashboardServer(db, jobs, {
 		config,
+		apiSubscriptionActions: apiActions as never,
 		imports: new SubscriptionImportService('unused', {} as Config),
 		cookiePreviews,
 		cookieStatus: () => cookieStore.status(),
@@ -265,6 +273,26 @@ test('validates writes and schedules refresh after saving', async () => {
 			{ validateStatus: () => true })
 		expect(blocked.status).toBe(409)
 		expect(calls.filter(call => call === id)).toHaveLength(1)
+		config.mode = 'youtube'
+		config.emailSelectionPolicy = 'allowlist'
+		await db.run(`INSERT INTO channel_sources (channelId, apiSubscribed)
+			VALUES (?, 1)`, id)
+		await db.run(`INSERT INTO api_subscription_actions
+			(id, profileKey, channelId, target, state, startedAt)
+			VALUES ('action', ?, ?, 0, 'uncertain', '2026-01-01')`, id, id)
+		const apiStatus = (await axios.get(`${base}/api/youtube-actions`)).data
+		expect(apiStatus.canManage).toBe(true)
+		expect(apiStatus.channels).toMatchObject([{ channelId: id,
+			apiSubscribed: 1, uncertain: 1 }])
+		expect((await axios.post(subscription, { channelId: id,
+			subscribed: false })).data.outcome).toBe('confirmed')
+		expect((await axios.post(`${subscription}/undo`, { channelId: id })).data)
+			.toEqual({ subscription: 'confirmed', bell: 'unavailable' })
+		expect((await axios.post(`${subscription}/review`, { channelId: id })).data)
+			.toEqual({ current: false, previousTarget: false })
+		const activity = (await axios.get(`${base}/api/activity`)).data
+		expect(activity.items.some((item: { kind: string }) =>
+			item.kind === 'apiSubscription')).toBe(true)
 		let finish!: () => void
 		const hold = new Promise<void>(resolve => { finish = resolve })
 		const work = jobs.run('videos', async () => {

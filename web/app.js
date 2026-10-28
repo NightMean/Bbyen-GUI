@@ -76,6 +76,7 @@
     $('paging').hidden = true
     $('dates').hidden = page !== 'videos'
     $('daily-counts').hidden = page !== 'videos'
+    $('api-action-status').hidden = true
     $('channel-filter-label').hidden = page !== 'channels'
     $('filter-label').hidden = page !== 'videos' || !state.channel
     $('cookie-stale').hidden = true
@@ -140,7 +141,7 @@
     if (video.sentAt) outcome.append(element('div', '', displayDate(video.sentAt)))
     row.append(thumb, body, outcome); return row
   }
-  const renderChannel = (channel, cookieMode, apiMode, manualMode) => {
+  const renderChannel = (channel, cookieMode, apiMode, manualMode, apiActions) => {
     const row = element('article', 'channel-row')
     const img = element('img', 'avatar'); img.alt = ''; img.loading = 'lazy'
     const source = safeImage(channel.channelThumbnail); if (source) img.src = source
@@ -177,7 +178,7 @@
         finally { undo.disabled = false }
       }); row.append(undo)
     }
-    if (cookieMode && channel.subscriptionUncertain) {
+    if ((cookieMode && channel.subscriptionUncertain) || (apiMode && channel.apiUncertain)) {
       const review = element('button', 'outline', text.subscriptionReview)
       review.type = 'button'; review.addEventListener('click', () => reviewSubscription(channel.channelId)); row.append(review)
     } else if (cookieMode && channel.bellUncertain) {
@@ -212,7 +213,7 @@
         finally { apply.disabled = false; select.disabled = false }
       }); row.append(apply)
     }
-    if (cookieMode && channel.cookieSubscribed && !channel.undoIncomplete && !channel.subscriptionUncertain && !channel.bellUncertain) {
+    if ((cookieMode && channel.cookieSubscribed && !channel.undoIncomplete && !channel.subscriptionUncertain && !channel.bellUncertain) || (apiMode && apiActions.canManage && channel.apiSubscribed && !channel.apiUncertain)) {
       const remove = element('button', 'quiet', text.unsubscribe)
       remove.type = 'button'; remove.addEventListener('click', async () => {
         remove.disabled = true
@@ -227,6 +228,16 @@
           showNotice(result.outcome === 'uncertain' ? text.subscriptionUncertain : text.unsubscribed); load()
         } catch { showNotice(text.subscriptionError); load() } finally { remove.disabled = false }
       }); row.append(remove)
+    }
+    if (apiMode && apiActions.canManage && channel.apiUndoAvailable && !channel.apiSubscribed && !channel.apiUncertain) {
+      const undo = element('button', 'outline', text.undoUnsubscribe)
+      undo.type = 'button'; undo.addEventListener('click', async () => {
+        undo.disabled = true
+        try {
+          const result = await post('/api/channels/subscription/undo', { channelId: channel.channelId })
+          showNotice(result.subscription === 'uncertain' ? text.subscriptionUncertain : text.apiUndoComplete); load()
+        } catch { showNotice(text.undoError); load() } finally { undo.disabled = false }
+      }); row.append(undo)
     }
     if (typeof channel.notify === 'boolean' && (!channel.deleted || (cookieMode && channel.cookieSubscribed))) {
       const mute = element('button', 'outline channel-mute', channel.notify ? text.mute : text.unmute)
@@ -340,6 +351,12 @@
             row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}${text['titleEmail_' + change.emailState] ? ` · ${text['titleEmail_' + change.emailState]}` : ''}`))
             return row
           }
+          if (item.kind === 'apiSubscription') {
+            const change = item.value, row = element('article', 'incident-row')
+            const target = change.target ? text.subscriptionOn : text.subscriptionOff
+            row.append(element('h3', '', text.apiActivity), element('p', 'meta', `${change.channelTitle || change.channelId} · ${target} · ${text['apiAction_' + change.state] || ''} · ${displayDate(change.observedAt)}`))
+            return row
+          }
           if (item.kind === 'bell') {
             const change = item.value, row = element('article', 'incident-row')
             const title = element('h3', '', change.previousState === null ? text.bellObserved : text.bellActivity)
@@ -364,7 +381,7 @@
         }) : [element('p', 'empty', text.emptyActivity)]))
         return
       }
-      const all = await request('/api/channels')
+      const [all, apiActions] = await Promise.all([request('/api/channels'), state.page === 'channels' ? request('/api/youtube-actions') : Promise.resolve({ available: false, canManage: false, channels: [] })])
       if (sequence !== state.sequence) return
       state.cookieMode = all.cookieMode
       state.confirmUnsubscribe = all.confirmUnsubscribe
@@ -375,6 +392,15 @@
       $('backlog-label').hidden = $('backlog').hidden = all.cookieMode
       $('backlog-count-label').hidden = all.cookieMode || $('backlog').value !== 'newest'
       if (state.page === 'channels') {
+        const apiStates = new Map(apiActions.channels.map(item => [item.channelId, item]))
+        for (const channel of all.channels) {
+          const item = apiStates.get(channel.channelId)
+          channel.apiSubscribed = !!item?.apiSubscribed
+          channel.apiUncertain = !!item?.uncertain
+          channel.apiUndoAvailable = !!item?.undoAvailable
+        }
+        $('api-action-status').hidden = !all.apiMode || (apiActions.available && apiActions.canManage)
+        $('api-action-status').textContent = apiActions.available ? text.apiReadOnly : text.apiActionsUnavailable
         const term = $('search').value.toLocaleLowerCase()
         const filter = $('channel-filter').value
         const found = all.channels.filter(c => {
@@ -389,7 +415,7 @@
         if (sequence !== state.sequence) return
         $('list-label').textContent = `${found.length} ${text.channels}`
         $('cookie-stale').hidden = !all.cookieMode || !all.cookieStale
-        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode, all.apiMode, all.manualMode)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
+        $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode, all.apiMode, all.manualMode, apiActions)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
         $('paging').hidden = true; return
       }
       const from = $('from').value, through = $('through').value

@@ -25,6 +25,7 @@ import { CookiePreviewService } from './cookiePreview'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
+import { ApiSubscriptionActions } from './apiSubscriptionActions'
 import { BellNotificationPreference } from './lib/innertubeChannels'
 import { ApiChannelList } from './apiChannelLists'
 import { makeEmailEligibility } from './emailPolicy'
@@ -56,6 +57,7 @@ interface ChannelActions {
 	cookieCleanupPending: () => Promise<boolean>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
+	apiSubscriptionActions?: ApiSubscriptionActions,
 }
 
 /** Dashboard API. Database work shares the refresh queue. */
@@ -400,16 +402,26 @@ export const createDashboardHandler = (
 			}
 			if (url.pathname === '/api/channels/subscription/undo') {
 				void jobs.maintenance(randomUUID(), () =>
-					actions.subscriptionActions.undo(id, (channelId, preference) =>
-						actions.bellActions.change(channelId, preference, true)))
-					.then(outcome => send(200, outcome), () => send(409, {
+					actions.config.mode === 'youtube' && actions.apiSubscriptionActions
+						? actions.apiSubscriptionActions.undo(id).then(subscription =>
+							({ subscription, bell: 'unavailable' }))
+						: actions.subscriptionActions.undo(id, (channelId, preference) =>
+							actions.bellActions.change(channelId, preference, true)))
+					.then(outcome => {
+						if (actions.config.mode === 'youtube') {
+							actions.refresh('subscriptions')
+						}
+						send(200, outcome)
+					}, () => send(409, {
 						error: 'Could not undo the YouTube unsubscribe.',
 					}))
 				return
 			}
 			if (url.pathname === '/api/channels/subscription/review') {
 				void jobs.maintenance(randomUUID(), () =>
-					actions.subscriptionActions.review(id)).then(result =>
+					actions.config.mode === 'youtube' && actions.apiSubscriptionActions
+						? actions.apiSubscriptionActions.review(id)
+						: actions.subscriptionActions.review(id)).then(result =>
 					send(200, result), () => send(409, {
 					error: 'Could not verify the account and subscription.',
 				}))
@@ -423,15 +435,33 @@ export const createDashboardHandler = (
 				const subscribed = data.subscribed
 				if (url.pathname.endsWith('/acknowledge')) {
 					void jobs.maintenance(randomUUID(), () =>
-						actions.subscriptionActions.acknowledge(id, subscribed)).then(() =>
-						send(200, { acknowledged: true }), () => send(409, {
-						error: 'Could not verify the account and subscription.',
-					}))
+						actions.config.mode === 'youtube' && actions.apiSubscriptionActions
+							? actions.apiSubscriptionActions.acknowledge(id, subscribed)
+							: actions.subscriptionActions.acknowledge(id, subscribed))
+						.then(() => {
+							if (actions.config.mode === 'youtube') {
+								actions.refresh('subscriptions')
+							}
+							send(200, { acknowledged: true })
+						}, () => send(409, {
+							error: 'Could not verify the account and subscription.',
+						}))
 					return
 				}
-				void jobs.maintenance(randomUUID(), () =>
-					actions.subscriptionActions.change(id, subscribed)).then(outcome =>
-					send(200, { outcome }), () => send(409, {
+				void jobs.maintenance(randomUUID(), () => {
+					if (actions.config.mode === 'youtube') {
+						if (!actions.apiSubscriptionActions || subscribed) {
+							throw new Error('API subscription action is unavailable.')
+						}
+						return actions.apiSubscriptionActions.unsubscribe(id)
+					}
+					return actions.subscriptionActions.change(id, subscribed)
+				}).then(outcome => {
+					if (actions.config.mode === 'youtube') {
+						actions.refresh('subscriptions')
+					}
+					send(200, { outcome })
+				}, () => send(409, {
 					error: 'Could not verify the account and subscription.',
 				}))
 				return
@@ -505,6 +535,7 @@ export const createDashboardHandler = (
 	if ((url.search &&
 			!['/api/videos', '/api/activity'].includes(url.pathname)) ||
 			!['/api/health', '/api/channels', '/api/videos',
+				'/api/youtube-actions',
 				'/api/refresh', '/api/incidents', '/api/email/settings',
 				'/api/email/tests', '/api/subscriptions/export', '/api/schedule',
 				'/api/settings', '/api/cookies/status', '/api/channel-events',
@@ -515,6 +546,27 @@ export const createDashboardHandler = (
 	}
 	if (url.pathname === '/api/health') {
 		send(200, { status: 'running' })
+		return
+	}
+	if (url.pathname === '/api/youtube-actions') {
+		if (!actions?.apiSubscriptionActions || actions.config.mode !== 'youtube') {
+			send(200, { available: false, canManage: false, channels: [] }); return
+		}
+		void jobs.maintenance(randomUUID(), async () => {
+			const status = await actions.apiSubscriptionActions!.status()
+			const channels = await db.all(`SELECT s.channelId, s.apiSubscribed,
+				EXISTS(SELECT 1 FROM api_subscription_actions a
+				WHERE a.profileKey=? AND a.channelId=s.channelId
+				AND a.state IN ('pending', 'uncertain')) AS uncertain,
+				COALESCE((SELECT a.target=0 AND a.state='confirmed'
+				FROM api_subscription_actions a
+				WHERE a.profileKey=? AND a.channelId=s.channelId
+				ORDER BY a.startedAt DESC, a.rowid DESC LIMIT 1), 0) AS undoAvailable
+				FROM channel_sources s`, status.profileKey, status.profileKey)
+			return { available: true, canManage: status.canManage, channels }
+		}).then(result => send(200, result), () => send(200, {
+			available: false, canManage: false, channels: [],
+		}))
 		return
 	}
 	if (url.pathname === '/api/email/settings') {

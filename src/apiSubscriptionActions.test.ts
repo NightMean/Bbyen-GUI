@@ -2,9 +2,11 @@ import { expect, test, vi } from 'vitest'
 import { init } from './database'
 import { Config } from './config'
 import { ApiSubscriptionActions } from './apiSubscriptionActions'
+import { updateSubscriptionsFromAPI } from './subscriptions'
 
 vi.mock('./lib/logger', () => ({ default: async () => ({
 	verbose: () => undefined, info: () => undefined, debug: () => undefined,
+	warn: () => undefined,
 }) }))
 
 const profile = 'UC0000000000000000000000'
@@ -30,7 +32,7 @@ const fixture = async () => {
 	} }) }, subscriptions: { list, delete: remove, insert } }
 	const actions = new ApiSubscriptionActions(db, { mode: 'youtube' } as Config,
 		service as never, async () => auth as never, async () => revision)
-	return { db, actions, auth, remove, insert, list,
+	return { db, actions, auth, service, remove, insert, list,
 		setRevision: (value: string) => { revision = value },
 		setSubscribed: (value: boolean) => { subscribed = value } }
 }
@@ -39,6 +41,8 @@ test('unsubscribes and restores a confirmed subscription without replay',
 	async () => {
 		const f = await fixture()
 		try {
+			expect(await f.actions.status()).toEqual({ profileKey: profile,
+				canManage: true })
 			expect(await f.actions.unsubscribe(channel)).toBe('confirmed')
 			expect(f.remove).toHaveBeenCalledTimes(1)
 			expect(f.remove.mock.calls[0][1]).toMatchObject({ retry: false })
@@ -46,7 +50,33 @@ test('unsubscribes and restores a confirmed subscription without replay',
 				.toBeUndefined()
 			expect(await f.actions.undo(channel)).toBe('confirmed')
 			expect(f.insert).toHaveBeenCalledTimes(1)
+			expect(await f.db.get(`SELECT apiSubscribed FROM channel_sources
+				WHERE channelId=?`, channel)).toEqual({ apiSubscribed: 1 })
 			expect((await f.actions.review(channel)).current).toBe(true)
+		} finally { await f.db.close() }
+	})
+
+test('reconciles a restored channel omitted from the full API listing',
+	async () => {
+		const f = await fixture()
+		try {
+			await f.db.run(`INSERT INTO subscriptions
+				(channelId, channelTitle, channelThumbnail, deleted)
+				VALUES (?, 'Test', '', 1)`, channel)
+			expect(await f.actions.unsubscribe(channel)).toBe('confirmed')
+			expect(await f.actions.undo(channel)).toBe('confirmed')
+			f.list.mockImplementation(async params => ({ data: {
+				items: params.forChannelId ? [{ id: 'subscription-fixture',
+					snippet: { resourceId: { channelId: channel } } }] : [],
+			} }))
+			const result = await updateSubscriptionsFromAPI({ db: f.db,
+				service: f.service as never, auth: f.auth as never,
+				config: { mode: 'youtube',
+					emailSelectionPolicy: 'allowlist' } as Config,
+				sendErrorEmail: vi.fn() })
+			expect(result.recoveredOmissions).toBe(1)
+			expect((await f.db.get('SELECT deleted FROM subscriptions')).deleted)
+				.toBe(0)
 		} finally { await f.db.close() }
 	})
 

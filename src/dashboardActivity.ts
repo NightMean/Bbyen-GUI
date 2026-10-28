@@ -48,6 +48,14 @@ const activityQuery = `
 	FROM channel_added_events e JOIN channel_added_batches b ON b.id=e.batchId
 	LEFT JOIN subscriptions s ON s.channelId=e.channelId
 	UNION ALL
+	SELECT 'apiSubscription', COALESCE(a.finishedAt, a.startedAt), a.id,
+		json_object('channelId', a.channelId,
+			'channelTitle', COALESCE(s.channelTitle, a.channelId),
+			'target', a.target, 'state', a.state,
+			'observedAt', COALESCE(a.finishedAt, a.startedAt))
+	FROM api_subscription_actions a LEFT JOIN subscriptions s
+		ON s.channelId=a.channelId
+	UNION ALL
 	SELECT 'refresh', COALESCE(finishedAt, startedAt), id,
 		json_object('kind', kind, 'status', status, 'startedAt', startedAt,
 			'finishedAt', finishedAt, 'resultStatus',

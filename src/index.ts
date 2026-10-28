@@ -40,6 +40,7 @@ import { recoverCookieCleanup } from './cookieCleanup'
 import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
+import { ApiSubscriptionActions } from './apiSubscriptionActions'
 import {
 	setApiChannelNotify, setCookieChannelNotify,
 } from './channelPreferences'
@@ -165,6 +166,8 @@ const startService = async (existingServer?: Server) => {
 				tasks.runSubscriptions),
 			subscriptionActions: new CookieSubscriptionActions(db, config,
 				cookieStore, tasks.runSubscriptions),
+			apiSubscriptionActions: new ApiSubscriptionActions(db, config, service,
+				() => authorize({ interactive: false }), authorizationRevision),
 			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
 				config, cookieStore, cookiePreviews, candidateId, previewId),
 			imports: new SubscriptionImportService(CHANNELS_FILE, config),

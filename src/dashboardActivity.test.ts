@@ -57,6 +57,19 @@ test('includes refresh outcomes and tolerates unreadable history', async () => {
 	} finally { await db.close() }
 })
 
+test('shows API subscription actions without account credentials', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.run(`INSERT INTO api_subscription_actions
+			(id, profileKey, channelId, target, state, startedAt)
+			VALUES ('action', 'private-profile', 'channel', 0, 'uncertain', '2026')`)
+		const result = await listActivity(db, { limit: 30, offset: 0 })
+		expect(result.items[0]).toMatchObject({ kind: 'apiSubscription',
+			value: { channelId: 'channel', target: 0, state: 'uncertain' } })
+		expect(JSON.stringify(result)).not.toContain('private-profile')
+	} finally { await db.close() }
+})
+
 test('validates activity paging parameters', () => {
 	expect(parseActivityPage(new URLSearchParams('limit=30&offset=100')))
 		.toEqual({ limit: 30, offset: 100 })

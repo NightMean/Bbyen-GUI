@@ -43,6 +43,19 @@ export class ApiSubscriptionActions {
 		return subscriptionId
 	}
 
+	async status() {
+		const context = await this.context()
+		const access = await context.auth.getAccessToken()
+		if (!access.token) throw new Error('YouTube authorization is unavailable.')
+		const info = await context.auth.getTokenInfo(access.token)
+		if (context.revision !== await this.revision() ||
+				this.config.mode !== 'youtube') {
+			throw new Error('YouTube authorization changed.')
+		}
+		return { profileKey: context.profileKey,
+			canManage: info.scopes.some(scope => MANAGE_SCOPES.includes(scope)) }
+	}
+
 	async review(channelId: string) {
 		assertChannelId(channelId)
 		const context = await this.context()
@@ -65,11 +78,27 @@ export class ApiSubscriptionActions {
 				context.revision !== await this.revision()) {
 			throw new Error('YouTube subscription state changed.')
 		}
-		await this.db.run(SQL`UPDATE api_subscription_actions
-			SET state=CASE WHEN target=${expected ? 1 : 0} THEN 'confirmed'
-			ELSE 'acknowledged' END, finishedAt=${new Date().toISOString()}
-			WHERE profileKey=${context.profileKey} AND channelId=${channelId}
-			AND state IN ('pending', 'uncertain');`)
+		await this.db.exec('BEGIN IMMEDIATE')
+		try {
+			await this.db.run(SQL`UPDATE api_subscription_actions
+				SET state=CASE WHEN target=${expected ? 1 : 0} THEN 'confirmed'
+				ELSE 'acknowledged' END, finishedAt=${new Date().toISOString()}
+				WHERE profileKey=${context.profileKey} AND channelId=${channelId}
+				AND state IN ('pending', 'uncertain');`)
+			if (expected) await this.rememberSubscription(channelId)
+			await this.db.exec('COMMIT')
+		} catch (error) {
+			try { await this.db.exec('ROLLBACK') } catch {
+				// Keep the original failure and its pending action.
+			}
+			throw error
+		}
+	}
+
+	private async rememberSubscription(channelId: string) {
+		await this.db.run(SQL`INSERT INTO channel_sources (channelId, apiSubscribed)
+			VALUES (${channelId}, 1) ON CONFLICT(channelId)
+			DO UPDATE SET apiSubscribed=1;`)
 	}
 
 	async unsubscribe(channelId: string) { return this.change(channelId, false) }
@@ -135,8 +164,18 @@ export class ApiSubscriptionActions {
 			// Preserve uncertainty until an explicit review.
 		}
 		const state = confirmed ? 'confirmed' : 'uncertain'
-		await this.db.run(SQL`UPDATE api_subscription_actions SET state=${state},
-			finishedAt=${new Date().toISOString()} WHERE id=${id};`)
+		await this.db.exec('BEGIN IMMEDIATE')
+		try {
+			await this.db.run(SQL`UPDATE api_subscription_actions SET state=${state},
+				finishedAt=${new Date().toISOString()} WHERE id=${id};`)
+			if (confirmed && target) await this.rememberSubscription(channelId)
+			await this.db.exec('COMMIT')
+		} catch (error) {
+			try { await this.db.exec('ROLLBACK') } catch {
+				// Keep the original failure and its pending action.
+			}
+			throw error
+		}
 		return state
 	}
 }
