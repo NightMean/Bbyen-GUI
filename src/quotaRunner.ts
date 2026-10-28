@@ -9,6 +9,8 @@ interface QuotaRunnerOptions {
 	alertsEnabled: () => boolean,
 	work: Record<RefreshKind, () => Promise<RefreshResult>>,
 	rssFallback?: () => Promise<RefreshResult>,
+	subscriptionFallback?: () => Promise<RefreshResult>,
+	subscriptionFallbackEnabled?: () => boolean,
 	reportQuota: () => Promise<boolean>,
 	clearQuota: () => Promise<void>,
 	warn: (message: string) => void,
@@ -34,6 +36,16 @@ export class QuotaRunner {
 		const due = await coordinator.maintenance(`quota-gate:${kind}`, async () =>
 			!this.enabled() || await backoff.isDue(kind))
 		if (!due) {
+			if (kind === 'subscriptions' && this.options.subscriptionFallback &&
+					(this.options.subscriptionFallbackEnabled?.() ?? true)) {
+				return coordinator.run(kind, async () => {
+					const result = await this.options.subscriptionFallback!()
+					return { ...result,
+						status: result.status === 'success' ? 'partial' : result.status,
+						degradedReason: 'quota',
+						errorCategory: result.errorCategory ?? 'quota', apiChecked: false }
+				})
+			}
 			if (kind !== 'videos' || !this.options.rssFallback) return undefined
 			return coordinator.run(kind, async () => {
 				try { return await this.fallback() } catch {

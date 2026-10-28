@@ -41,6 +41,7 @@ const SOURCES: Record<string, string> = {
 	videos: 'Video refresh',
 	subscriptions: 'Subscription refresh',
 	'service-auth': 'YouTube authorization',
+	'combined-api': 'YouTube API metadata',
 	cookie: 'YouTube cookie sync',
 	smtp: 'Email delivery',
 	service: 'Service',

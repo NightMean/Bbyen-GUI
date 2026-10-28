@@ -50,6 +50,8 @@ export type RawChannelEntry = string | {
 export interface Config {
 	email: Omit<EmailConfig, 'auth'> & { auth?: Partial<EmailConfig['auth']> },
 	mode: 'youtube' | 'whitelist' | 'cookie',
+	/** Runtime-only: cookie authority with matching Google API enrichment. */
+	apiEnrichment?: boolean,
 	cookieStale?: boolean,
 	confirmUnsubscribe?: boolean,
 	notifyTitleChanges?: boolean,

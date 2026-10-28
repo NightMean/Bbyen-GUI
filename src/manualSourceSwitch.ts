@@ -37,7 +37,8 @@ export class ManualSourceSwitch {
 	private async snapshot(): Promise<Snapshot> {
 		const connection = await this.db.get(
 			'SELECT generation FROM cookie_connection WHERE id=1')
-		if (!connection || this.config.mode !== 'cookie') {
+		if (!connection || this.config.mode !== 'cookie' ||
+				this.config.apiEnrichment) {
 			throw new Error('Cookie mode is not active.')
 		}
 		const rows = await this.db.all(`SELECT channelId, channelTitle

@@ -85,7 +85,8 @@ export const subscriptionIterator = (
 /** Verify known channel IDs when a listing omits them. */
 export const subscriptionMembershipIterator = (
 	service: youtube_v3.Youtube, auth: OAuth2Client, channelIds: string[],
+	options?: MethodOptions,
 ) => _genericIterator(service.subscriptions.list.bind(service), {
 	auth, part: ['snippet,contentDetails'], mine: true, maxResults: 50,
 	forChannelId: channelIds.join(','),
-})
+}, options)

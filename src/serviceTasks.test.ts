@@ -128,6 +128,69 @@ test('uses cookie reconciliation without OAuth credentials', async () => {
 	expect(loadAuth).not.toHaveBeenCalled()
 })
 
+test('combined mode preserves cookie tracking when Google identity fails',
+	async () => {
+		const refreshCookies = vi.fn().mockResolvedValue(success)
+		const metadata = vi.fn()
+		const alerts = { notify: vi.fn(), clear: vi.fn() }
+		vi.mocked(parseFeedsAndNotify).mockResolvedValue(success)
+		const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+			config: { mode: 'cookie', apiEnrichment: true,
+				logging: { emailOnError: false } } as Config,
+			logger, alerts, loadMailers: vi.fn().mockResolvedValue(mailers),
+			loadAuth: vi.fn().mockResolvedValue({}), refreshCookies,
+			verifyCombinedAuth: vi.fn().mockRejectedValue(new Error('mismatch')),
+			refreshCombinedMetadata: metadata })
+		expect(await tasks.runSubscriptions()).toMatchObject({ status: 'partial',
+			errorCategory: 'auth' })
+		expect(refreshCookies).toHaveBeenCalledTimes(1)
+		expect(metadata).not.toHaveBeenCalled()
+		expect(await tasks.runVideos()).toMatchObject({ status: 'partial',
+			errorCategory: 'auth' })
+		expect(vi.mocked(parseFeedsAndNotify).mock.calls[0][0].rssOnly).toBe(true)
+	})
+
+test('combined metadata omissions are reported while cookie tracking continues',
+	async () => {
+		const refreshCookies = vi.fn().mockResolvedValue(success)
+		const notify = vi.fn()
+		const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+			config: { mode: 'cookie', apiEnrichment: true,
+				logging: { emailOnError: true } } as Config,
+			logger, alerts: { notify, clear: vi.fn() },
+			loadMailers: vi.fn().mockResolvedValue(mailers),
+			loadAuth: vi.fn().mockResolvedValue({}), refreshCookies,
+			verifyCombinedAuth: vi.fn().mockResolvedValue(undefined),
+			refreshCombinedMetadata: vi.fn().mockResolvedValue({
+				matched: 1, total: 2 }),
+		})
+		expect(await tasks.runSubscriptions()).toMatchObject({ status: 'partial',
+			errorCategory: 'other', apiChecked: true })
+		expect(notify).toHaveBeenCalledWith('other', expect.any(Error),
+			expect.objectContaining({ source: 'combined-api', emailOnError: true }))
+	})
+
+test('combined identity quota failures use quota backoff and defer email',
+	async () => {
+		const notify = vi.fn()
+		const tasks = createServiceTasks({ db: {} as never, service: {} as never,
+			config: { mode: 'cookie', apiEnrichment: true,
+				logging: { emailOnError: true } } as Config,
+			logger, alerts: { notify, clear: vi.fn() },
+			loadMailers: vi.fn().mockResolvedValue(mailers),
+			loadAuth: vi.fn().mockResolvedValue({}),
+			refreshCookies: vi.fn().mockResolvedValue(success),
+			verifyCombinedAuth: vi.fn().mockRejectedValue({
+				response: { status: 429 } }),
+		})
+		expect(await tasks.runSubscriptions()).toMatchObject({ status: 'partial',
+			errorCategory: 'quota' })
+		expect(await tasks.runVideos()).toMatchObject({ status: 'failed',
+			errorCategory: 'quota' })
+		expect(notify).toHaveBeenCalledWith('quota', expect.any(Error),
+			expect.objectContaining({ emailOnError: false }))
+	})
+
 test('defers quota emails until retries are exhausted', async () => {
 	const notify = vi.fn().mockResolvedValue(undefined)
 	const alerts = { notify, clear: vi.fn().mockResolvedValue(undefined) }

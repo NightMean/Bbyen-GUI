@@ -5,7 +5,8 @@ import { isChannelId } from './lib/channelId'
 import { ErrorCategory } from './lib/classifyError'
 
 export type IncidentSource =
-	'videos' | 'subscriptions' | 'service-auth' | 'cookie' | 'smtp' | 'service'
+	'videos' | 'subscriptions' | 'service-auth' | 'cookie' | 'smtp' | 'service' |
+	'combined-api'
 
 export interface Incident {
 	id: string,
@@ -24,6 +25,7 @@ export interface Incident {
 
 const SOURCES: IncidentSource[] = [
 	'videos', 'subscriptions', 'service-auth', 'cookie', 'smtp', 'service',
+	'combined-api',
 ]
 const CATEGORIES: ErrorCategory[] = ['auth', 'quota', 'other']
 export const MAX_EMAIL_ATTEMPTS = 5

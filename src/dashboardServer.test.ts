@@ -128,6 +128,11 @@ test('validates writes and schedules refresh after saving', async () => {
 			start: async (port: unknown) => ({ id: 'fixture', url: String(port) }),
 			finish: async () => undefined,
 		} as never,
+		combinedMode: {
+			review: async () => ({ previewId: 'fixture', continuing: [] }),
+			apply: async () => { config.apiEnrichment = true
+				return { cleanupPending: false, apiEnrichment: true } },
+		} as never,
 		compareIdentities: async () => ({ matches: true,
 			api: { channelId: id, title: 'API' },
 			cookie: { channelId: id, name: 'Cookie' } }),
@@ -245,6 +250,17 @@ test('validates writes and schedules refresh after saving', async () => {
 		})
 		const cookieStatus = await axios.get(`${base}/api/cookies/status`)
 		expect(cookieStatus.data.mode).toBe('cookie')
+		expect((await axios.post(`${base}/api/combined/preview`,
+			{ direction: 'invalid' }, { validateStatus: () => true })).status)
+			.toBe(400)
+		const combined = await axios.post(`${base}/api/combined/preview`,
+			{ direction: 'enable' })
+		const applied = await axios.post(`${base}/api/combined/apply`,
+			{ previewId: combined.data.previewId })
+		expect(applied.data.apiEnrichment).toBe(true)
+		expect((await axios.get(`${base}/api/cookies/status`)).data.apiEnrichment)
+			.toBe(true)
+		config.apiEnrichment = false
 		expect((await axios.post(`${base}/api/cookies/compare-identity`, {}))
 			.data.matches).toBe(true)
 		expect(JSON.stringify(cookieStatus.data)).not.toContain('synthetic-fixture')

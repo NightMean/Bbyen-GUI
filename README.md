@@ -377,7 +377,18 @@ protects the authorization code. The dashboard's network connection follows
 your existing HTTP or HTTPS configuration. In cookie mode, the selected Google
 profile must match the cookie profile. This step saves the grant but does not
 switch tracking sources; API mode continues to use `npm run login` for renewal.
-Combined mode remains unavailable. Google may authorize a
+In cookie mode, Settings can enable API enrichment after verifying that both
+connections identify the same YouTube channel. Cookie bell states continue to
+control monitoring; the API supplies video details, channel thumbnails, and
+subscription dates when available. API errors and missing metadata are reported
+without replacing the cookie snapshot. When API quota is exhausted, cookie
+checks and RSS video checks continue while API requests back off. Switching
+back to cookie-only mode deletes the saved OAuth grant, retaining history and
+the Google client file. To change the cookie profile or switch to manual mode,
+first switch to cookie-only mode. API-only to combined switching and other
+source-switch directions still require additional implementation.
+
+Google may authorize a
 different YouTube channel from the one selected in the browser, depending on
 the account’s default channel. The app must verify the canonical channel IDs
 before combining sources. See

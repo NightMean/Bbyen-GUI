@@ -11,6 +11,9 @@ export const activateConfirmedCookie = async (
 	options?: { directory: string, sourceRevision: () => Promise<string>,
 		recover: () => Promise<boolean> },
 ): Promise<void> => {
+	if (config.apiEnrichment) {
+		throw new Error('Disable API enrichment before changing cookie profiles.')
+	}
 	if (await store.cleanupPending()) {
 		throw new Error('Previous cookie cleanup must finish first.')
 	}

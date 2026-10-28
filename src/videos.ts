@@ -107,7 +107,7 @@ const getChannelsVideos = async ({
 	const videosSent = new Set((await db.all(SQL`
 		SELECT videoId FROM videos WHERE channelId=${channelId};
 	`)).map(v => v.videoId))
-	const useApi = config.mode === 'youtube' && !rssOnly
+	const useApi = (config.mode === 'youtube' || config.apiEnrichment) && !rssOnly
 	const limit = Math.min(metadataBudget.remaining,
 		MAX_METADATA_ENRICHMENT_PER_CHANNEL)
 	const pendingMetadata = useApi ? new Set((await db.all(SQL`

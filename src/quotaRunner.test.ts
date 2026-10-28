@@ -107,3 +107,24 @@ test('RSS fallback failure preserves the quota outcome', async () => {
 			.toEqual({ failures: 1 })
 	} finally { await db.close() }
 })
+
+test('continues cookie subscription checks while API quota is in backoff',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		try {
+			const coordinator = new RefreshCoordinator(db, { warn: vi.fn() })
+			const work = vi.fn().mockResolvedValue(throttled)
+			const fallback = vi.fn().mockResolvedValue(success)
+			const runner = new QuotaRunner({ coordinator,
+				backoff: new QuotaBackoff(db), enabled: true,
+				alertsEnabled: () => true, work: { videos: work, subscriptions: work },
+				subscriptionFallback: fallback,
+				reportQuota: vi.fn().mockResolvedValue(true),
+				clearQuota: vi.fn(), warn: vi.fn() })
+			await runner.run('subscriptions')
+			expect(await runner.run('subscriptions')).toMatchObject({
+				status: 'partial', degradedReason: 'quota', apiChecked: false })
+			expect(fallback).toHaveBeenCalledTimes(1)
+			expect(work).toHaveBeenCalledTimes(1)
+		} finally { await db.close() }
+	})

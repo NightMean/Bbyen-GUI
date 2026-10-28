@@ -39,7 +39,7 @@ export class RemoteDesktopAuth {
 	async start(port: unknown) {
 		if (typeof port !== 'number' || !Number.isInteger(port) ||
 				port < 1024 || port > 65535) throw new Error('Invalid callback port.')
-		if (this.config.mode === 'youtube' ||
+		if (this.config.mode === 'youtube' || this.config.apiEnrichment ||
 				await this.store.oauthCleanupPending()) {
 			throw new Error('Authorization cannot be changed in this mode.')
 		}

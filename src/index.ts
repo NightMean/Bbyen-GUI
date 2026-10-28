@@ -56,6 +56,10 @@ import { CookieFileRecovery } from './cookieFileRecovery'
 import { oauthTokenHash, recoverOAuthCleanup } from './oauthCleanup'
 import { compareConnectionIdentities } from './combinedIdentity'
 import { RemoteDesktopAuth } from './remoteDesktopAuth'
+import { CombinedMode } from './combinedMode'
+import { refreshCombinedMetadata } from './combinedMetadata'
+import { readAccountIdentity, sameAccount } from './google/accountIdentity'
+import { withAuthorizationTimeout } from './google/desktopAuthorization'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -80,17 +84,26 @@ const startService = async (existingServer?: Server) => {
 			logger.warn('Cookie cleanup is pending.')
 		}
 		const cookieStatus = await cookieStore.status()
+		const combined = await db.get('SELECT profileKey FROM combined_connection')
+		if (combined && !cookieStatus) {
+			throw new Error('Combined connection is missing its cookie profile.')
+		}
 		// A persisted cookie connection overrides an older API-mode config.
 		const initialAuth = raw.mode !== 'youtube' || cookieStatus ? undefined :
 			await authorize({ interactive: false }).catch(() => undefined)
 		const config = await loadConfig(service, initialAuth, {
 			resolveEmail: false,
 		})
+		config.apiEnrichment = false
 		if (cookieStatus) {
 			config.mode = 'cookie'
 			config.cookieStale = cookieStatus.stale
+			if (combined && combined.profileKey !== cookieStatus.channelId) {
+				throw new Error('Combined account identity does not match the cookie.')
+			}
+			config.apiEnrichment = !!combined
 		}
-		if (config.mode !== 'youtube') {
+		if (config.mode !== 'youtube' && !config.apiEnrichment) {
 			try { await recoverOAuthCleanup(db, CONFIG_DIR) } catch {
 				logger.warn('YouTube authorization cleanup is pending.')
 			}
@@ -135,6 +148,22 @@ const startService = async (existingServer?: Server) => {
 			loadReplacement: () => readCookieFile(CONFIG_DIR) })
 		const tasks = createServiceTasks({ db, service, config, logger,
 			initialAuth, alerts, refreshCookies,
+			verifyCombinedAuth: async auth => {
+				const connection = await cookieStore.read()
+				const revision = await authorizationRevision()
+				const identity = await withAuthorizationTimeout(
+					readAccountIdentity(service, auth))
+				if (!connection || !sameAccount(identity.channelId,
+					connection.profile.channelId) ||
+					(await cookieStore.read())?.generation !== connection.generation ||
+					revision !== await authorizationRevision() || !config.apiEnrichment) {
+					throw new Error('YouTube account identities do not match.')
+				}
+			},
+			refreshCombinedMetadata: async auth => {
+				return refreshCombinedMetadata({ db: databaseConnection, service, auth,
+					store: cookieStore, revision: authorizationRevision })
+			},
 			retryPendingAlerts: (send, enabled) => alerts.retryPending(send, enabled),
 			reportQuotaDurably: options => alerts.notifyDurable('quota',
 				new Error('API quota retry limit reached.'), options),
@@ -143,10 +172,13 @@ const startService = async (existingServer?: Server) => {
 			authRevision: authorizationRevision,
 		})
 		const quota = new QuotaRunner({ coordinator: jobs,
-			backoff: new QuotaBackoff(db), enabled: () => config.mode === 'youtube',
+			backoff: new QuotaBackoff(db), enabled: () =>
+				config.mode === 'youtube' || !!config.apiEnrichment,
 			alertsEnabled: () => config.logging.emailOnError,
 			work: { subscriptions: tasks.runSubscriptions, videos: tasks.runVideos },
 			rssFallback: tasks.runRssVideos,
+			subscriptionFallback: tasks.runCookieSubscriptions,
+			subscriptionFallbackEnabled: () => !!config.apiEnrichment,
 			reportQuota: tasks.reportQuota, clearQuota: tasks.clearQuota,
 			warn: message => logger.warn(message),
 		})
@@ -174,8 +206,11 @@ const startService = async (existingServer?: Server) => {
 			cookieSourceRevision)
 		const manualSwitch = new ManualSourceSwitch(db, config, CONFIG_FILE,
 			CHANNELS_FILE, CONFIG_DIR, cookiePreviews)
+		const combinedMode = new CombinedMode(db, config, cookieStore, service,
+			() => authorize(), authorizationRevision, CONFIG_DIR)
 		const handler = createDashboardHandler(db, jobs, {
 			config,
+			combinedMode,
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),
 			cookieCleanupPending: () => cookieStore.cleanupPending(),
@@ -191,9 +226,9 @@ const startService = async (existingServer?: Server) => {
 			},
 			manualSwitch,
 			bellActions: new CookieBellActions(db, config, cookieStore,
-				tasks.runSubscriptions),
+				tasks.runCookieSubscriptions),
 			subscriptionActions: new CookieSubscriptionActions(db, config,
-				cookieStore, tasks.runSubscriptions),
+				cookieStore, tasks.runCookieSubscriptions),
 			apiSubscriptionActions: new ApiSubscriptionActions(db, config, service,
 				() => authorize({ interactive: false }), authorizationRevision),
 			activateCookie: (candidateId, previewId) => activateConfirmedCookie(
@@ -274,7 +309,7 @@ const startService = async (existingServer?: Server) => {
 		)
 		setIntervalInstant(
 			() => jobs.maintenance('oauth-cleanup', async () => {
-				if (config.mode !== 'youtube') {
+				if (config.mode !== 'youtube' && !config.apiEnrichment) {
 					await recoverOAuthCleanup(databaseConnection, CONFIG_DIR)
 				}
 			}).catch(() => logger.warn('YouTube authorization cleanup is pending.')),

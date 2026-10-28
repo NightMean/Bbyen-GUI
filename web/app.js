@@ -52,6 +52,7 @@
     state.cookieEpoch++
     if (state.cookieCandidate) void post('/api/cookies/cancel', { candidateId: state.cookieCandidate }).catch(() => {})
     state.cookieCandidate = null; state.cookiePreview = null; state.manualPreview = null
+    state.combinedPreview = null; $('combined-review').hidden = true
     $('cookie-input').value = ''; $('cookie-file').value = ''
     $('cookie-profiles').hidden = true; $('cookie-review').hidden = true; $('manual-review').hidden = true
     state.page = page; state.offset = 0
@@ -91,22 +92,49 @@
     return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   }
   const renderConnection = connection => {
+    state.connection = connection
     const active = connection.mode === 'cookie'
+    state.combined = active && connection.apiEnrichment
     state.apiConnection = connection.mode === 'youtube'
-    $('connection-status').textContent = active ? `${text.connectionCookie}: ${connection.connection?.name || ''}` : connection.mode === 'youtube' ? text.connectionApi : text.connectionManual
+    $('connection-status').textContent = active ? `${state.combined ? text.connectionCombined : text.connectionCookie}: ${connection.connection?.name || ''}` : connection.mode === 'youtube' ? text.connectionApi : text.connectionManual
     const warnings = []
     if (connection.connection?.stale) warnings.push(text.connectionStale)
     if (connection.cleanupPending) warnings.push(text.cleanupPending)
     if (connection.oauthCleanupPending) warnings.push(text.oauthCleanupPending)
     if (connection.environmentCookie) warnings.push(text.environmentCookie)
     $('connection-warning').textContent = warnings.join(' ')
-    $('cookie-connect').hidden = connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
-    $('manual-switch').hidden = !active
-    $('desktop-oauth').hidden = state.apiConnection || connection.oauthCleanupPending
+    $('cookie-connect').hidden = state.combined || connection.cleanupPending || (state.apiConnection && connection.oauthCleanupPending)
+    $('manual-switch').hidden = !active || state.combined
+    $('desktop-oauth').hidden = state.apiConnection || state.combined || connection.oauthCleanupPending
     $('desktop-oauth-command').textContent = `node oauth-helper.cjs ${window.location.origin}`
     $('identity-check').hidden = !active
     $('identity-result').textContent = ''
+    $('combined-switch').hidden = !active
+    $('combined-preview').textContent = state.combined ? text.combinedDisable : text.combinedEnable
   }
+  $('combined-preview').addEventListener('click', async () => {
+    const epoch = state.cookieEpoch
+    state.combinedPreview = null; $('combined-preview').disabled = true; $('combined-review').hidden = true
+    try {
+      const result = await post('/api/combined/preview', { direction: state.combined ? 'disable' : 'enable' })
+      if (epoch !== state.cookieEpoch) return
+      state.combinedPreview = result.previewId
+      $('combined-details').textContent = `${state.combined ? text.combinedDisableHelp : text.combinedEnableHelp}\n\n${describeChannels(text.cookieContinue, result.continuing)}`
+      $('combined-review').hidden = false
+    } catch { showNotice(text.combinedError) }
+    finally { $('combined-preview').disabled = false }
+  })
+  $('combined-apply').addEventListener('click', async () => {
+    if (!state.combinedPreview) return
+    $('combined-apply').disabled = true
+    try {
+      const result = await post('/api/combined/apply', { previewId: state.combinedPreview })
+      state.combinedPreview = null; $('combined-review').hidden = true
+      renderConnection({ ...state.connection, apiEnrichment: result.apiEnrichment, oauthCleanupPending: result.cleanupPending })
+      showNotice(result.cleanupPending ? text.oauthCleanupPending : text.combinedDone)
+    } catch { $('combined-review').hidden = true; state.combinedPreview = null; showNotice(text.combinedError) }
+    finally { $('combined-apply').disabled = false }
+  })
   $('identity-compare').addEventListener('click', async () => {
     $('identity-compare').disabled = true
     try {
@@ -166,6 +194,7 @@
       state.channel = channel; $('search').value = ''; setPage('videos')
     })
     info.append(name)
+    if (state.combined && channel.apiSubscribedAt) info.append(element('div', 'channel-detail', `${text.subscribedAt}: ${displayDate(channel.apiSubscribedAt)}`))
     if (channel.deleted) info.append(element('div', 'channel-detail', channel.deletedReason === 'terminated' ? text.terminatedChannel : text.deleted))
     if (cookieMode && channel.cookieSubscribed && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
     row.append(img, info)
@@ -402,6 +431,7 @@
       const [all, apiActions] = await Promise.all([request('/api/channels'), state.page === 'channels' ? request('/api/youtube-actions') : Promise.resolve({ available: false, canManage: false, channels: [] })])
       if (sequence !== state.sequence) return
       state.cookieMode = all.cookieMode
+      state.combined = !!all.apiEnrichment
       state.confirmUnsubscribe = all.confirmUnsubscribe
       $('add').disabled = !all.manualMode && !all.cookieMode && !all.apiMode
       $('add').textContent = all.manualMode || all.cookieMode || all.apiMode ? text.add : text.addManualOnly

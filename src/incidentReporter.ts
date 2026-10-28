@@ -10,6 +10,7 @@ import {
 
 const SOURCES: IncidentSource[] = [
 	'videos', 'subscriptions', 'service-auth', 'cookie', 'smtp', 'service',
+	'combined-api',
 ]
 
 /** Records incidents and delivers bounded, retryable alert emails. */

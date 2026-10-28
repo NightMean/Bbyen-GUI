@@ -9,6 +9,7 @@ import {
 import { RefreshResult } from './refreshResult'
 import { updateSubscriptions } from './subscriptions'
 import { parseFeedsAndNotify } from './videos'
+import { classifyError, ErrorCategory } from './lib/classifyError'
 
 interface Mailers {
 	sendVideoEmail: SendVideoEmail,
@@ -33,9 +34,13 @@ interface TaskDependencies {
 		Promise<void>,
 	reportQuotaDurably?: (options: AlertDeps) => Promise<boolean>,
 	refreshCookies?: (mailers?: Mailers) => Promise<RefreshResult>,
+	verifyCombinedAuth?: (auth: OAuth2Client) => Promise<void>,
+	refreshCombinedMetadata?: (auth: OAuth2Client) => Promise<{
+		matched: number, total: number,
+	}>,
 }
 
-const unavailable = (category: 'auth' | 'other'): RefreshResult => ({
+const unavailable = (category: ErrorCategory): RefreshResult => ({
 	status: 'failed', total: null, succeeded: 0, failed: 0, skipped: 0,
 	failedChannels: [], errorCategory: category,
 })
@@ -80,11 +85,20 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 	const getAuth = async (
 		mailers?: Mailers,
 		restarts = 0,
-	): Promise<OAuth2Client | undefined> => {
-		if (deps.config.mode !== 'youtube') return undefined
+	): Promise<{ auth?: OAuth2Client, category?: ErrorCategory }> => {
+		if (deps.config.mode !== 'youtube' && !deps.config.apiEnrichment) {
+			return {}
+		}
 		try {
 			const revision = await deps.authRevision?.()
-			if (auth && (!deps.authRevision || authRevision === revision)) return auth
+			if (auth && (!deps.authRevision || authRevision === revision)) {
+				if (deps.config.apiEnrichment) {
+					if (!deps.verifyCombinedAuth) throw new Error('Identity unavailable.')
+					await deps.verifyCombinedAuth(auth)
+				}
+				await alerts.clear(['auth', 'quota'], 'service-auth')
+				return { auth }
+			}
 			if (!loadingAuth) {
 				auth = undefined
 				const work = (async () => {
@@ -110,26 +124,62 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 				if (restarts >= 2) throw new Error('Authorization changed repeatedly.')
 				return getAuth(mailers, restarts + 1)
 			}
-			await alerts.clear(['auth'], 'service-auth')
-			return loaded
-		} catch {
-			await alerts.notify('auth', new Error(
+			if (deps.config.apiEnrichment) {
+				if (!deps.verifyCombinedAuth) throw new Error('Identity unavailable.')
+				await deps.verifyCombinedAuth(loaded)
+			}
+			await alerts.clear(['auth', 'quota'], 'service-auth')
+			return { auth: loaded }
+		} catch (error) {
+			const category = deps.config.apiEnrichment &&
+				classifyError(error) === 'quota' ? 'quota' : 'auth'
+			await jobAlerts.notify(category, new Error(
 				'YouTube authorization unavailable; reconnect the account.'), {
 				source: 'service-auth',
 				sendErrorEmail: mailers?.sendErrorEmail ?? missingAlert,
 				emailOnError: deps.config.logging.emailOnError,
 				logger: deps.logger,
 			})
-			return undefined
+			return { category }
 		}
 	}
 	const runSubscriptions = async (): Promise<RefreshResult> => {
 		const mailers = await getMailers()
 		if (deps.config.mode === 'cookie') {
 			if (!deps.refreshCookies) return unavailable('other')
-			return deps.refreshCookies(mailers)
+			const result = await deps.refreshCookies(mailers)
+			if (!deps.config.apiEnrichment || result.status === 'failed') {
+				return result
+			}
+			const authorization = await getAuth(mailers)
+			const currentAuth = authorization.auth
+			if (!currentAuth || !deps.refreshCombinedMetadata) {
+				return { ...result, status: 'partial',
+					errorCategory: authorization.category ?? 'auth' }
+			}
+			try {
+				const metadata = await deps.refreshCombinedMetadata(currentAuth)
+				if (metadata.matched < metadata.total) {
+					await jobAlerts.notify('other', new Error(
+						'Some cookie subscriptions have no API metadata.'), {
+						source: 'combined-api',
+						emailOnError: deps.config.logging.emailOnError, logger: deps.logger,
+						sendErrorEmail: mailers?.sendErrorEmail ?? missingAlert })
+					return { ...result, status: 'partial', errorCategory: 'other',
+						apiChecked: true }
+				}
+				await alerts.clear(['auth', 'other', 'quota'], 'combined-api')
+				return { ...result, apiChecked: true }
+			} catch (error) {
+				const category = classifyError(error)
+				await jobAlerts.notify(category, error, { source: 'combined-api',
+					emailOnError: deps.config.logging.emailOnError, logger: deps.logger,
+					sendErrorEmail: mailers?.sendErrorEmail ?? missingAlert })
+				return { ...result, status: 'partial', errorCategory: category,
+					apiChecked: true }
+			}
 		}
-		const currentAuth = await getAuth(mailers)
+		const currentAuth = (await getAuth(mailers)).auth
 		if (deps.config.mode === 'youtube' && !currentAuth) {
 			return unavailable('auth')
 		}
@@ -144,10 +194,20 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		}
 		return result
 	}
+	const runCookieSubscriptions = async (): Promise<RefreshResult> => {
+		if (deps.config.mode !== 'cookie' || !deps.refreshCookies) {
+			return unavailable('other')
+		}
+		return deps.refreshCookies(await getMailers())
+	}
 	const runVideos = async (): Promise<RefreshResult> => {
 		const mailers = await getMailers()
 		if (!mailers) return unavailable('other')
-		const currentAuth = await getAuth(mailers)
+		const authorization = await getAuth(mailers)
+		const currentAuth = authorization.auth
+		if (deps.config.apiEnrichment && authorization.category === 'quota') {
+			return unavailable('quota')
+		}
 		if (deps.config.mode === 'youtube' && !currentAuth) {
 			return unavailable('auth')
 		}
@@ -157,11 +217,14 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 			sendVideoEmail: mailers.sendVideoEmail,
 			sendErrorEmail: mailers.sendErrorEmail,
 			alerts: jobAlerts,
+			rssOnly: !!deps.config.apiEnrichment && !currentAuth,
 		})
 		if (result.errorCategory === 'auth' && auth === currentAuth) {
 			auth = undefined
 		}
-		return result
+		return deps.config.apiEnrichment && !currentAuth
+			? { ...result, status: result.status === 'failed' ? 'failed' : 'partial',
+				errorCategory: 'auth' } : result
 	}
 	const runRssVideos = async (): Promise<RefreshResult> => {
 		const mailers = await getMailers()
@@ -191,6 +254,6 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		return false
 	}
 	const clearQuota = () => alerts.clear(['quota'], 'service')
-	return { runSubscriptions, runVideos, runRssVideos, retryAlerts,
-		reportQuota, clearQuota }
+	return { runSubscriptions, runCookieSubscriptions, runVideos, runRssVideos,
+		retryAlerts, reportQuota, clearQuota }
 }

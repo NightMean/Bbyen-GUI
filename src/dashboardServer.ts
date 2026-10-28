@@ -30,6 +30,7 @@ import { BellNotificationPreference } from './lib/innertubeChannels'
 import { ApiChannelList } from './apiChannelLists'
 import { makeEmailEligibility } from './emailPolicy'
 import { RemoteDesktopAuth } from './remoteDesktopAuth'
+import { CombinedMode } from './combinedMode'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -59,6 +60,7 @@ interface ChannelActions {
 	oauthCleanupPending?: () => Promise<boolean>,
 	compareIdentities?: () => Promise<unknown>,
 	remoteDesktopAuth?: RemoteDesktopAuth,
+	combinedMode?: CombinedMode,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
 	apiSubscriptionActions?: ApiSubscriptionActions,
@@ -109,6 +111,8 @@ export const createDashboardHandler = (
 			url.pathname === '/api/cookies/compare-identity' ||
 			url.pathname === '/api/oauth/desktop/start' ||
 			url.pathname === '/api/oauth/desktop/finish' ||
+			url.pathname === '/api/combined/preview' ||
+			url.pathname === '/api/combined/apply' ||
 			url.pathname === '/api/cookies/cancel' ||
 			url.pathname === '/api/cookies/manual/preview' ||
 			url.pathname === '/api/cookies/manual/apply' ||
@@ -137,7 +141,8 @@ export const createDashboardHandler = (
 				intervals?: unknown, cookie?: unknown, candidateId?: unknown,
 				profileId?: unknown, preference?: unknown, subscribed?: unknown,
 				confirmUnsubscribe?: unknown, list?: unknown, included?: unknown,
-				port?: unknown, id?: unknown, state?: unknown, code?: unknown } = {}
+				port?: unknown, id?: unknown, state?: unknown, code?: unknown,
+				direction?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -145,6 +150,31 @@ export const createDashboardHandler = (
 				}
 				data = parsed
 			} catch { send(400, { error: 'Expected a JSON object.' }); return }
+			if (url.pathname.startsWith('/api/combined/')) {
+				const mode = actions.combinedMode
+				if (!mode) {
+					send(503, { error: 'Combined mode unavailable.' }); return
+				}
+				const direction = data.direction, preview = data.previewId
+				if (url.pathname.endsWith('/preview') && direction !== 'enable' &&
+						direction !== 'disable') {
+					send(400, { error: 'Choose a connection change.' }); return
+				}
+				if (url.pathname.endsWith('/apply') &&
+						(typeof preview !== 'string' || !preview)) {
+					send(400, { error: 'Connection preview is missing.' }); return
+				}
+				void jobs.maintenance(randomUUID(), async () =>
+					url.pathname.endsWith('/preview')
+						? mode.review(direction as 'enable' | 'disable')
+						: mode.apply(preview as string)).then(result => {
+					if (url.pathname.endsWith('/apply')) actions.refresh('subscriptions')
+					send(200, result)
+				},
+				() => send(409, { error: 'Could not verify the connection change. ' +
+						'Check both profiles and review again.' }))
+				return
+			}
 			if (url.pathname.startsWith('/api/oauth/desktop/')) {
 				if (!actions.remoteDesktopAuth) {
 					send(503, { error: 'Google authorization is unavailable.' }); return
@@ -644,6 +674,7 @@ export const createDashboardHandler = (
 	void jobs.maintenance(randomUUID(), async () => {
 		if (url.pathname === '/api/cookies/status') {
 			return { mode: actions!.config.mode,
+				apiEnrichment: !!actions!.config.apiEnrichment,
 				connection: await actions!.cookieStatus(),
 				cleanupPending: await actions!.cookieCleanupPending(),
 				oauthCleanupPending: await actions!.oauthCleanupPending?.() ?? false,
@@ -691,7 +722,11 @@ export const createDashboardHandler = (
 		if (url.pathname === '/api/channels') {
 			const channels = await db.all(`SELECT channelId, channelTitle,
 				channelThumbnail, deleted, deletedReason, firstObservedAt, bellState,
-				bellUpdatedAt, EXISTS(SELECT 1 FROM cookie_bell_actions a
+				bellUpdatedAt, (SELECT m.subscribedAt
+				FROM combined_subscription_metadata m JOIN combined_connection c
+				ON c.profileKey=m.profileKey AND c.id=1
+				WHERE m.channelId=subscriptions.channelId) AS apiSubscribedAt,
+				EXISTS(SELECT 1 FROM cookie_bell_actions a
 				JOIN cookie_connection c ON c.channelId=a.profileKey
 				WHERE a.channelId=subscriptions.channelId AND c.id=1
 				AND a.state IN ('pending', 'uncertain')) AS bellUncertain
@@ -735,6 +770,7 @@ export const createDashboardHandler = (
 				? makeEmailEligibility(actions.config, manualOnly) : null
 			return { manualMode, apiMode,
 				cookieMode: actions?.config.mode === 'cookie',
+				apiEnrichment: !!actions?.config.apiEnrichment,
 				confirmUnsubscribe: actions?.config.confirmUnsubscribe !== false,
 				cookieStale: !!actions?.config.cookieStale,
 				channels: channels.map(channel => ({ ...channel,
