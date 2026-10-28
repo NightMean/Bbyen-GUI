@@ -235,10 +235,10 @@
         catch { showNotice(text.settingError) } finally { mute.disabled = false }
       }); row.append(mute)
     }
-    if (manualMode && typeof channel.notify === 'boolean' && !channel.deleted) {
-      const remove = element('button', 'quiet', text.remove)
+    if ((manualMode && typeof channel.notify === 'boolean' && !channel.deleted) || (apiMode && channel.manualTracked)) {
+      const remove = element('button', 'quiet', apiMode ? text.removeManualTracking : text.remove)
       remove.type = 'button'; remove.addEventListener('click', async () => {
-        if (!window.confirm(text.removeConfirm)) return
+        if (!window.confirm(apiMode ? text.removeApiConfirm : text.removeConfirm)) return
         remove.disabled = true
         try { await post('/api/channels/remove', { channelId: channel.channelId }); showNotice(text.removed); load() }
         catch { showNotice(text.removeError) } finally { remove.disabled = false }

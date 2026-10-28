@@ -1,5 +1,9 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import RSSParser from 'rss-parser'
+import fs from 'fs/promises'
+import os from 'os'
+import path from 'path'
+import { removeApiManualChannel } from './apiChannelLists'
 import { init } from './database'
 import { Config } from './config'
 import {
@@ -202,3 +206,37 @@ test('manual-only channels remain tracked and eligible after API refresh',
 				WHERE channelId=?`, other)).toEqual({ apiSubscribed: 0, manual: 1 })
 		} finally { await db.close() }
 	})
+
+test('manual removal preserves API subscriptions', async () => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-api-remove-sync-'))
+	const file = path.join(dir, 'channels.json')
+	const db = await init({ filename: ':memory:' })
+	const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+		whitelistedChannelIds: [{ id: allowed }, { id: other }],
+		manualChannelIds: [{ id: allowed }, { id: other }] } as Config
+	const service = { subscriptions: { list: vi.fn().mockResolvedValue({ data: {
+		items: [subscription(allowed)],
+	} }) } } as never
+	const args = { db, config, service, auth: {} as never,
+		sendErrorEmail: vi.fn() }
+	try {
+		await fs.writeFile(file, JSON.stringify({
+			whitelistedChannelIds: config.whitelistedChannelIds,
+			manualChannelIds: config.manualChannelIds,
+		}))
+		await updateSubscriptionsFromAPI(args)
+		await removeApiManualChannel(file, config, allowed)
+		await removeApiManualChannel(file, config, other)
+		await updateSubscriptionsFromAPI(args)
+		expect(await db.all(`SELECT channelId, deleted FROM subscriptions
+			ORDER BY channelId`)).toEqual([
+			{ channelId: allowed, deleted: 0 }, { channelId: other, deleted: 1 },
+		])
+		expect(config.whitelistedChannelIds).toEqual([
+			{ id: allowed }, { id: other },
+		])
+	} finally {
+		await db.close()
+		await fs.rm(dir, { recursive: true, force: true })
+	}
+})

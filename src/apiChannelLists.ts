@@ -38,6 +38,23 @@ const applyLists = (config: Config,
 	]))
 }
 
+type NormalizedLists = Awaited<ReturnType<typeof normalizeLists>>
+
+const updateApiLists = async (filename: string, config: Config,
+	update: (lists: NormalizedLists) => NormalizedLists): Promise<void> => {
+	try {
+		const updated = await updateJsonFile(filename, async value =>
+			update(await normalizeLists(value)))
+		applyLists(config, updated)
+	} catch (error) {
+		// The replacement can succeed before cleanup reports an error.
+		try { applyLists(config, await normalizeLists(
+			JSON.parse(await fs.readFile(filename, 'utf8')))) }
+		catch { /* Keep the original failure and current runtime state. */ }
+		throw error
+	}
+}
+
 /** Update email selection only; never alter YouTube membership or the bell. */
 export const setApiChannelList = async (db: sqlite.Database, filename: string,
 	config: Config, channelId: string, list: ApiChannelList, included: boolean,
@@ -53,32 +70,47 @@ export const setApiChannelList = async (db: sqlite.Database, filename: string,
 	if (!exists) {
 		throw new Error('Channel not found.')
 	}
-	try {
-		const updated = await updateJsonFile(filename, async value => {
-			const lists = await normalizeLists(value)
-			const key = list === 'allowlist' ? 'whitelistedChannelIds' :
-				'blacklistedChannelIds'
-			const entries = lists[key]
-			const effective = mergeChannelEntries([
-				...(lists.savedChannelSettings ?? []),
-				...(lists.whitelistedChannelIds ?? []),
-				...(lists.manualChannelIds ?? []),
-			]).find(entry => entry.id === channelId)
-			const savedChannelSettings = list === 'allowlist' && !included &&
+	await updateApiLists(filename, config, lists => {
+		const key = list === 'allowlist' ? 'whitelistedChannelIds' :
+			'blacklistedChannelIds'
+		const entries = lists[key]
+		const effective = mergeChannelEntries([
+			...(lists.savedChannelSettings ?? []),
+			...(lists.whitelistedChannelIds ?? []),
+			...(lists.manualChannelIds ?? []),
+		]).find(entry => entry.id === channelId)
+		const savedChannelSettings = list === 'allowlist' && !included &&
 				effective ? mergeChannelEntries([
-					...(lists.savedChannelSettings ?? []), effective,
-				])
-				: lists.savedChannelSettings
-			return { ...lists, savedChannelSettings, [key]: included
-				? mergeChannelEntries([...(entries ?? []), { id: channelId }])
-				: entries?.filter(entry => entry.id !== channelId) }
-		})
-		applyLists(config, updated)
-	} catch (error) {
-		// The replacement can succeed before cleanup reports an error.
-		try { applyLists(config, await normalizeLists(
-			JSON.parse(await fs.readFile(filename, 'utf8')))) }
-		catch { /* Keep the original failure and current runtime state. */ }
-		throw error
+				...(lists.savedChannelSettings ?? []), effective,
+			])
+			: lists.savedChannelSettings
+		return { ...lists, savedChannelSettings, [key]: included
+			? mergeChannelEntries([...(entries ?? []), { id: channelId }])
+			: entries?.filter(entry => entry.id !== channelId) }
+	})
+}
+
+/** Stop manual tracking while leaving both email lists and YouTube intact. */
+export const removeApiManualChannel = async (filename: string, config: Config,
+	channelId: string): Promise<void> => {
+	assertChannelId(channelId)
+	if (config.mode !== 'youtube' || !config.emailSelectionPolicy) {
+		throw new Error('API manual tracking is unavailable.')
 	}
+	await updateApiLists(filename, config, lists => {
+		if (!lists.manualChannelIds?.some(entry => entry.id === channelId)) {
+			throw new Error('Channel is not manually tracked.')
+		}
+		const effective = mergeChannelEntries([
+			...(lists.savedChannelSettings ?? []),
+			...(lists.whitelistedChannelIds ?? []),
+			...(lists.manualChannelIds ?? []),
+		]).find(entry => entry.id === channelId)
+		return { ...lists,
+			manualChannelIds: lists.manualChannelIds.filter(c => c.id !== channelId),
+			savedChannelSettings: effective ? mergeChannelEntries([
+				...(lists.savedChannelSettings ?? []), effective,
+			]) : lists.savedChannelSettings,
+		}
+	})
 }

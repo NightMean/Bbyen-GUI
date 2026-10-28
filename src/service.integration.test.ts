@@ -267,6 +267,14 @@ test('service remains up when OAuth credentials are missing', async () => {
 			{ id: addedId, initialBacklog: { mode: 'none' } },
 		])
 		expect(afterAdd.blacklistedChannelIds).toEqual([{ id: channelId }])
+		await axios.post(`${base}/api/channels/remove`, { channelId: addedId })
+		const afterRemove = JSON.parse(await fs.readFile(
+			path.join(directory, 'channels.json'), 'utf8'))
+		expect(afterRemove.manualChannelIds).toEqual([])
+		expect(afterRemove.whitelistedChannelIds).toEqual([
+			{ id: addedId, initialBacklog: { mode: 'none' } },
+		])
+		expect(afterRemove.blacklistedChannelIds).toEqual([{ id: channelId }])
 
 
 	} finally {

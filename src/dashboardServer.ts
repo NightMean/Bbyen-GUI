@@ -459,7 +459,8 @@ export const createDashboardHandler = (
 				return
 			}
 			if (url.pathname === '/api/channels/remove') {
-				if (!actions.manualMode()) {
+				if (!actions.manualMode() && !(actions.config.mode === 'youtube' &&
+						actions.config.emailSelectionPolicy)) {
 					send(400, { error: 'Manual removal is unavailable.' })
 					return
 				}
@@ -642,6 +643,8 @@ export const createDashboardHandler = (
 				actions?.config.whitelistedChannelIds?.map(c => c.id))
 			const blocked = new Set(
 				actions?.config.blacklistedChannelIds?.map(c => c.id))
+			const manuallyTracked = new Set(
+				actions?.config.manualChannelIds?.map(c => c.id))
 			const manualOnly = apiMode ? new Set<string>((await db.all(`
 				SELECT channelId FROM channel_sources
 				WHERE manual=1 AND apiSubscribed=0`))
@@ -657,6 +660,7 @@ export const createDashboardHandler = (
 						channel.channelId)?.notify === false,
 					...(apiMode ? { allowlisted: allowed.has(channel.channelId),
 						blocklisted: blocked.has(channel.channelId),
+						manualTracked: manuallyTracked.has(channel.channelId),
 						emailStatus: eligibility?.(channel.channelId,
 							actions?.config.channelSettingsById?.get(channel.channelId)),
 					} : {}),

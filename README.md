@@ -97,7 +97,9 @@ An empty allowlist sends no subscription emails; an empty blocklist permits all
 otherwise eligible channels. Existing lists remain separate and can be edited
 per channel or imported under Subscriptions. Removing an allowlist entry retains
 its channel-specific settings for later use. Manually adding a channel in API
-mode adds it to local tracking and the allowlist without subscribing on YouTube. Switching policy requests a channel refresh without
+mode adds it to local tracking and the allowlist without subscribing on YouTube. Removing
+manual tracking leaves both email lists and any YouTube subscription unchanged;
+the next channel refresh stops tracking a channel that is not subscribed. Switching policy requests a channel refresh without
 changing YouTube subscriptions or bells. Legacy configurations retain their
 existing selection until a policy is explicitly chosen.
 

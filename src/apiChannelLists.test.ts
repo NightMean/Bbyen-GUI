@@ -4,7 +4,7 @@ import path from 'path'
 import { expect, test, vi } from 'vitest'
 import { Config } from './config'
 import { init } from './database'
-import { setApiChannelList } from './apiChannelLists'
+import { removeApiManualChannel, setApiChannelList } from './apiChannelLists'
 import { makeEmailEligibility } from './emailPolicy'
 
 const id = 'UC0000000000000000000001'
@@ -85,3 +85,27 @@ test('reconciles a completed write when lock cleanup fails', async () => {
 		await fs.rm(dir, { recursive: true, force: true })
 	}
 })
+
+test('removes manual tracking without changing email lists or preferences',
+	async () => {
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-api-remove-'))
+		const file = path.join(dir, 'channels.json')
+		const config = { mode: 'youtube',
+			emailSelectionPolicy: 'allowlist' } as Config
+		try {
+			await fs.writeFile(file, JSON.stringify({
+				whitelistedChannelIds: [{ id }], blacklistedChannelIds: [{ id }],
+				manualChannelIds: [{ id, notify: false,
+					initialBacklog: { mode: 'all' } }],
+			}))
+			await removeApiManualChannel(file, config, id)
+			expect(config.manualChannelIds).toEqual([])
+			expect(config.whitelistedChannelIds).toEqual([{ id }])
+			expect(config.blacklistedChannelIds).toEqual([{ id }])
+			expect(config.channelSettingsById?.get(id)).toMatchObject({
+				notify: false, initialBacklog: { mode: 'all' },
+			})
+			await expect(removeApiManualChannel(file, config, id))
+				.rejects.toThrow(/not manually tracked/i)
+		} finally { await fs.rm(dir, { recursive: true, force: true }) }
+	})
