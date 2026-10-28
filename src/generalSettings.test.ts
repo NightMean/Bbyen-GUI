@@ -13,7 +13,7 @@ test('saves defaults and retains unrelated settings', async () => {
 	const config = { notifyOnFirstScan: false,
 		logging: { level: 'info', emailOnError: true } } as Config
 	const settings = { initialBacklog: { mode: 'newest', count: 2 },
-		videoRetentionDays: 30, videoViewDays: 14,
+		videoRetentionDays: 30, videoViewDays: 14, emailSelectionPolicy: null,
 		activityRetentionDays: null, emailOnError: false,
 		confirmUnsubscribe: true,
 		notifyTitleChanges: true, notifyChannelAdded: true,
@@ -34,5 +34,16 @@ test('saves defaults and retains unrelated settings', async () => {
 			.toThrow()
 		expect(() => parseGeneralSettings({ ...settings, emailOnError: 'yes' }))
 			.toThrow()
+		expect(() => parseGeneralSettings({ ...settings,
+			emailSelectionPolicy: 'invalid' })).toThrow()
+		await saveGeneralSettings(file, config,
+			{ ...settings, emailSelectionPolicy: 'blocklist' })
+		expect(config.emailSelectionPolicy).toBe('blocklist')
+		const concurrent = JSON.parse(await fs.readFile(file, 'utf8'))
+		concurrent.emailSelectionPolicy = 'allowlist'
+		await fs.writeFile(file, JSON.stringify(concurrent))
+		await expect(saveGeneralSettings(file, config, settings))
+			.rejects.toThrow(/changed/i)
+		expect(config.emailSelectionPolicy).toBe('blocklist')
 	} finally { await fs.rm(dir, { recursive: true, force: true }) }
 })

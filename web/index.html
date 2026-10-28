@@ -117,6 +117,7 @@
         <form id="general-form" class="settings-form">
           <label><span data-text="backlogLabel"></span><select id="default-backlog"><option value="none" data-text="backlogNone"></option><option value="all" data-text="backlogAll"></option><option value="newest" data-text="backlogNewest"></option></select></label>
           <label id="default-count-label" hidden><span data-text="backlogCount"></span><input id="default-count" type="number" min="1" step="1" value="5"></label>
+          <label id="api-policy-label" hidden><span data-text="apiPolicyLabel"></span><select id="api-policy"><option value="" data-text="apiPolicyLegacy"></option><option value="allowlist" data-text="apiPolicyAllow"></option><option value="blocklist" data-text="apiPolicyBlock"></option></select><small data-text="apiPolicyHelp"></small></label>
           <label><span data-text="videoViewDaysLabel"></span><input id="video-view-days" type="number" min="1" max="3650" step="1" required><small data-text="videoViewDaysHelp"></small></label>
           <label><span data-text="retentionLabel"></span><input id="retention-days" type="number" min="1" step="1"><small data-text="retentionHelp"></small></label>
           <label><span data-text="activityRetentionLabel"></span><input id="activity-retention-days" type="number" min="1" step="1"><small data-text="activityRetentionHelp"></small></label>

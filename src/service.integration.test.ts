@@ -175,6 +175,10 @@ test('service stays up without SMTP credentials and recovers without restart',
 	}, 25000)
 
 test('service remains up when OAuth credentials are missing', async () => {
+	const probe = createServer()
+	await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', resolve))
+	const port = (probe.address() as AddressInfo).port
+	await new Promise<void>(resolve => probe.close(() => resolve()))
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-auth-'))
 	const filename = path.join(directory, 'database.sqlite')
 	const config = JSON.parse(await fs.readFile('config.example.json', 'utf8'))
@@ -190,7 +194,8 @@ test('service remains up when OAuth credentials are missing', async () => {
 	await db.close()
 	const child = spawn(process.execPath,
 		['-r', 'ts-node/register/transpile-only', 'src/index.ts'], {
-			env: { ...process.env, CONFIG_DIR: directory, BBYEN_DASHBOARD_PORT: '0',
+			env: { ...process.env, CONFIG_DIR: directory,
+				BBYEN_DASHBOARD_PORT: String(port),
 				BBYEN_EMAIL_USER: 'fixture', BBYEN_EMAIL_PASS: 'fixture' },
 			stdio: ['ignore', 'pipe', 'pipe'],
 		})
@@ -213,6 +218,18 @@ test('service remains up when OAuth credentials are missing', async () => {
 		}
 		expect(failures).toBe(2)
 		expect(child.exitCode).toBeNull()
+		const base = `http://127.0.0.1:${port}`
+		const current = (await axios.get(`${base}/api/settings`)).data.settings
+		expect(current.emailSelectionPolicy).toBe('allowlist')
+		await axios.post(`${base}/api/settings`, { settings: {
+			...current, emailSelectionPolicy: 'blocklist',
+		} })
+		expect((await axios.get(`${base}/api/settings`)).data.settings
+			.emailSelectionPolicy).toBe('blocklist')
+		const saved = JSON.parse(await fs.readFile(
+			path.join(directory, 'config.json'), 'utf8'))
+		expect(saved.emailSelectionPolicy).toBe('blocklist')
+
 	} finally {
 		child.kill()
 		await exited
@@ -340,7 +357,9 @@ test('first-run setup starts the service without restarting', async () => {
 			.toEqual([])
 		const savedSettings = (await axios.get(`${url}/api/settings`)).data.settings
 		expect(savedSettings).toEqual({ initialBacklog: { mode: 'all' },
-			videoRetentionDays: 30, videoViewDays: 14, activityRetentionDays: 30,
+			videoRetentionDays: 30, videoViewDays: 14,
+			emailSelectionPolicy: 'allowlist',
+			activityRetentionDays: 30,
 			emailOnError: false, confirmUnsubscribe: true,
 			notifyTitleChanges: true, notifyChannelAdded: true,
 			notifyFailureReminders: false, notifyRecoveries: false })

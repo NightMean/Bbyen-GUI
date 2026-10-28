@@ -269,6 +269,8 @@
         $('default-count-label').hidden = general.settings.initialBacklog.mode !== 'newest'
         $('default-count').disabled = general.settings.initialBacklog.mode !== 'newest'
         $('default-count').value = general.settings.initialBacklog.count || 5
+        $('api-policy-label').hidden = connection.mode !== 'youtube'
+        $('api-policy').value = general.settings.emailSelectionPolicy || ''
         $('video-view-days').value = general.settings.videoViewDays
         $('retention-days').value = general.settings.videoRetentionDays ?? ''
         $('activity-retention-days').value = general.settings.activityRetentionDays ?? ''
@@ -451,6 +453,7 @@
     const videoRetentionDays = $('retention-days').value ? Number($('retention-days').value) : null
     const activityRetentionDays = $('activity-retention-days').value === '' ? null : Number($('activity-retention-days').value)
     const settings = { initialBacklog, videoRetentionDays, videoViewDays: Number($('video-view-days').value), activityRetentionDays, emailOnError: $('failure-email').checked, notifyFailureReminders: $('failure-reminder').checked, notifyRecoveries: $('recovery-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked, notifyChannelAdded: $('channel-email').checked }
+    if (!$('api-policy-label').hidden && $('api-policy').value) settings.emailSelectionPolicy = $('api-policy').value
     try { await post('/api/settings', { settings }); state.confirmUnsubscribe = settings.confirmUnsubscribe; showNotice(text.generalSaved) }
     catch { showNotice(text.generalError) }
   })

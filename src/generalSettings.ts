@@ -4,11 +4,13 @@ import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 import { updateJsonFile } from './lib/jsonFile'
 import { parseVideoRetentionDays } from './videoRetention'
 import { parseActivityRetentionDays } from './activityRetention'
+import { EmailSelectionPolicy, parseEmailSelectionPolicy } from './emailPolicy'
 
 export interface GeneralSettings {
 	initialBacklog: BacklogPolicy,
 	videoRetentionDays: number | null,
 	videoViewDays: number,
+	emailSelectionPolicy: EmailSelectionPolicy | null,
 	activityRetentionDays: number | null,
 	emailOnError: boolean,
 	confirmUnsubscribe: boolean,
@@ -23,6 +25,7 @@ export const readGeneralSettings = (config: Config): GeneralSettings => ({
 		{ mode: config.notifyOnFirstScan ? 'all' : 'none' },
 	videoRetentionDays: config.videoRetentionDays ?? null,
 	videoViewDays: config.videoViewDays ?? 7,
+	emailSelectionPolicy: config.emailSelectionPolicy ?? null,
 	activityRetentionDays: config.activityRetentionDays ?? null,
 	emailOnError: config.logging.emailOnError,
 	confirmUnsubscribe: config.confirmUnsubscribe !== false,
@@ -45,6 +48,8 @@ export const parseGeneralSettings = (value: unknown): GeneralSettings => {
 		data.videoRetentionDays), emailOnError: data.emailOnError,
 	videoViewDays: data.videoViewDays === undefined ? 7 :
 		parseVideoViewDays(data.videoViewDays),
+	emailSelectionPolicy: data.emailSelectionPolicy == null ? null :
+		parseEmailSelectionPolicy(data.emailSelectionPolicy),
 	activityRetentionDays: data.activityRetentionDays === undefined ? null :
 		parseActivityRetentionDays(data.activityRetentionDays),
 	confirmUnsubscribe: data.confirmUnsubscribe === undefined ? true :
@@ -74,6 +79,7 @@ export const saveGeneralSettings = async (
 		config.initialBacklog = settings.initialBacklog
 		config.videoRetentionDays = settings.videoRetentionDays
 		config.videoViewDays = settings.videoViewDays
+		config.emailSelectionPolicy = settings.emailSelectionPolicy ?? undefined
 		config.activityRetentionDays = settings.activityRetentionDays
 		config.logging.emailOnError = settings.emailOnError
 		config.confirmUnsubscribe = settings.confirmUnsubscribe
@@ -87,11 +93,16 @@ export const saveGeneralSettings = async (
 			throw new Error('Configuration must be an object.')
 		}
 		const current = value as Record<string, unknown>
+		if (current.emailSelectionPolicy !== config.emailSelectionPolicy) {
+			throw new Error('Email selection changed; reload settings and retry.')
+		}
 		if (!current.logging || typeof current.logging !== 'object' ||
 				Array.isArray(current.logging)) throw new Error('Logging is invalid.')
 		return { ...current, initialBacklog: settings.initialBacklog,
 			videoRetentionDays: settings.videoRetentionDays,
 			videoViewDays: settings.videoViewDays,
+			...(settings.emailSelectionPolicy ?
+				{ emailSelectionPolicy: settings.emailSelectionPolicy } : {}),
 			activityRetentionDays: settings.activityRetentionDays,
 			confirmUnsubscribe: settings.confirmUnsubscribe,
 			notifyTitleChanges: settings.notifyTitleChanges,
@@ -107,6 +118,7 @@ export const saveGeneralSettings = async (
 				initialBacklog: stored.initialBacklog,
 				videoRetentionDays: stored.videoRetentionDays,
 				videoViewDays: stored.videoViewDays,
+				emailSelectionPolicy: stored.emailSelectionPolicy,
 				activityRetentionDays: stored.activityRetentionDays,
 				confirmUnsubscribe: stored.confirmUnsubscribe,
 				notifyTitleChanges: stored.notifyTitleChanges,

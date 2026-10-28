@@ -216,6 +216,8 @@ export const createDashboardHandler = (
 				void jobs.maintenance(randomUUID(), async () => {
 					const input = data.settings as Record<string, unknown>
 					const settings = parseGeneralSettings({ ...input,
+						emailSelectionPolicy: input.emailSelectionPolicy ??
+							actions.config.emailSelectionPolicy ?? null,
 						videoViewDays: input.videoViewDays ??
 							actions.config.videoViewDays ?? 7,
 						activityRetentionDays: input.activityRetentionDays === undefined ?
@@ -231,10 +233,17 @@ export const createDashboardHandler = (
 							actions.config.notifyFailureReminders ?? false,
 						notifyRecoveries: input.notifyRecoveries ??
 							actions.config.notifyRecoveries ?? false })
+					const changedPolicy = settings.emailSelectionPolicy !==
+						(actions.config.emailSelectionPolicy ?? null)
 					await actions.saveGeneral(settings)
-					return settings
+					return { settings, changedPolicy }
 				})
-					.then(settings => send(200, { settings }), () => send(500, {
+					.then(({ settings, changedPolicy }) => {
+						if (changedPolicy && actions.config.mode === 'youtube') {
+							actions.refresh('subscriptions')
+						}
+						send(200, { settings })
+					}, () => send(500, {
 						error: 'Could not confirm settings. Reload before retrying.',
 					}))
 				return
