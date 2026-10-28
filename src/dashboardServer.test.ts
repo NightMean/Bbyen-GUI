@@ -102,23 +102,30 @@ test('confirms the cookie profile before subscribing and setting the bell',
 		const channelId = 'UC0000000000000000000002'
 		const subscribe = vi.fn().mockResolvedValue('confirmed')
 		const bell = vi.fn().mockResolvedValue('confirmed')
+		const backlog = vi.fn().mockResolvedValue(undefined)
 		const actions = { config: { mode: 'cookie' },
 			cookieStatus: async () => ({ channelId: profileId }),
+			setCookieBacklog: backlog,
 			subscriptionActions: { change: subscribe }, bellActions: { change: bell },
 		} as never
 		const server = createDashboardServer(db, jobs, actions)
 		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 		const port = (server.address() as AddressInfo).port
 		const url = `http://127.0.0.1:${port}/api/channels/subscription`
-		const body = { channelId, profileId, subscribed: true, preference: 'all' }
+		const body = { channelId, profileId, subscribed: true, preference: 'all',
+			initialBacklog: { mode: 'newest', count: 2 } }
 		try {
 			const response = await axios.post(url, body)
 			expect(response.data).toEqual({ outcome: 'confirmed', bell: 'confirmed' })
 			expect(bell).toHaveBeenCalledWith(channelId, 'all')
+			expect(backlog).toHaveBeenCalledWith(channelId, body.initialBacklog)
+			expect(backlog.mock.invocationCallOrder[0])
+				.toBeLessThan(subscribe.mock.invocationCallOrder[0])
 			const mismatch = await axios.post(url, { ...body, profileId: channelId },
 				{ validateStatus: () => true })
 			expect(mismatch.status).toBe(409)
 			expect(subscribe).toHaveBeenCalledTimes(1)
+			expect(backlog).toHaveBeenCalledTimes(1)
 			bell.mockRejectedValueOnce(new Error('unavailable'))
 			expect((await axios.post(url, body)).data)
 				.toEqual({ outcome: 'confirmed', bell: 'unavailable' })
@@ -198,6 +205,7 @@ test('validates writes and schedules refresh after saving', async () => {
 	})
 	const server = createDashboardServer(db, jobs, {
 		config,
+		setCookieBacklog: async () => undefined,
 		apiSubscriptionActions: apiActions as never,
 		imports: new SubscriptionImportService('unused', {} as Config),
 		cookiePreviews,

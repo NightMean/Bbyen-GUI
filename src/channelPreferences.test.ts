@@ -6,13 +6,33 @@ import { Config } from './config'
 import { init } from './database'
 import { CookieConnectionStore } from './cookieConnection'
 import {
-	setApiChannelNotify, setCookieChannelNotify,
+	setApiChannelNotify, setCookieChannelNotify, setCookieChannelBacklog,
 } from './channelPreferences'
 import { makeEmailEligibility } from './emailPolicy'
 
 const channel = 'UC0000000000000000000002'
 const profile = { name: 'Profile', channelId: 'UC0000000000000000000001',
 	selected: true, selectable: true }
+
+test('saves a first-scan choice before subscription', async () => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-cookie-backlog-'))
+	const file = path.join(dir, 'channels.json')
+	const config = { mode: 'cookie' } as Config
+	try {
+		await fs.writeFile(file, JSON.stringify({
+			whitelistedChannelIds: [{ id: channel, notify: false }],
+			manualChannelIds: [{ id: channel, notifyOnFirstScan: true }],
+		}))
+		await setCookieChannelBacklog(file, config, channel,
+			{ mode: 'newest', count: 3 })
+		const stored = JSON.parse(await fs.readFile(file, 'utf8'))
+		expect(stored.savedChannelSettings[0].initialBacklog)
+			.toEqual({ mode: 'newest', count: 3 })
+		expect(config.channelSettingsById?.get(channel)).toMatchObject({
+			notify: false, initialBacklog: { mode: 'newest', count: 3 },
+		})
+	} finally { await fs.rm(dir, { recursive: true, force: true }) }
+})
 
 test('persists cookie mute without changing membership or other settings',
 	async () => {

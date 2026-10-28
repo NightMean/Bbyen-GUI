@@ -7,6 +7,7 @@ import {
 import { assertChannelId } from './lib/channelId'
 import { mergeChannelEntries, parseChannelLists } from './lib/channelConfig'
 import { updateJsonFile } from './lib/jsonFile'
+import { BacklogPolicy, parseBacklogPolicy } from './initialBacklog'
 
 /** Save a local email preference without changing the YouTube subscription. */
 export const setCookieChannelNotify = async (db: sqlite.Database,
@@ -18,7 +19,16 @@ export const setCookieChannelNotify = async (db: sqlite.Database,
 		JOIN cookie_connection c ON c.channelId=s.profileKey
 		WHERE c.id=1 AND s.channelId=${channelId} AND s.subscribed=1;`)
 	if (!subscribed) throw new Error('Channel is not a confirmed subscription.')
-	await saveChannelNotify(filename, config, channelId, notify)
+	await saveChannelPreference(filename, config, channelId, { notify })
+}
+
+/** Save a first-scan choice before an account subscription is attempted. */
+export const setCookieChannelBacklog = async (filename: string, config: Config,
+	channelId: string, policy: BacklogPolicy): Promise<void> => {
+	assertChannelId(channelId)
+	if (config.mode !== 'cookie') throw new Error('Cookie mode required.')
+	await saveChannelPreference(filename, config, channelId,
+		{ initialBacklog: parseBacklogPolicy(policy, 'initialBacklog') })
 }
 
 export const setApiChannelNotify = async (db: sqlite.Database,
@@ -29,11 +39,11 @@ export const setApiChannelNotify = async (db: sqlite.Database,
 	const tracked = await db.get(SQL`SELECT 1 FROM subscriptions
 		WHERE channelId=${channelId} AND deleted=0;`)
 	if (!tracked) throw new Error('Channel is not currently tracked.')
-	await saveChannelNotify(filename, config, channelId, notify)
+	await saveChannelPreference(filename, config, channelId, { notify })
 }
 
-const saveChannelNotify = async (filename: string, config: Config,
-	channelId: string, notify: boolean): Promise<void> => {
+const saveChannelPreference = async (filename: string, config: Config,
+	channelId: string, changes: Partial<ChannelEntry>): Promise<void> => {
 	const apply = (lists: { whitelistedChannelIds?: ChannelEntry[],
 		blacklistedChannelIds?: ChannelEntry[], manualChannelIds?: ChannelEntry[],
 		savedChannelSettings?: ChannelEntry[] }) => {
@@ -61,12 +71,12 @@ const saveChannelNotify = async (filename: string, config: Config,
 				current.savedChannelSettings) ?? []
 			const updateExisting = (entries: typeof whitelist) =>
 				entries?.map(entry => entry.id === channelId
-					? { ...entry, notify } : entry)
+					? { ...entry, ...changes } : entry)
 			return { ...current, whitelistedChannelIds: updateExisting(whitelist),
 				blacklistedChannelIds: blacklist,
 				manualChannelIds: updateExisting(manual),
 				savedChannelSettings: mergeChannelEntries([
-					...saved, { id: channelId, notify },
+					...saved, { id: channelId, ...changes },
 				]) }
 		})
 		apply(lists)

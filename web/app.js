@@ -522,8 +522,8 @@
       $('cookie-add-help').hidden = !all.cookieMode
       $('cookie-add-bell-label').hidden = !all.cookieMode
       $('api-add-help').hidden = !all.apiMode
-      $('backlog-label').hidden = $('backlog').hidden = all.cookieMode
-      $('backlog-count-label').hidden = all.cookieMode || $('backlog').value !== 'newest'
+      $('backlog-label').hidden = $('backlog').hidden = false
+      $('backlog-count-label').hidden = $('backlog').value !== 'newest'
       if (state.page === 'channels') {
         const apiStates = new Map(apiActions.channels.map(item => [item.channelId, item]))
         for (const channel of all.channels) {
@@ -798,6 +798,12 @@
   $('backlog').addEventListener('change', () => { $('backlog-count-label').hidden = $('backlog').value !== 'newest' })
   $('confirm-add').addEventListener('click', async () => {
     const body = { channelId: $('resolved-id').textContent }
+    const mode = $('backlog').value
+    if (mode === 'newest') {
+      const count = Number($('backlog-count').value)
+      if (!Number.isSafeInteger(count) || count < 1) { showNotice(text.invalidCount); return }
+      body.initialBacklog = { mode, count }
+    } else if (mode !== 'default') body.initialBacklog = { mode }
     if (state.cookieMode) {
       $('confirm-add').disabled = true; $('review-add-subscription').hidden = true
       try {
@@ -813,12 +819,6 @@
       finally { $('confirm-add').disabled = false }
       return
     }
-    const mode = $('backlog').value
-    if (mode === 'newest') {
-      const count = Number($('backlog-count').value)
-      if (!Number.isSafeInteger(count) || count < 1) { showNotice(text.invalidCount); return }
-      body.initialBacklog = { mode, count }
-    } else if (mode !== 'default') body.initialBacklog = { mode }
     $('confirm-add').disabled = true
     try { await post('/api/channels', body); $('add-panel').hidden = true; $('channel-input').value = ''; showNotice(text.added) }
     catch { showNotice(text.addError) } finally { $('confirm-add').disabled = false }

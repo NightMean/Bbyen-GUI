@@ -41,6 +41,7 @@ interface ChannelActions {
 	resolve: (input: string) => Promise<string>,
 	refresh: (kind: RefreshKind) => void,
 	setNotify: (channelId: string, notify: boolean) => Promise<void>,
+	setCookieBacklog: (channelId: string, policy: BacklogPolicy) => Promise<void>,
 	setApiList: (channelId: string, list: ApiChannelList,
 		included: boolean) => Promise<void>,
 	remove: (channelId: string) => Promise<void>,
@@ -596,6 +597,17 @@ export const createDashboardHandler = (
 					send(400, { error: 'Choose a valid subscription action.' }); return
 				}
 				const subscribed = data.subscribed
+				let cookieBacklog: BacklogPolicy | undefined
+				try {
+					if (data.initialBacklog !== undefined && data.profileId) {
+						cookieBacklog = parseBacklogPolicy(data.initialBacklog,
+							'initialBacklog')
+					} else if (data.initialBacklog !== undefined) {
+						throw new Error('Profile required.')
+					}
+				} catch {
+					send(400, { error: 'Invalid initial video preference.' }); return
+				}
 				if ((data.profileId !== undefined &&
 						(!subscribed || typeof data.profileId !== 'string' ||
 						!isChannelId(data.profileId))) ||
@@ -634,6 +646,9 @@ export const createDashboardHandler = (
 								if (actions.config.mode !== 'cookie' ||
 									profile?.channelId !== data.profileId) {
 									throw new Error('YouTube profile changed.')
+								}
+								if (cookieBacklog) {
+									await actions.setCookieBacklog(id, cookieBacklog)
 								}
 								const outcome = await actions.subscriptionActions
 									.change(id, true)

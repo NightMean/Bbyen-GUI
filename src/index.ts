@@ -43,7 +43,7 @@ import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { ApiSubscriptionActions } from './apiSubscriptionActions'
 import { ApiAccountIdentity } from './apiAccountIdentity'
 import {
-	setApiChannelNotify, setCookieChannelNotify,
+	setApiChannelNotify, setCookieChannelNotify, setCookieChannelBacklog,
 } from './channelPreferences'
 import { removeApiManualChannel, setApiChannelList } from './apiChannelLists'
 import { saveUnsubscribePreference } from './unsubscribePreference'
@@ -322,6 +322,8 @@ const startService = async (existingServer?: Server) => {
 					? setApiChannelNotify(databaseConnection, CHANNELS_FILE, config,
 						id, notify)
 					: setManualChannelNotify(CHANNELS_FILE, config, id, notify),
+			setCookieBacklog: (id, policy) =>
+				setCookieChannelBacklog(CHANNELS_FILE, config, id, policy),
 			setApiList: (id, list, included) => setApiChannelList(
 				databaseConnection, CHANNELS_FILE, config, id, list, included),
 			remove: id => config.mode === 'youtube'
