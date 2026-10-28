@@ -434,8 +434,13 @@ In legacy API configuration, a present `whitelistedChannelIds` restricts
 discovery to those channels, and `blacklistedChannelIds` excludes channels.
 In manual mode, the whitelist is the channel list.
 
+YouTube’s subscription API can omit channels even after all pages are read.
+BBYEN individually verifies previously known missing channels before marking
+them unsubscribed and reports a partial refresh if it detects omissions. It
+cannot detect subscriptions absent from both its saved history and the API list.
+
 In YouTube API mode, the example `config.json` sets `emailSelectionPolicy` to
-`allowlist`. The service discovers and tracks all account subscriptions, but
+`allowlist`. The service discovers and tracks subscriptions returned by the API, but
 emails only allowlisted channels. The example allowlist is empty. Set the policy
 to `blocklist` to email all subscriptions except those in the blacklist. The
 blacklist is also a final exclusion in allowlist mode; channel muting still

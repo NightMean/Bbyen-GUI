@@ -8,7 +8,9 @@ import winston from 'winston'
 
 import { Config, ChannelEntry } from './config'
 import setupLogger from './lib/logger'
-import { subscriptionIterator } from './google/iterators'
+import {
+	subscriptionIterator, subscriptionMembershipIterator,
+} from './google/iterators'
 import { classifyError } from './lib/classifyError'
 import { AlertReporter, defaultAlertReporter } from './lib/alertState'
 import { assertChannelId, isChannelId } from './lib/channelId'
@@ -247,6 +249,46 @@ export const updateSubscriptionsFromAPI = async (
 		}
 	}
 
+	let recoveredOmissions = 0
+	if (config.emailSelectionPolicy) {
+		// The API can end a paginated listing despite omitting subscriptions.
+		// Verify known missing IDs before allowing any removal to be committed.
+		const prior = await db.all(`SELECT channelId FROM channel_sources
+			WHERE apiSubscribed=1`)
+		const candidates = new Set([...savedSubscriptions,
+			...prior.map(row => row.channelId as string)])
+		const missing = [...candidates].filter(id => !apiSources.has(id))
+		for (const batch of chunks(missing, 50)) {
+			if (batch.some(id => !isChannelId(id))) {
+				throw new Error('Saved channel IDs are invalid; snapshot preserved.')
+			}
+			const requested = new Set(batch), seen = new Set<string>()
+			for await (const sub of subscriptionMembershipIterator(
+				service, auth, batch)) {
+				const channelId = sub.snippet?.resourceId?.channelId
+				if (!channelId || !requested.has(channelId) || seen.has(channelId)) {
+					throw new Error(
+						'Membership verification was invalid; snapshot preserved.')
+				}
+				seen.add(channelId)
+				const publishedAt = sub.snippet?.publishedAt
+				apiSources.set(channelId, {
+					subscriptionId: typeof sub.id === 'string' ? sub.id : null,
+					subscribedAt: typeof publishedAt === 'string' &&
+						Number.isFinite(Date.parse(publishedAt))
+						? new Date(publishedAt).toISOString() : null,
+				})
+				updatedSubscriptions.add(channelId)
+				channelDetails.set(channelId, {
+					title: sub.snippet?.title ?? channelId,
+					thumbnail: sub.snippet?.thumbnails?.high?.url ??
+						DEFAULT_CHANNEL_THUMBNAIL,
+				})
+				recoveredOmissions++
+			}
+		}
+	}
+
 	// Compute difference of both sets to determine new / removed subs
 	const newSubscriptions = new Set(
 		[...updatedSubscriptions]
@@ -298,6 +340,7 @@ export const updateSubscriptionsFromAPI = async (
 	}
 
 	logger.info('Done checking subscriptions...')
+	return { recoveredOmissions }
 }
 
 // Workaround for #19
@@ -404,6 +447,7 @@ export const updateSubscriptions = async (
 	const alerts = args.alerts ?? defaultAlertReporter
 
 	try {
+		let recoveredOmissions = 0
 		if (args.config.mode === 'cookie') {
 			throw new Error('Cookie subscriptions require cookie reconciliation.')
 		} else if (args.config.mode === 'whitelist') {
@@ -414,7 +458,28 @@ export const updateSubscriptions = async (
 				Array.isArray(args.config.whitelistedChannelIds)) {
 			await updateSubscriptionsFromWhitelist(args)
 		} else {
-			await updateSubscriptionsFromAPI(args)
+			const result = await updateSubscriptionsFromAPI(args)
+			recoveredOmissions = result.recoveredOmissions
+		}
+		if (recoveredOmissions) {
+			try {
+				await alerts.notify('other', new Error(
+					'YouTube API omitted subscriptions; known channels were verified, ' +
+					'but newly subscribed channels may be missing.'), {
+					source: 'subscriptions', sendErrorEmail: args.sendErrorEmail,
+					emailOnError: args.config.logging.emailOnError, logger,
+				})
+			} catch {
+				// Preserve the reconciliation outcome if reporting fails.
+				try {
+					logger.warn('Could not report incomplete subscription listing.')
+				} catch {
+					// Diagnostics must not mask the refresh outcome.
+				}
+			}
+			return { status: 'partial', total: 1, succeeded: 0, failed: 1,
+				skipped: 0, failedChannels: [], errorCategory: 'other',
+				apiChecked: true }
 		}
 
 		await alerts.clear([ 'other' ], 'subscriptions')

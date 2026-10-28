@@ -214,9 +214,10 @@ test('manual removal preserves API subscriptions', async () => {
 	const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
 		whitelistedChannelIds: [{ id: allowed }, { id: other }],
 		manualChannelIds: [{ id: allowed }, { id: other }] } as Config
-	const service = { subscriptions: { list: vi.fn().mockResolvedValue({ data: {
-		items: [subscription(allowed)],
-	} }) } } as never
+	const service = { subscriptions: { list: vi.fn().mockImplementation(
+		async ({ forChannelId }) => ({ data: {
+			items: forChannelId ? [] : [subscription(allowed)],
+		} })) } } as never
 	const args = { db, config, service, auth: {} as never,
 		sendErrorEmail: vi.fn() }
 	try {
@@ -240,3 +241,83 @@ test('manual removal preserves API subscriptions', async () => {
 		await fs.rm(dir, { recursive: true, force: true })
 	}
 })
+
+test('verifies omitted known subscriptions and reports an incomplete list',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+			logging: { emailOnError: true }, manualChannelIds: [{ id: other }]
+		} as unknown as Config
+		const list = vi.fn().mockImplementation(async ({ forChannelId }) => ({
+			data: { items: forChannelId ? [subscription(other)] :
+				[subscription(allowed)] },
+		}))
+		const alerts = { notify: vi.fn().mockResolvedValue(undefined),
+			clear: vi.fn().mockResolvedValue(undefined) }
+		try {
+			for (const id of [allowed, other]) {
+				await db.run(`INSERT INTO subscriptions
+					(channelId, channelTitle, channelThumbnail) VALUES (?, ?, '')`,
+				id, id)
+				await db.run(`INSERT INTO channel_sources (channelId, apiSubscribed)
+					VALUES (?, 1)`, id)
+			}
+			const result = await updateSubscriptions({ db, config,
+				service: { subscriptions: { list } } as never, auth: {} as never,
+				sendErrorEmail: vi.fn(), alerts })
+			expect(result).toMatchObject({ status: 'partial', apiChecked: true })
+			expect(list).toHaveBeenCalledTimes(2)
+			expect(list.mock.calls[1][0].forChannelId).toBe(other)
+			expect(await db.all(`SELECT channelId, deleted FROM subscriptions
+				ORDER BY channelId`)).toEqual([
+				{ channelId: allowed, deleted: 0 }, { channelId: other, deleted: 0 },
+			])
+			expect((await db.get(`SELECT apiSubscribed FROM channel_sources
+				WHERE channelId=?`, other)).apiSubscribed).toBe(1)
+			expect(alerts.notify).toHaveBeenCalledWith('other', expect.any(Error),
+				expect.objectContaining({ source: 'subscriptions' }))
+		} finally { await db.close() }
+	})
+
+test('preserves partial outcome if omission reporting fails', async () => {
+	const db = await init({ filename: ':memory:' })
+	const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+		logging: { emailOnError: true } } as unknown as Config
+	const list = vi.fn().mockImplementation(async ({ forChannelId }) => ({
+		data: { items: forChannelId ? [subscription(other)] : [] },
+	}))
+	try {
+		await db.run(`INSERT INTO subscriptions
+			(channelId, channelTitle, channelThumbnail) VALUES (?, 'Known', '')`,
+		other)
+		const result = await updateSubscriptions({ db, config,
+			service: { subscriptions: { list } } as never, auth: {} as never,
+			sendErrorEmail: vi.fn(), alerts: {
+				notify: vi.fn().mockRejectedValue(new Error('alert unavailable')),
+				clear: vi.fn(),
+			} })
+		expect(result.status).toBe('partial')
+		expect((await db.get('SELECT deleted FROM subscriptions')).deleted).toBe(0)
+	} finally { await db.close() }
+})
+
+test('preserves the previous snapshot when membership verification fails',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		const config = { mode: 'youtube',
+			emailSelectionPolicy: 'allowlist' } as Config
+		const list = vi.fn().mockImplementation(async ({ forChannelId }) => {
+			if (forChannelId) throw new Error('fixture network failure')
+			return { data: { items: [subscription(allowed)] } }
+		})
+		try {
+			await db.run(`INSERT INTO subscriptions
+				(channelId, channelTitle, channelThumbnail) VALUES (?, 'Original', '')`,
+			other)
+			await expect(updateSubscriptionsFromAPI({ db, config,
+				service: { subscriptions: { list } } as never, auth: {} as never,
+				sendErrorEmail: vi.fn() })).rejects.toThrow(/network failure/i)
+			expect(await db.get('SELECT channelTitle, deleted FROM subscriptions'))
+				.toEqual({ channelTitle: 'Original', deleted: 0 })
+		} finally { await db.close() }
+	})
