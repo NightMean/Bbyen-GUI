@@ -8,7 +8,7 @@ import {
 } from './subscriptionImport'
 
 const FIELDS = ['notify', 'notifyOnFirstScan', 'initialBacklog',
-	'manualPolicyExcluded'] as const
+	'manualPolicyExcluded', 'apiAllowlisted'] as const
 const MAX_PREVIEWS = 10
 const PREVIEW_LIFETIME_MS = 10 * 60_000
 

@@ -33,13 +33,18 @@ const manualLists = async (value: unknown,
 	const lists = await normalizeApiChannelLists(value)
 	const all = mergeChannelEntries([...(lists.savedChannelSettings ?? []),
 		...(lists.whitelistedChannelIds ?? []), ...(lists.manualChannelIds ?? [])])
-	const byId = new Map(all.map(entry => [entry.id, entry]))
+	const allowlisted = new Set(lists.whitelistedChannelIds?.map(entry =>
+		entry.id))
+	const saved = all.map(entry => ({ ...entry,
+		apiAllowlisted: allowlisted.has(entry.id) }))
+	const byId = new Map(saved.map(entry => [entry.id, entry]))
 	const selected = tracked.map(item => ({
 		...(byId.get(item.channelId) ?? { id: item.channelId }),
+		apiAllowlisted: allowlisted.has(item.channelId),
 		manualPolicyExcluded: item.manualPolicyExcluded,
 	}))
 	return { ...lists, whitelistedChannelIds: selected,
-		manualChannelIds: selected, savedChannelSettings: all }
+		manualChannelIds: selected, savedChannelSettings: saved }
 }
 
 const configForManual = (value: unknown): Record<string, unknown> => {

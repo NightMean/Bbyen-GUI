@@ -1,4 +1,5 @@
 {
+  "field_apiAllowlisted": "Previous API allowlist membership",
   "source_source-switch": "Connection change",
   "apiManualHelp": "The channels below will remain monitored using their public feeds. The Google authorization will be deleted. YouTube account synchronization and API video details will stop. Channels excluded by the current API email policy remain paused for email.", "apiManualExcluded": "email paused", "manualTransitionPending": "The confirmed switch to manual tracking is still recovering. Changes and refreshes are paused while BBYEN retries. Check the service log if this persists.",
   "field_manualPolicyExcluded": "Email paused by the previous API selection",

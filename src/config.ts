@@ -37,6 +37,7 @@ export interface ChannelEntry {
 	id: string,
 	notify?: boolean,
 	manualPolicyExcluded?: boolean,
+	apiAllowlisted?: boolean,
 	notifyOnFirstScan?: boolean,
 	initialBacklog?: BacklogPolicy,
 }
@@ -45,6 +46,7 @@ export type RawChannelEntry = string | {
 	id: string,
 	notify?: boolean,
 	manualPolicyExcluded?: boolean,
+	apiAllowlisted?: boolean,
 	notifyOnFirstScan?: boolean,
 	initialBacklog?: BacklogPolicy,
 }
@@ -262,6 +264,7 @@ export const buildChannelSettingsMap = (
 	for (const entry of entries ?? []) {
 		if (entry.initialBacklog !== undefined || entry.notify !== undefined ||
 				entry.manualPolicyExcluded !== undefined ||
+				entry.apiAllowlisted !== undefined ||
 				entry.notifyOnFirstScan !== undefined) {
 			map.set(entry.id, entry)
 		}

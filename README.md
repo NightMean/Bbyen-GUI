@@ -396,7 +396,9 @@ remains active. In API mode, Settings can also switch to manual tracking:
 the currently tracked channels become the manual whitelist, the OAuth grant
 is deleted, and channels excluded by the API email policy remain paused for
 email. Their original channel mute preferences and API lists are retained; use
-the channel's email control to resume a paused channel. The confirmed switch
+the channel's email control to resume a paused channel. API allowlist membership
+is retained in saved channel settings, including inactive entries, and is
+included in subscription exports. The confirmed switch
 is journaled across its database and configuration files. If recovery is
 pending, refreshes and edits pause while the service retries; check the service
 log and preserve any external edits if recovery cannot complete. A pending

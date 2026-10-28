@@ -12,6 +12,7 @@ import { makeEmailEligibility } from './emailPolicy'
 const first = 'UC0000000000000000000001'
 const second = 'UC0000000000000000000002'
 const third = 'UC0000000000000000000003'
+const inactive = 'UC0000000000000000000004'
 
 const fixture = async () => {
 	const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-manual-'))
@@ -22,7 +23,7 @@ const fixture = async () => {
 	await fs.writeFile(configFile,
 		JSON.stringify({ mode: 'youtube', keep: true }))
 	await fs.writeFile(channelsFile, JSON.stringify({
-		whitelistedChannelIds: [{ id: first, notify: true }],
+		whitelistedChannelIds: [{ id: first, notify: true }, { id: inactive }],
 		blacklistedChannelIds: [second], manualChannelIds: [third],
 	}))
 	await fs.writeFile(token, 'token-fixture')
@@ -38,7 +39,7 @@ const fixture = async () => {
 	await db.run('INSERT INTO videos (videoId, channelId) VALUES (?, ?)',
 		'video-fixture', first)
 	const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
-		whitelistedChannelIds: [{ id: first, notify: true }],
+		whitelistedChannelIds: [{ id: first, notify: true }, { id: inactive }],
 		blacklistedChannelIds: [{ id: second }], manualChannelIds: [{ id: third }],
 		channelSettingsById: buildChannelSettingsMap([{ id: first, notify: true }]),
 	} as Config
@@ -65,6 +66,11 @@ test('snapshots API channels without enabling previously excluded emails',
 			expect(await f.switcher.apply(preview.previewId))
 				.toEqual({ pending: false, cleanupPending: false })
 			expect(f.config.mode).toBe('whitelist')
+			expect(f.config.savedChannelSettings?.find(entry =>
+				entry.id === inactive))
+				.toMatchObject({ apiAllowlisted: true })
+			expect(f.config.whitelistedChannelIds?.find(entry => entry.id === second))
+				.toMatchObject({ apiAllowlisted: false })
 			const eligibility = makeEmailEligibility(f.config)
 			expect([first, second, third].map(id => eligibility(id,
 				f.config.channelSettingsById?.get(id))))

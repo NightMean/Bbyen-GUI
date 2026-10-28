@@ -36,3 +36,11 @@ test('rejects invalid formats without treating absent lists as empty', () => {
 		whitelistedChannelIds: [], blacklistedChannelIds: null }).lists)
 		.toMatchObject({ whitelistedChannelIds: [], blacklistedChannelIds: null })
 })
+
+test('rejects invalid saved API allowlist flags', () => {
+	const id = 'UC0000000000000000000001'
+	const result = parseSubscriptionImport({ savedChannelSettings: [
+		{ id, apiAllowlisted: 'yes' },
+	] })
+	expect(result.problems).toHaveLength(1)
+})

@@ -4,6 +4,7 @@ interface ExportedChannel {
 	id: string,
 	notify?: boolean,
 	manualPolicyExcluded?: boolean,
+	apiAllowlisted?: boolean,
 	notifyOnFirstScan?: boolean,
 	initialBacklog?: ChannelEntry['initialBacklog'],
 }
@@ -16,6 +17,8 @@ export const exportSubscriptions = (config: Config) => {
 			...(entry.notify !== undefined ? { notify: entry.notify } : {}),
 			...(entry.manualPolicyExcluded !== undefined
 				? { manualPolicyExcluded: entry.manualPolicyExcluded } : {}),
+			...(entry.apiAllowlisted !== undefined
+				? { apiAllowlisted: entry.apiAllowlisted } : {}),
 			...(entry.notifyOnFirstScan !== undefined
 				? { notifyOnFirstScan: entry.notifyOnFirstScan } : {}),
 			...(entry.initialBacklog !== undefined
