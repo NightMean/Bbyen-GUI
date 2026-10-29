@@ -90,6 +90,7 @@
   const makeLink = (label, href) => {
     const link = element('a', '', label); link.href = href; link.target = '_blank'; link.rel = 'noopener noreferrer'; return link
   }
+  const channelUrl = id => /^UC[\w-]{22}$/.test(id) ? `https://www.youtube.com/channel/${id}` : null
   const displayDate = value => {
     if (!value || !Number.isFinite(Date.parse(value))) return text.unknownDate
     return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
@@ -260,13 +261,23 @@
     title.append(videoId ? makeLink(label, watchUrl) : document.createTextNode(label))
     const channel = channels.get(video.channelId)
     const meta = element('div', 'meta')
-    meta.append(document.createTextNode(`${channel?.channelTitle || text.unknownChannel} · ${displayDate(video.publishedAt)}`))
+    const creatorUrl = channelUrl(video.channelId)
+    const creatorName = channel?.channelTitle || text.unknownChannel
+    meta.append(creatorUrl ? makeLink(creatorName, creatorUrl) : document.createTextNode(creatorName))
+    meta.append(document.createTextNode(` · ${displayDate(video.publishedAt)}`))
     if (video.durationSeconds != null) meta.append(document.createTextNode(` · ${Math.floor(video.durationSeconds / 60)}:${String(video.durationSeconds % 60).padStart(2, '0')}`))
     if (text['type_' + video.contentType]) meta.append(document.createTextNode(` · ${text['type_' + video.contentType]}`))
     body.append(title, meta)
     const outcome = element('div', 'outcome', text[video.emailOutcome] || text.unknown)
     if (video.sentAt) outcome.append(element('div', '', displayDate(video.sentAt)))
-    row.append(thumb, body, outcome); return row
+    row.append(thumb, body, outcome)
+    if (videoId) {
+      row.classList.add('clickable')
+      row.addEventListener('click', event => {
+        if (!event.target.closest('a, button')) window.open(watchUrl, '_blank', 'noopener,noreferrer')
+      })
+    }
+    return row
   }
   const renderChannel = (channel, cookieMode, apiMode, manualMode, apiActions) => {
     const row = element('article', 'channel-row')
@@ -400,8 +411,9 @@
         }); row.append(toggle)
       }
     }
-    if (/^UC[\w-]{22}$/.test(channel.channelId)) {
-      const link = makeLink(text.openChannel, `https://www.youtube.com/channel/${channel.channelId}`)
+    const creatorUrl = channelUrl(channel.channelId)
+    if (creatorUrl) {
+      const link = makeLink(text.openChannel, creatorUrl)
       link.className = 'channel-link'; row.append(link)
     }
     return row
