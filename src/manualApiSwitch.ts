@@ -242,9 +242,10 @@ export class ManualApiSwitch {
 				await this.db.exec('BEGIN IMMEDIATE')
 				try {
 					await applyApiSnapshot(this.db, snapshot)
-					await this.db.run(SQL`INSERT INTO api_account_identity (id, channelId)
-						VALUES (1, ${snapshot.identity.channelId})
-						ON CONFLICT(id) DO UPDATE SET channelId=excluded.channelId;`)
+					await this.db.run(SQL`INSERT INTO api_account_identity
+						(id, channelId, title) VALUES (1, ${snapshot.identity.channelId},
+						${snapshot.identity.title}) ON CONFLICT(id) DO UPDATE SET
+						channelId=excluded.channelId, title=excluded.title;`)
 					await this.db.run(SQL`INSERT INTO manual_api_switch
 						(id, configBefore, configAfter, channelsBefore, channelsAfter,
 							trackedJson, authRevision)

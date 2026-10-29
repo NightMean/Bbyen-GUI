@@ -16,7 +16,7 @@ import { updateJsonFile } from './lib/jsonFile'
 import { withOAuthTokenLock } from './oauthCleanup'
 
 interface Snapshot {
-	profileId: string,
+	profileId: string, profileName: string,
 	generation: string, revision: string, configHash: string,
 	legacyHash: string | null, channels: ApiChannel[],
 	manual: string[], terminated: string[],
@@ -86,6 +86,7 @@ export class ApiSourceSwitch {
 			throw new Error('Connections changed; review again.')
 		}
 		return { profileId: cookie.profile.channelId,
+			profileName: cookie.profile.name,
 			generation: cookie.generation, revision, configHash: hash(general),
 			legacyHash, channels: entries.channels(), manual: [...manual].sort(),
 			tracked, terminated }
@@ -166,9 +167,10 @@ export class ApiSourceSwitch {
 						'allowlist' }
 			})
 			await applyApiSnapshot(this.db, snapshot)
-			await this.db.run(SQL`INSERT INTO api_account_identity (id, channelId)
-				VALUES (1, ${snapshot.profileId}) ON CONFLICT(id) DO UPDATE SET
-				channelId=excluded.channelId;`)
+			await this.db.run(SQL`INSERT INTO api_account_identity
+				(id, channelId, title) VALUES (1, ${snapshot.profileId},
+				${snapshot.profileName}) ON CONFLICT(id) DO UPDATE SET
+				channelId=excluded.channelId, title=excluded.title;`)
 			await this.db.run(SQL`INSERT INTO cookie_cleanup (id, legacyHash)
 				VALUES (1, ${snapshot.legacyHash});`)
 			await this.db.run('DELETE FROM combined_connection WHERE id=1')

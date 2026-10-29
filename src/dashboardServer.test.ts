@@ -344,6 +344,10 @@ test('validates writes and schedules refresh after saving', async () => {
 		await axios.post(`${base}/api/channels/remove`, { channelId: id })
 		expect(calls.slice(-2)).toEqual([`remove:${id}`, 'subscriptions'])
 		config.mode = 'youtube'
+		await db.run(`INSERT INTO api_account_identity (id, channelId, title)
+			VALUES (1, ?, 'API profile')`, id)
+		expect((await axios.get(`${base}/api/cookies/status`)).data.apiProfile)
+			.toEqual({ channelId: id, title: 'API profile' })
 		const inspected = await axios.post(`${base}/api/cookies/inspect`,
 			{ cookie: 'SAPISID=synthetic-fixture' })
 		expect(JSON.stringify(inspected.data)).not.toContain('synthetic-fixture')

@@ -95,7 +95,20 @@
     if (!value || !Number.isFinite(Date.parse(value))) return text.unknownDate
     return new Date(value).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
   }
+  let accountEpoch = 0
+  const renderAccount = connection => {
+    const name = connection.mode === 'cookie' ? connection.connection?.name : connection.mode === 'youtube' ? connection.apiProfile?.title : connection.mode === 'whitelist' ? text.accountManual : null
+    const label = name || (connection.mode === 'youtube' ? text.accountApi : text.accountLoading)
+    $('account-name').textContent = label
+    $('account-avatar').textContent = [...label.trim()][0]?.toLocaleUpperCase() || '•'
+    $('account-control').setAttribute('aria-label', `${text.accountControl}: ${label}`)
+  }
+  const refreshAccount = async () => {
+    const epoch = ++accountEpoch
+    try { const connection = await request('/api/cookies/status'); if (epoch === accountEpoch) renderAccount(connection) } catch { if (epoch === accountEpoch) renderAccount({ mode: 'unavailable' }) }
+  }
   const renderConnection = connection => {
+    accountEpoch++; renderAccount(connection)
     state.connection = connection
     const active = connection.mode === 'cookie'
     state.combined = active && connection.apiEnrichment
@@ -615,6 +628,8 @@
   $('channels-nav').addEventListener('click', () => setPage('channels'))
   $('activity-nav').addEventListener('click', () => setPage('activity'))
   $('settings-nav').addEventListener('click', () => setPage('settings'))
+  $('top-settings').addEventListener('click', () => setPage('settings'))
+  $('account-control').addEventListener('click', () => setPage('settings'))
   $('list-layout').addEventListener('click', () => setLayout('list'))
   $('grid-layout').addEventListener('click', () => setLayout('grid'))
   $('playback-speed').addEventListener('change', updateWatchTime)
@@ -861,6 +876,7 @@
   const setupDestination = window.location.hash
   const setupConnection = setupDestination === '#connect-api' || setupDestination === '#connect-cookie'
   setPage(setupConnection ? 'settings' : 'videos'); setInterval(poll, 5000)
+  void refreshAccount(); setInterval(refreshAccount, 30_000)
   if (setupConnection) {
     showNotice(setupDestination === '#connect-api' ? text.setupApiNext : text.setupCookieNext)
     history.replaceState(null, '', window.location.pathname + window.location.search)

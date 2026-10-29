@@ -58,7 +58,8 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 	);
 	CREATE TABLE IF NOT EXISTS api_account_identity (
 		id INTEGER PRIMARY KEY CHECK (id = 1),
-		channelId TEXT NOT NULL
+		channelId TEXT NOT NULL,
+		title TEXT
 	);
 	CREATE TABLE IF NOT EXISTS combined_subscription_metadata (
 		profileKey TEXT NOT NULL,
@@ -148,6 +149,11 @@ export const initChannelSchema = async (db: sqlite.Database): Promise<void> => {
 	`)
 	await db.exec('BEGIN IMMEDIATE')
 	try {
+		const apiAccountColumns = await db.all(
+			'PRAGMA table_info(api_account_identity)')
+		if (!apiAccountColumns.some(column => column.name === 'title')) {
+			await db.exec('ALTER TABLE api_account_identity ADD COLUMN title TEXT')
+		}
 		const subscriptionColumns = await db.all(
 			'PRAGMA table_info(cookie_subscription_actions)')
 		if (!subscriptionColumns.some(column => column.name === 'priorBell')) {

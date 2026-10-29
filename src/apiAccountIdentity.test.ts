@@ -2,6 +2,7 @@ import { expect, test } from 'vitest'
 import { init } from './database'
 import { Config } from './config'
 import { ApiAccountIdentity } from './apiAccountIdentity'
+import { initChannelSchema } from './channelSchema'
 
 test('binds the verified API account and rejects replacements', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -15,6 +16,8 @@ test('binds the verified API account and rejects replacements', async () => {
 		async () => ({} as never), async () => revision)
 	try {
 		expect(await identity.expected()).toBe(account)
+		expect(await db.get('SELECT title FROM api_account_identity'))
+			.toEqual({ title: 'Fixture' })
 		account = 'UC0000000000000000000002'
 		await expect(identity.verify({} as never)).rejects.toThrow(/match/)
 		expect(await identity.expected()).toBe('UC0000000000000000000001')
@@ -37,5 +40,20 @@ test('does not bind an identity when authorization changes during the read',
 		try {
 			await expect(identity.expected()).rejects.toThrow(/changed/)
 			expect(await identity.stored()).toBeNull()
+		} finally { await db.close() }
+	})
+
+test('upgrades account identities created before profile names were stored',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		try {
+			await db.exec(`DROP TABLE api_account_identity;
+				CREATE TABLE api_account_identity (id INTEGER PRIMARY KEY,
+				channelId TEXT NOT NULL);
+				INSERT INTO api_account_identity (id, channelId)
+				VALUES (1, 'UC0000000000000000000001');`)
+			await initChannelSchema(db)
+			expect(await db.get('SELECT channelId, title FROM api_account_identity'))
+				.toEqual({ channelId: 'UC0000000000000000000001', title: null })
 		} finally { await db.close() }
 	})

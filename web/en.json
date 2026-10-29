@@ -1,4 +1,5 @@
 {
+  "accountManual": "Manual tracking", "accountApi": "YouTube API", "accountLoading": "Connection", "accountControl": "Connection settings",
   "setupManualLimits": "No account sync or bell controls. RSS may not include duration or livestream details.",
   "setupApiTitle": "YouTube API", "setupApiHelp": "Connect a Google account to read subscriptions and richer video details. You need the existing Desktop OAuth client and consent.", "setupApiLimits": "The official API does not provide bell settings. You can add cookies later for bell tracking.", "setupApiStart": "Continue with Google",
   "setupCookieTitle": "YouTube cookies", "setupCookieHelp": "Import a signed-in YouTube cookie and choose a personal or Brand profile to follow subscription and bell settings.", "setupCookieLimits": "Cookies expire and YouTube's internal interface may change. RSS video details can be incomplete; you can add Google API metadata later.", "setupCookieStart": "Continue with cookies",

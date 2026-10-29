@@ -170,6 +170,9 @@ using 7–40 lowercase hexadecimal commit characters. Append `-dirty` when the
 build includes uncommitted changes. Portainer builds can set the
 `BBYEN_BUILD_REVISION` stack variable to the same value. Builds without it report an
 unknown revision rather than guessing from the running checkout.
+The top-bar connection control shows the selected cookie profile or the last
+verified API profile name and opens Settings. It shows a generic API label
+until an older installation's account has been verified.
 
 ## Initial Configuration
 

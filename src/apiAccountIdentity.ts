@@ -30,10 +30,19 @@ export class ApiAccountIdentity {
 		if (this.config.mode !== 'youtube' || revision !== await this.revision()) {
 			throw new Error('Authorization changed during account verification.')
 		}
-		await this.db.run(SQL`INSERT INTO api_account_identity (id, channelId)
-			VALUES (1, ${identity.channelId}) ON CONFLICT(id) DO NOTHING;`)
+		await this.db.run(SQL`INSERT INTO api_account_identity
+			(id, channelId, title) VALUES
+			(1, ${identity.channelId}, ${identity.title})
+			ON CONFLICT(id) DO NOTHING;`)
 		if (await this.stored() !== identity.channelId) {
 			throw new Error('Google account does not match the saved API account.')
+		}
+		const updated = await this.db.run(SQL`UPDATE api_account_identity
+			SET title=${identity.title}
+			WHERE id=1 AND channelId=${identity.channelId};`)
+		if (!updated.changes || this.config.mode !== 'youtube' ||
+				revision !== await this.revision()) {
+			throw new Error('Authorization changed during account verification.')
 		}
 		return identity.channelId
 	}

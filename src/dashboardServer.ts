@@ -825,6 +825,9 @@ export const createDashboardHandler = (
 	void jobs.maintenance(randomUUID(), async () => {
 		if (url.pathname === '/api/cookies/status') {
 			return { mode: actions!.config.mode,
+				apiProfile: actions!.config.mode === 'youtube' ?
+					await db.get('SELECT channelId, title FROM api_account_identity ' +
+						'WHERE id=1') ?? null : null,
 				manualTransitionPending: !!actions!.config.manualTransitionPending,
 				apiEnrichment: !!actions!.config.apiEnrichment,
 				connection: await actions!.cookieStatus(),
