@@ -68,8 +68,7 @@
     $('settings-nav').classList.toggle('active', page === 'settings')
     $('heading').textContent = text[page]
     $('refresh').hidden = page === 'activity' || page === 'settings'
-    $('add').hidden = page === 'settings' || page === 'activity'
-    $('add').disabled = true; $('add').textContent = text.add
+    $('add').disabled = !state.canAdd; $('add').textContent = text.add
     $('add-panel').hidden = true
     $('email-user').value = ''; $('email-password').value = ''
     $('import-file').value = ''; $('import-review').hidden = true; state.importPreview = null
@@ -86,6 +85,7 @@
     $('daily-counts').hidden = page !== 'videos'
     $('api-action-status').hidden = true
     $('channel-filter-label').hidden = page !== 'channels'
+    $('channel-search-label').hidden = page !== 'channels'
     $('filter-label').hidden = page !== 'videos' || !state.channel
     $('cookie-stale').hidden = true
     load(); poll()
@@ -447,6 +447,8 @@
         if (sequence !== state.sequence) return
         $('build-identity').textContent = `${text.version}: ${build.version} · ${text.buildRevision}: ${build.revision || text.unknownBuild}${build.dirty ? ` (${text.dirtyBuild})` : ''}`
         renderConnection(connection)
+        state.canAdd = !connection.manualTransitionPending && (connection.mode === 'whitelist' || connection.mode === 'cookie' || (connection.mode === 'youtube' && !!general.settings.emailSelectionPolicy))
+        $('add').disabled = !state.canAdd
         const email = data.settings
         $('smtp-host').value = email.host; $('smtp-port').value = email.port
         $('smtp-secure').checked = email.secure
@@ -547,9 +549,10 @@
       const [all, apiActions] = await Promise.all([request('/api/channels'), state.page === 'channels' ? request('/api/youtube-actions') : Promise.resolve({ available: false, canManage: false, channels: [] })])
       if (sequence !== state.sequence) return
       state.cookieMode = all.cookieMode
+      state.canAdd = !!(all.manualMode || all.cookieMode || all.apiMode)
       state.combined = !!all.apiEnrichment
       state.confirmUnsubscribe = all.confirmUnsubscribe
-      $('add').disabled = !all.manualMode && !all.cookieMode && !all.apiMode
+      $('add').disabled = !state.canAdd
       $('add').textContent = all.manualMode || all.cookieMode || all.apiMode ? text.add : text.addManualOnly
       $('cookie-add-help').hidden = !all.cookieMode
       $('cookie-add-bell-label').hidden = !all.cookieMode
@@ -566,7 +569,7 @@
         }
         $('api-action-status').hidden = !all.apiMode || (apiActions.available && apiActions.canManage)
         $('api-action-status').textContent = apiActions.available ? text.apiReadOnly : text.apiActionsUnavailable
-        const term = $('search').value.toLocaleLowerCase()
+        const term = $('channel-search').value.toLocaleLowerCase()
         const filter = $('channel-filter').value
         const found = all.channels.filter(c => {
           const matches = (c.channelTitle || c.channelId).toLocaleLowerCase().includes(term)
@@ -640,11 +643,16 @@
   $('playback-speed').addEventListener('change', updateWatchTime)
   $('content-type').addEventListener('change', () => { state.offset = 0; load() })
   $('channel-filter').addEventListener('change', () => load())
-  for (const id of ['search','from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
+  $('search').addEventListener('input', () => {
+    state.offset = 0
+    if (state.page !== 'videos' || state.channel) { state.channel = null; setPage('videos') } else load()
+  })
+  $('channel-search').addEventListener('input', () => load())
+  for (const id of ['from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
   $('previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset-size); load() })
   $('next').addEventListener('click', () => { state.offset += size; load() })
   let resolveEpoch = 0
-  $('add').addEventListener('click', () => { resolveEpoch++; $('add-panel').hidden = !$('add-panel').hidden; $('preview').hidden = true; if (!$('add-panel').hidden) $('channel-input').focus() })
+  $('add').addEventListener('click', () => { resolveEpoch++; if (state.page === 'settings' || state.page === 'activity') setPage('channels'); $('add-panel').hidden = !$('add-panel').hidden; $('preview').hidden = true; if (!$('add-panel').hidden) $('channel-input').focus() })
   $('resolve-form').addEventListener('submit', async event => {
     event.preventDefault(); const epoch = ++resolveEpoch; $('preview').hidden = true; showNotice(text.loading)
     try { const result = await post('/api/channels/resolve', { input: $('channel-input').value }); if (epoch !== resolveEpoch) return; $('resolved-id').textContent = result.channelId; $('resolved-details').textContent = `${result.title || text.channelNameUnavailable} · ${result.tracked ? text.previewTracked : text.previewNotTracked} · ${result.emailEnabled ? text.previewEmailOn : text.previewEmailOff}`; $('preview').hidden = false; showNotice('') }

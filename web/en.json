@@ -1,4 +1,5 @@
 {
+  "searchChannels": "Search channels",
   "policyReviewHelp": "Review channels whose email eligibility will change. Muted channels remain muted. Newly discovered subscriptions may change the list later.", "policyConfirm": "Confirm email policy", "policyNoChanges": "No tracked channels change email eligibility.", "policyReviewError": "Could not review or save the policy. Reload settings and review again.", "policy_eligible": "Email eligible", "policy_excluded": "Excluded", "policy_muted": "Muted",
   "accountManual": "Manual tracking", "accountApi": "YouTube API", "accountLoading": "Connection", "accountControl": "Connection settings",
   "setupManualLimits": "No account sync or bell controls. RSS may not include duration or livestream details.",

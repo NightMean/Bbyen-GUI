@@ -10,7 +10,8 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/" aria-label="BBYEN home"><span class="brand-mark">▶</span> BBYEN</a>
-    <span class="top-caption" data-text="caption"></span>
+    <label class="search top-search"><span data-text="search"></span><input id="search" type="search" autocomplete="off"></label>
+    <button id="add" class="primary" type="button" disabled data-text="add"></button>
     <button id="theme" class="quiet" type="button" data-text="theme"></button>
     <button id="top-settings" class="quiet" type="button" data-text="settings"></button>
     <button id="account-control" class="account-control" type="button"><span id="account-avatar" class="account-avatar" aria-hidden="true">•</span><span id="account-name" data-text="accountLoading"></span></button>
@@ -31,7 +32,6 @@
         <div><p class="eyebrow" data-text="yourLibrary"></p><h1 id="heading"></h1></div>
         <div class="head-actions">
           <button id="refresh" class="outline" type="button" data-text="refresh"></button>
-          <button id="add" class="primary" type="button" data-text="add"></button>
         </div>
       </div>
       <p id="notice" class="notice" role="status" aria-live="polite"></p>
@@ -62,7 +62,7 @@
         </div>
       </section>
       <div id="toolbar" class="toolbar">
-        <label class="search"><span data-text="search"></span><input id="search" type="search" autocomplete="off"></label>
+        <label id="channel-search-label" class="search" hidden><span data-text="searchChannels"></span><input id="channel-search" type="search" autocomplete="off"></label>
         <label id="channel-filter-label" hidden><span data-text="channelStatus"></span>
           <select id="channel-filter"><option value="all" data-text="allChannels"></option><option value="tracked" data-text="trackedChannels"></option><option value="muted" data-text="mutedChannels"></option><option value="notTracked" data-text="notTrackedChannels"></option><option value="terminated" data-text="terminatedChannels"></option></select>
         </label>
