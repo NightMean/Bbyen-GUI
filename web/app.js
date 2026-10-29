@@ -5,6 +5,7 @@
   document.querySelectorAll('[data-text]').forEach(el => { el.textContent = text[el.dataset.text] })
   const state = { page: 'videos', channel: null, offset: 0, total: 0, sequence: 0, previousRefresh: {}, duration: 0, unknownDurations: 0, importPreview: null, cookieCandidate: null, cookiePreview: null, manualPreview: null, cookieEpoch: 0, cookieMode: false, confirmUnsubscribe: true }
   const size = 30
+  let policyReviewEpoch = 0
   const localDate = date => `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`
   const today = new Date()
   const first = new Date(today.getFullYear(), today.getMonth(), today.getDate()-6)
@@ -49,6 +50,7 @@
     localStorage.setItem('bbyen-layout', layout)
   }
   const setPage = page => {
+    policyReviewEpoch++
     state.cookieEpoch++
     if (state.cookieCandidate) void post('/api/cookies/cancel', { candidateId: state.cookieCandidate }).catch(() => {})
     state.cookieCandidate = null; state.cookiePreview = null; state.manualPreview = null
@@ -56,6 +58,7 @@
     state.apiSourcePreview = null; $('api-source-review').hidden = true
     state.apiManualPreview = null; $('api-manual-review').hidden = true
     state.manualApiPreview = null; $('manual-api-review').hidden = true
+    state.policyReview = null; $('policy-review').hidden = true
     $('cookie-input').value = ''; $('cookie-file').value = ''
     $('cookie-profiles').hidden = true; $('cookie-review').hidden = true; $('manual-review').hidden = true
     state.page = page; state.offset = 0
@@ -457,6 +460,8 @@
         $('default-count').value = general.settings.initialBacklog.count || 5
         $('api-policy-label').hidden = connection.mode !== 'youtube'
         $('api-policy').value = general.settings.emailSelectionPolicy || ''
+        state.apiPolicy = general.settings.emailSelectionPolicy || ''
+        $('api-policy').options[0].disabled = !!state.apiPolicy
         $('video-view-days').value = general.settings.videoViewDays
         $('retention-days').value = general.settings.videoRetentionDays ?? ''
         $('activity-retention-days').value = general.settings.activityRetentionDays ?? ''
@@ -667,8 +672,17 @@
     catch { showNotice(text.scheduleError) }
   })
   $('default-backlog').addEventListener('change', () => { $('default-count-label').hidden = $('default-backlog').value !== 'newest'; $('default-count').disabled = $('default-count-label').hidden })
+  $('general-form').addEventListener('input', () => { policyReviewEpoch++; state.policyReview = null; $('policy-review').hidden = true })
+  $('policy-cancel').addEventListener('click', () => { policyReviewEpoch++; state.policyReview = null; $('policy-review').hidden = true })
+  const saveGeneral = async (settings, previewId) => {
+    await post('/api/settings', { settings, ...(previewId ? { previewId } : {}) })
+    state.confirmUnsubscribe = settings.confirmUnsubscribe
+    if (settings.emailSelectionPolicy) { state.apiPolicy = settings.emailSelectionPolicy; $('api-policy').options[0].disabled = true }
+    state.policyReview = null; $('policy-review').hidden = true; showNotice(text.generalSaved)
+  }
   $('general-form').addEventListener('submit', async event => {
     event.preventDefault()
+    const epoch = ++policyReviewEpoch
     const mode = $('default-backlog').value
     const count = Number($('default-count').value)
     if (mode === 'newest' && (!Number.isSafeInteger(count) || count < 1)) { showNotice(text.invalidCount); return }
@@ -677,8 +691,24 @@
     const activityRetentionDays = $('activity-retention-days').value === '' ? null : Number($('activity-retention-days').value)
     const settings = { initialBacklog, videoRetentionDays, videoViewDays: Number($('video-view-days').value), activityRetentionDays, emailOnError: $('failure-email').checked, notifyFailureReminders: $('failure-reminder').checked, notifyRecoveries: $('recovery-email').checked, confirmUnsubscribe: $('confirm-unsubscribe-setting').checked, notifyTitleChanges: $('title-email').checked, notifyChannelAdded: $('channel-email').checked }
     if (!$('api-policy-label').hidden && $('api-policy').value) settings.emailSelectionPolicy = $('api-policy').value
-    try { await post('/api/settings', { settings }); state.confirmUnsubscribe = settings.confirmUnsubscribe; showNotice(text.generalSaved) }
+    try {
+      if (settings.emailSelectionPolicy && settings.emailSelectionPolicy !== state.apiPolicy) {
+        const preview = await post('/api/email/policy/preview', { policy: settings.emailSelectionPolicy })
+        if (epoch !== policyReviewEpoch) return
+        state.policyReview = { settings, previewId: preview.previewId }
+        $('policy-review-details').textContent = preview.changes.length ? preview.changes.map(item => `${item.title || item.channelId} · ${text['policy_' + item.before]} → ${text['policy_' + item.after]}`).join('\n') : text.policyNoChanges
+        $('policy-review').hidden = false
+      } else await saveGeneral(settings)
+    }
     catch { showNotice(text.generalError) }
+  })
+  $('policy-confirm').addEventListener('click', async () => {
+    const review = state.policyReview
+    if (!review) return
+    $('policy-confirm').disabled = true
+    try { await saveGeneral(review.settings, review.previewId) }
+    catch { state.policyReview = null; $('policy-review').hidden = true; showNotice(text.policyReviewError) }
+    finally { $('policy-confirm').disabled = false }
   })
   $('test-email').addEventListener('click', async () => {
     $('test-email').disabled = true; $('test-email-result').textContent = text.testSending

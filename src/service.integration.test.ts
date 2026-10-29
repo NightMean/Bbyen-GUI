@@ -225,9 +225,11 @@ test('service remains up when OAuth credentials are missing', async () => {
 		const base = `http://127.0.0.1:${port}`
 		const current = (await axios.get(`${base}/api/settings`)).data.settings
 		expect(current.emailSelectionPolicy).toBe('allowlist')
+		const review = (await axios.post(`${base}/api/email/policy/preview`,
+			{ policy: 'blocklist' })).data
 		await axios.post(`${base}/api/settings`, { settings: {
 			...current, emailSelectionPolicy: 'blocklist',
-		} })
+		}, previewId: review.previewId })
 		expect((await axios.get(`${base}/api/settings`)).data.settings
 			.emailSelectionPolicy).toBe('blocklist')
 		const saved = JSON.parse(await fs.readFile(

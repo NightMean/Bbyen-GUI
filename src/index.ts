@@ -42,6 +42,7 @@ import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { ApiSubscriptionActions } from './apiSubscriptionActions'
 import { ApiAccountIdentity } from './apiAccountIdentity'
+import { ApiPolicyPreview } from './apiPolicyPreview'
 import {
 	setApiChannelNotify, setCookieChannelNotify, setCookieChannelBacklog,
 } from './channelPreferences'
@@ -280,6 +281,7 @@ const startService = async (existingServer?: Server) => {
 			apiSourceSwitch,
 			apiManualSwitch,
 			manualApiSwitch,
+			apiPolicyPreview: new ApiPolicyPreview(db, config),
 			verifyApiProfile,
 			cookiePreviews,
 			cookieStatus: () => cookieStore.status(),

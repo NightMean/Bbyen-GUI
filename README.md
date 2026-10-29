@@ -95,6 +95,8 @@ refreshes; the refresh endpoint reports their most recent outcomes.
 Dashboard Settings accepts separate intervals such as `6 hours` or `3 days` and
 replaces the running timers after the new settings are saved.
 In API mode, Settings also selects allowlist or blocklist email eligibility.
+Before changing it, review and confirm the affected tracked channels; if their
+eligibility changes during review, BBYEN asks for a new comparison.
 An empty allowlist sends no subscription emails; an empty blocklist permits all
 otherwise eligible channels. Existing lists remain separate and can be edited
 per channel or imported under Subscriptions. Removing an allowlist entry retains

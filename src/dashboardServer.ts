@@ -28,7 +28,7 @@ import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { ApiSubscriptionActions } from './apiSubscriptionActions'
 import { BellNotificationPreference } from './lib/innertubeChannels'
 import { ApiChannelList } from './apiChannelLists'
-import { makeEmailEligibility } from './emailPolicy'
+import { makeEmailEligibility, parseEmailSelectionPolicy } from './emailPolicy'
 import { RemoteDesktopAuth } from './remoteDesktopAuth'
 import { CombinedMode } from './combinedMode'
 import { ApiSourceSwitch, IncompleteApiSnapshot, UnconfirmedCookieSnapshot }
@@ -37,6 +37,7 @@ import { ApiManualSwitch } from './apiManualSwitch'
 import { ManualApiSwitch } from './manualApiSwitch'
 import { channelAddPreview, readPublicChannelTitle } from './channelAddPreview'
 import { readBuildIdentity } from './buildIdentity'
+import { ApiPolicyPreview, PolicyPreviewError } from './apiPolicyPreview'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -71,6 +72,7 @@ interface ChannelActions {
 	apiSourceSwitch?: ApiSourceSwitch,
 	apiManualSwitch?: ApiManualSwitch,
 	manualApiSwitch?: ManualApiSwitch,
+	apiPolicyPreview?: ApiPolicyPreview,
 	verifyApiProfile?: (channelId: string) => Promise<void>,
 	bellActions: CookieBellActions,
 	subscriptionActions: CookieSubscriptionActions,
@@ -111,6 +113,7 @@ export const createDashboardHandler = (
 			url.pathname === '/api/channels/subscription/undo/acknowledge' ||
 			url.pathname === '/api/channels/subscription/acknowledge' ||
 			url.pathname === '/api/email/settings' ||
+			url.pathname === '/api/email/policy/preview' ||
 			url.pathname === '/api/email/credentials' ||
 			url.pathname === '/api/email/test' ||
 			url.pathname === '/api/subscriptions/import/preview' ||
@@ -173,7 +176,7 @@ export const createDashboardHandler = (
 				profileId?: unknown, preference?: unknown, subscribed?: unknown,
 				confirmUnsubscribe?: unknown, list?: unknown, included?: unknown,
 				port?: unknown, id?: unknown, state?: unknown, code?: unknown,
-				direction?: unknown, keepApi?: unknown } = {}
+				direction?: unknown, keepApi?: unknown, policy?: unknown } = {}
 			try {
 				const parsed: unknown = JSON.parse(body)
 				if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -382,6 +385,20 @@ export const createDashboardHandler = (
 				}))
 				return
 			}
+			if (url.pathname === '/api/email/policy/preview') {
+				let policy: ReturnType<typeof parseEmailSelectionPolicy>
+				try { policy = parseEmailSelectionPolicy(data.policy) } catch {
+					send(400, { error: 'Choose a valid email policy.' }); return
+				}
+				if (!actions.apiPolicyPreview) {
+					send(503, { error: 'Email policy review is unavailable.' }); return
+				}
+				void writeMaintenance(() => actions.apiPolicyPreview!.review(policy))
+					.then(result => send(200, result), () => send(409, {
+						error: 'Could not review the current email policy.',
+					}))
+				return
+			}
 			if (url.pathname === '/api/settings') {
 				try { parseGeneralSettings(data.settings) } catch {
 					send(400, { error: 'Enter valid settings.' }); return
@@ -408,6 +425,13 @@ export const createDashboardHandler = (
 							actions.config.notifyRecoveries ?? false })
 					const changedPolicy = settings.emailSelectionPolicy !==
 						(actions.config.emailSelectionPolicy ?? null)
+					if (changedPolicy && actions.config.mode === 'youtube') {
+						if (!actions.apiPolicyPreview || !settings.emailSelectionPolicy) {
+							throw new PolicyPreviewError('Policy review is required.')
+						}
+						await actions.apiPolicyPreview.confirm(data.previewId,
+							settings.emailSelectionPolicy)
+					}
 					await actions.saveGeneral(settings)
 					return { settings, changedPolicy }
 				})
@@ -416,8 +440,10 @@ export const createDashboardHandler = (
 							actions.refresh('subscriptions')
 						}
 						send(200, { settings })
-					}, () => send(500, {
-						error: 'Could not confirm settings. Reload before retrying.',
+					}, error => send(error instanceof PolicyPreviewError ? 409 : 500, {
+						error: error instanceof PolicyPreviewError ?
+							'Policy review changed or expired. Review again.' :
+							'Could not confirm settings. Reload before retrying.',
 					}))
 				return
 			}

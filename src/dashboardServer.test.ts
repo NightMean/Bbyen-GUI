@@ -12,6 +12,7 @@ import { ManualSourceSwitch } from './manualSourceSwitch'
 import { CookieBellActions } from './cookieBellActions'
 import { CookieSubscriptionActions } from './cookieSubscriptionActions'
 import { IncompleteApiSnapshot } from './apiSourceSwitch'
+import { ApiPolicyPreview } from './apiPolicyPreview'
 
 test('serves persisted data and rejects unsupported requests', async () => {
 	const db = await init({ filename: ':memory:' })
@@ -98,6 +99,46 @@ test('validates the listening port', () => {
 	expect(dashboardPort('0')).toBe(0)
 	expect(() => dashboardPort('3031x')).toThrow()
 	expect(() => dashboardPort('65536')).toThrow()
+})
+
+test('requires a current review before changing API email policy', async () => {
+	const db = await init({ filename: ':memory:' })
+	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
+	const id = 'UC0000000000000000000001'
+	const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+		whitelistedChannelIds: [], blacklistedChannelIds: [] } as unknown as Config
+	await db.run('INSERT INTO subscriptions ' +
+		'(channelId, channelTitle, channelThumbnail) VALUES (?, ?, ?)', id, id, '')
+	const actions = { config, apiPolicyPreview: new ApiPolicyPreview(db, config),
+		saveGeneral: async (settings: { emailSelectionPolicy: 'blocklist' }) => {
+			config.emailSelectionPolicy = settings.emailSelectionPolicy
+		}, refresh: () => undefined } as never
+	const server = createDashboardServer(db, jobs, actions)
+	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+	const settings = { initialBacklog: { mode: 'none' },
+		videoRetentionDays: null, emailOnError: false,
+		emailSelectionPolicy: 'blocklist' }
+	try {
+		expect((await axios.post(`${base}/api/settings`, { settings },
+			{ validateStatus: () => true })).status).toBe(409)
+		const review = (await axios.post(`${base}/api/email/policy/preview`,
+			{ policy: 'blocklist' })).data
+		expect(review.changes).toHaveLength(1)
+		config.blacklistedChannelIds = [{ id }]
+		expect((await axios.post(`${base}/api/settings`, { settings,
+			previewId: review.previewId }, { validateStatus: () => true })).status)
+			.toBe(409)
+		const current = (await axios.post(`${base}/api/email/policy/preview`,
+			{ policy: 'blocklist' })).data
+		await axios.post(`${base}/api/settings`, { settings,
+			previewId: current.previewId })
+		expect(config.emailSelectionPolicy).toBe('blocklist')
+	} finally {
+		await new Promise<void>((resolve, reject) => server.close(err =>
+			err ? reject(err) : resolve()))
+		await db.close()
+	}
 })
 
 test('confirms the cookie profile before subscribing and setting the bell',
