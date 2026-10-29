@@ -23,6 +23,8 @@ export const pruneActivity = async (
 	try {
 		await db.run(SQL`DELETE FROM video_email_activity
 			WHERE sentAt < ${cutoff};`)
+		await db.run(SQL`DELETE FROM configuration_activity
+			WHERE observedAt < ${cutoff};`)
 		await db.run(SQL`DELETE FROM cookie_channel_events
 			WHERE observedAt < ${cutoff};`)
 		await db.run(SQL`DELETE FROM channel_title_events

@@ -123,7 +123,8 @@ change emails are enabled by default and can be disabled independently in
 Settings. A channel sync groups newly monitored channels into one email;
 confirmed source switches do not generate added-channel emails. Confirmed video
 emails appear in Activity from this version onward and follow activity retention
-independently of video-detail retention. If delivery
+independently of video-detail retention. Confirmed dashboard imports and channel
+removals also appear in Activity from this version onward. If delivery
 cannot be confirmed, Activity marks it uncertain and does not retry it.
 Settings can export a versioned JSON file of channel lists and preferences.
 It excludes credentials, videos, and incidents; `null` lists represent lists

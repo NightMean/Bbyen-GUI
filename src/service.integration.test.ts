@@ -328,6 +328,12 @@ test('dashboard updates manual notification settings in the running service',
 			expect(saved.whitelistedChannelIds[0].notify).toBe(false)
 			await axios.post(`http://127.0.0.1:${port}/api/channels/remove`,
 				{ channelId: id })
+			const activity = (await axios.get(
+				`http://127.0.0.1:${port}/api/activity`)).data.items
+			expect(activity).toEqual(expect.arrayContaining([
+				expect.objectContaining({ kind: 'removal', value:
+					expect.objectContaining({ channelId: id }) }),
+			]))
 			const removed = JSON.parse(await fs.readFile(
 				path.join(dir, 'channels.json'), 'utf8'))
 			expect(removed.whitelistedChannelIds).toEqual([])
@@ -440,6 +446,9 @@ test('first-run setup starts the service without restarting', async () => {
 		await axios.post(`${url}/api/subscriptions/import/apply`, {
 			previewId: preview.data.id, conflictChoice: 'keep', acceptPartial: true,
 		})
+		const activity = (await axios.get(`${url}/api/activity`)).data.items
+		expect(activity.filter((item: { kind: string }) => item.kind === 'import'))
+			.toHaveLength(1)
 		const imported = JSON.parse(await fs.readFile(
 			path.join(dir, 'channels.json'), 'utf8'))
 		expect(imported.whitelistedChannelIds).toEqual([{ id: importedId }])

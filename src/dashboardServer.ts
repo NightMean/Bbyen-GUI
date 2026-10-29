@@ -159,6 +159,18 @@ export const createDashboardHandler = (
 				}
 				return work()
 			})
+		const recordConfigurationActivity = async (
+			kind: 'import' | 'removal', channelId: string | null = null,
+		): Promise<void> => {
+			try {
+				await db.run(SQL`INSERT INTO configuration_activity
+					(kind, channelId, observedAt)
+					VALUES (${kind}, ${channelId}, ${new Date().toISOString()});`)
+			} catch {
+				// A diagnostic failure must not mask a completed configuration write.
+				console.warn('Could not record channel configuration activity.')
+			}
+		}
 		let body = ''
 		request.setEncoding('utf8')
 		request.on('data', chunk => {
@@ -481,8 +493,10 @@ export const createDashboardHandler = (
 						typeof data.acceptPartial !== 'boolean') {
 					send(400, { error: 'Invalid import confirmation.' }); return
 				}
-				void writeMaintenance(() =>
-					actions.imports.apply(id, choice, data.acceptPartial as boolean))
+				void writeMaintenance(async () => {
+					await actions.imports.apply(id, choice, data.acceptPartial as boolean)
+					await recordConfigurationActivity('import')
+				})
 					.then(() => {
 						actions.refresh('subscriptions'); send(200, { applied: true })
 					}, err => {
@@ -737,7 +751,10 @@ export const createDashboardHandler = (
 					send(400, { error: 'Manual removal is unavailable.' })
 					return
 				}
-				void writeMaintenance(() => actions.remove(id))
+				void writeMaintenance(async () => {
+					await actions.remove(id)
+					await recordConfigurationActivity('removal', id)
+				})
 					.then(() => {
 						actions.refresh('subscriptions')
 						send(202, { channelId: id })

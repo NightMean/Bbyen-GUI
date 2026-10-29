@@ -520,6 +520,11 @@
             row.append(element('h3', '', text.videoEmailActivity), element('p', 'meta', `${sent.title || sent.videoId} · ${sent.channelTitle || sent.channelId} · ${displayDate(sent.sentAt)}`))
             return row
           }
+          if (item.kind === 'import' || item.kind === 'removal') {
+            const change = item.value, row = element('article', 'incident-row')
+            row.append(element('h3', '', item.kind === 'import' ? text.importActivity : text.removalActivity), element('p', 'meta', `${change.channelTitle ? `${change.channelTitle} · ` : ''}${displayDate(change.observedAt)}`))
+            return row
+          }
           if (item.kind === 'title') {
             const change = item.value, row = element('article', 'incident-row')
             row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}${text['titleEmail_' + change.emailState] ? ` · ${text['titleEmail_' + change.emailState]}` : ''}`))

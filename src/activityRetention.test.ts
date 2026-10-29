@@ -8,6 +8,8 @@ test('prunes completed activity but retains active and unresolved work',
 		try {
 			await db.exec(`INSERT INTO videos (videoId, channelId)
 				VALUES ('processed', 'fixture');
+			INSERT INTO configuration_activity (kind, observedAt)
+				VALUES ('import', '2020-01-01T00:00:00Z');
 			INSERT INTO cookie_channel_events
 				(profileKey, channelId, currentState, notifyEligible, observedAt)
 				VALUES ('profile', 'fixture', 'all', 1, '2020-01-01T00:00:00Z');
@@ -64,6 +66,7 @@ test('prunes completed activity but retains active and unresolved work',
 			expect(await db.all('SELECT id FROM refresh_runs'))
 				.toEqual([{ id: 'latest' }])
 			expect(await db.all('SELECT * FROM cookie_channel_events')).toEqual([])
+			expect(await db.all('SELECT * FROM configuration_activity')).toEqual([])
 		} finally { await db.close() }
 	})
 

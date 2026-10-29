@@ -80,6 +80,13 @@ const activityQuery = `
 	FROM video_email_activity v LEFT JOIN subscriptions s
 		ON s.channelId=v.channelId
 	UNION ALL
+	SELECT a.kind, a.observedAt, printf('%020d', a.id),
+		json_object('channelId', a.channelId,
+			'channelTitle', COALESCE(s.channelTitle, a.channelId),
+			'observedAt', a.observedAt)
+	FROM configuration_activity a LEFT JOIN subscriptions s
+		ON s.channelId=a.channelId
+	UNION ALL
 	SELECT 'refresh', COALESCE(finishedAt, startedAt), id,
 		json_object('kind', kind, 'status', status, 'startedAt', startedAt,
 			'finishedAt', finishedAt, 'resultStatus',
