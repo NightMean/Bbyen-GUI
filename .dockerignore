@@ -13,6 +13,7 @@ google-credentials.json
 cookies*.txt
 *.sqlite*
 *.log
+build-metadata.json
 *.json.lock
 *.json.*.tmp
 

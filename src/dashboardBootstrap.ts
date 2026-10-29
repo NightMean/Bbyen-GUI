@@ -4,6 +4,7 @@ import { RequestListener } from 'http'
 import configExample from '../config.example.json'
 import { serveDashboardAsset } from './dashboardAssets'
 import { updateJsonFile } from './lib/jsonFile'
+import { readBuildIdentity } from './buildIdentity'
 
 const exists = async (filename: string): Promise<boolean> => {
 	try { await fs.access(filename); return true } catch (err) {
@@ -48,6 +49,10 @@ export const createBootstrapHandler = (options: {
 			send(400, { error: 'Invalid request.' }); return
 		}
 		if (serveDashboardAsset(request, response, url, true)) return
+		if (request.method === 'GET' && url.pathname === '/api/health' &&
+				!url.search) {
+			send(200, { status: 'setup', ...readBuildIdentity() }); return
+		}
 		if (request.method === 'GET' && url.pathname === '/api/setup' &&
 				!url.search) {
 			void missingConfiguration(options.config, options.channels).then(

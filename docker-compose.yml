@@ -1,7 +1,10 @@
 services:
   bbyen:
     image: bbyen:local
-    build: .
+    build:
+      context: .
+      args:
+        BBYEN_BUILD_REVISION: ${BBYEN_BUILD_REVISION:-unknown}
     container_name: bbyen
     environment:
       CONFIG_DIR: /var/lib/bbyen

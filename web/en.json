@@ -1,4 +1,5 @@
 {
+  "about": "About", "version": "Version", "buildRevision": "Build revision", "unknownBuild": "Not provided", "dirtyBuild": "Uncommitted changes",
   "latestUpload": "Latest known upload", "noRetainedUploads": "No retained upload date",
   "channelNameUnavailable": "Channel name unavailable", "previewTracked": "Currently monitored", "previewNotTracked": "Not currently monitored", "previewEmailOn": "Email preference on", "previewEmailOff": "Email preference off",
   "cookieAddBell": "Set the notification bell to All if YouTube allows it", "subscriptionAllSaved": "Subscription and All notifications confirmed.",

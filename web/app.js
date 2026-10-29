@@ -427,8 +427,9 @@
     }
     try {
       if (state.page === 'settings') {
-        const [data, history, schedule, general, connection] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule'), request('/api/settings'), request('/api/cookies/status')])
+        const [data, history, schedule, general, connection, build] = await Promise.all([request('/api/email/settings'), request('/api/email/tests'), request('/api/schedule'), request('/api/settings'), request('/api/cookies/status'), request('/api/health')])
         if (sequence !== state.sequence) return
+        $('build-identity').textContent = `${text.version}: ${build.version} · ${text.buildRevision}: ${build.revision || text.unknownBuild}${build.dirty ? ` (${text.dirtyBuild})` : ''}`
         renderConnection(connection)
         const email = data.settings
         $('smtp-host').value = email.host; $('smtp-port').value = email.port

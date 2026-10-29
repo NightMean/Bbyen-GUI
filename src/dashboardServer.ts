@@ -36,6 +36,7 @@ import { ApiSourceSwitch, IncompleteApiSnapshot, UnconfirmedCookieSnapshot }
 import { ApiManualSwitch } from './apiManualSwitch'
 import { ManualApiSwitch } from './manualApiSwitch'
 import { channelAddPreview, readPublicChannelTitle } from './channelAddPreview'
+import { readBuildIdentity } from './buildIdentity'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -754,7 +755,7 @@ export const createDashboardHandler = (
 		return
 	}
 	if (url.pathname === '/api/health') {
-		send(200, { status: 'running' })
+		send(200, { status: 'running', ...readBuildIdentity() })
 		return
 	}
 	if (url.pathname === '/api/youtube-actions') {

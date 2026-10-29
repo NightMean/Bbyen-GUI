@@ -67,6 +67,7 @@ import { ManualApiSwitch, recoverManualApiSwitch } from './manualApiSwitch'
 import { normalizeApiChannelLists } from './apiChannelLists'
 import fs from 'fs/promises'
 import { parseEmailSelectionPolicy } from './emailPolicy'
+import { readBuildIdentity } from './buildIdentity'
 
 const listen = async (server: Server): Promise<void> => {
 	await new Promise<void>((resolve, reject) => {
@@ -78,6 +79,9 @@ const listen = async (server: Server): Promise<void> => {
 
 const startService = async (existingServer?: Server) => {
 	const logger = await setupLogger({ label: 'main' })
+	const build = readBuildIdentity()
+	logger.info(`BBYEN ${build.version} (${build.revision ?? 'unknown'}` +
+		`${build.dirty ? ', dirty' : ''})`)
 	let db: Awaited<ReturnType<typeof database.init>> | undefined
 	let schedule: RefreshSchedule | undefined
 	try {

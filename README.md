@@ -163,6 +163,14 @@ configuration, secrets, token, channels, and existing SQLite database into
 file. Keep the old files until the new container is verified. Runtime data is
 excluded from Git and the Docker build context.
 
+Settings and `/api/health` show the package version and, when supplied at
+image build time, the source revision. To label an image, run
+`docker compose build --build-arg BBYEN_BUILD_REVISION=<commit>` from `bbyen/`,
+using 7–40 lowercase hexadecimal commit characters. Append `-dirty` when the
+build includes uncommitted changes. Portainer builds can set the
+`BBYEN_BUILD_REVISION` stack variable to the same value. Builds without it report an
+unknown revision rather than guessing from the running checkout.
+
 ## Initial Configuration
 
 After installing the software using either the bare metal or Docker method,

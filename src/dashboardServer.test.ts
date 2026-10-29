@@ -31,6 +31,9 @@ test('serves persisted data and rejects unsupported requests', async () => {
 	await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
 	const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
 	try {
+		const health = (await axios.get(`${base}/api/health`)).data
+		expect(health).toMatchObject({ status: 'running',
+			version: expect.any(String) })
 		const channels = await axios.get(`${base}/api/channels`)
 		expect(channels.status).toBe(200)
 		expect(channels.data.channels[0].channelTitle).toBe('Test')
