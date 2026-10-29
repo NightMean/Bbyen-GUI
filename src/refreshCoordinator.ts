@@ -131,6 +131,7 @@ export class RefreshCoordinator {
 		state: LiveState,
 		progress: RefreshProgress | null,
 		lastSuccessfulAt: string | null,
+		lastCompletedResult: RefreshResult | null,
 		lastRun: { status: string; startedAt: string; finishedAt: string | null;
 			result: RefreshResult | null } | null,
 	}> {
@@ -142,14 +143,25 @@ export class RefreshCoordinator {
 			WHERE kind=${kind} AND status='completed' AND json_valid(resultJson)
 				AND json_extract(resultJson, '$.status')='success'
 			ORDER BY startedAt DESC, rowid DESC LIMIT 1;`)
+		const lastCompleted = await this.db.get(SQL`SELECT resultJson
+			FROM refresh_runs WHERE kind=${kind} AND status='completed'
+			ORDER BY startedAt DESC, rowid DESC LIMIT 1;`)
 		let result: RefreshResult | null = null
+		let lastCompletedResult: RefreshResult | null = null
 		if (row?.resultJson) {
 			try { result = sanitizeResult(JSON.parse(row.resultJson)) } catch {
 				this.warn('Stored refresh result is unreadable.')
 			}
 		}
+		if (lastCompleted?.resultJson) {
+			try {
+				lastCompletedResult = sanitizeResult(
+					JSON.parse(lastCompleted.resultJson))
+			} catch { this.warn('Stored refresh result is unreadable.') }
+		}
 		return { state: this.live.get(kind) ?? 'idle',
 			progress: this.progress.get(kind) ?? null,
+			lastCompletedResult,
 			lastSuccessfulAt: lastSuccess?.finishedAt ?? null,
 			lastRun: row ? { status: row.status, startedAt: row.startedAt,
 				finishedAt: row.finishedAt, result } : null }

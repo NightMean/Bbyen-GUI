@@ -937,8 +937,9 @@
       const refresh = data[kind]
       const current = refresh.state
       const outcome = refresh.lastRun?.status === 'interrupted' ? 'interrupted' : refresh.lastRun?.result?.status
-      const videoResult = data.videos.lastRun?.result
-      $('metadata-stale').hidden = state.page !== 'videos' || !(state.apiMode || state.combined) || !videoResult || videoResult.status === 'success' || !['auth', 'quota'].includes(videoResult.errorCategory)
+      const videoResult = data.videos.lastCompletedResult
+      const metadataUnavailable = videoResult && videoResult.status !== 'success' && (videoResult.apiChecked === false || ['auth', 'quota'].includes(videoResult.errorCategory))
+      $('metadata-stale').hidden = state.page !== 'videos' || !(state.apiMode || state.combined) || !metadataUnavailable
       const parts = [current === 'idle' && outcome ? text['refresh_' + outcome] : (text[current] || '')]
       if (refresh.progress) parts.push(`${refresh.progress.succeeded + refresh.progress.failed}/${refresh.progress.total} ${text.refreshChecked} · ${refresh.progress.failed} ${text.refreshFailedCount}`)
       else if (current === 'idle' && refresh.lastRun?.result) parts.push(`${refresh.lastRun.result.failed} ${text.refreshFailedCount}`)

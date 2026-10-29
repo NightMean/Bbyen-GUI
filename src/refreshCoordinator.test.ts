@@ -69,6 +69,31 @@ test('exposes queued and running jobs sharing the database', async () => {
 	} finally { await db.close() }
 })
 
+test('keeps the last completed outcome visible during another refresh',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		try {
+			const coordinator = new RefreshCoordinator(db, logger)
+			await coordinator.run('videos', async () => partial)
+			let release!: () => void
+			const gate = new Promise<void>(resolve => { release = resolve })
+			let started!: () => void
+			const ready = new Promise<void>(resolve => { started = resolve })
+			const work = coordinator.run('videos', async () => {
+				started()
+				await gate
+				return success
+			})
+			await ready
+			expect((await coordinator.status('videos')).lastCompletedResult)
+				.toEqual(partial)
+			release()
+			await work
+			expect((await coordinator.status('videos')).lastCompletedResult)
+				.toEqual(success)
+		} finally { await db.close() }
+	})
+
 test('reports bounded progress and ignores late reports', async () => {
 	const db = await init({ filename: ':memory:' })
 	try {
