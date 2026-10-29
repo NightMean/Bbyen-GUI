@@ -873,6 +873,8 @@ export const createDashboardHandler = (
 		if (url.pathname === '/api/channels') {
 			const channels = await db.all(`SELECT channelId, channelTitle,
 				channelThumbnail, deleted, deletedReason, firstObservedAt, bellState,
+				(SELECT MAX(v.publishedAt) FROM video_observations v
+				WHERE v.channelId=subscriptions.channelId) AS latestPublishedAt,
 				bellUpdatedAt, (SELECT m.subscribedAt
 				FROM combined_subscription_metadata m JOIN combined_connection c
 				ON c.profileKey=m.profileKey AND c.id=1

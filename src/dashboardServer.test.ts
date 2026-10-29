@@ -34,6 +34,8 @@ test('serves persisted data and rejects unsupported requests', async () => {
 		const channels = await axios.get(`${base}/api/channels`)
 		expect(channels.status).toBe(200)
 		expect(channels.data.channels[0].channelTitle).toBe('Test')
+		expect(channels.data.channels[0].latestPublishedAt)
+			.toBe('2026-03-28T23:30:00.000Z')
 		expect((await axios.get(`${base}/api/videos`)).data.videos[0].title)
 			.toBe('Example')
 		const counts = await axios.get(`${base}/api/videos`, {
@@ -79,6 +81,7 @@ test('returns channels beyond the previous dashboard limit', async () => {
 		const port = (server.address() as AddressInfo).port
 		const response = await axios.get(`http://127.0.0.1:${port}/api/channels`)
 		expect(response.data.channels).toHaveLength(501)
+		expect(response.data.channels[0].latestPublishedAt).toBeNull()
 		expect(response.data.channels[500].channelId).toBe('channel-500')
 	} finally {
 		if (server.listening) await new Promise<void>((resolve, reject) =>
