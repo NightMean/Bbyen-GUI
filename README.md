@@ -130,6 +130,10 @@ Settings also previews subscription imports, including additions, conflicts,
 and invalid entries. Partial imports require confirmation; if channel data
 changes after a preview, make a new preview before applying it. Import does not
 subscribe to channels or change YouTube bell settings.
+If an import reports that its outcome needs review, the service reloads the
+channel file and requests a channel refresh. Review the resulting channel list
+before retrying. A failed lock cleanup can leave `channels.json.lock`; check
+that no writer is running before removing the stale lock as described below.
 Dashboard Settings can save SMTP settings and write-only credentials separately.
 Environment-supplied credentials take precedence and cannot be changed through
 the API. Updated values are read for subsequent jobs without restarting.

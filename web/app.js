@@ -33,7 +33,11 @@
   }
   const request = async (url, options) => {
     const response = await fetch(url, options)
-    if (!response.ok) throw new Error('request failed')
+    if (!response.ok) {
+      const error = new Error('request failed')
+      try { error.recoveryRequired = (await response.json()).recoveryRequired === true } catch { /* Response was not JSON. */ }
+      throw error
+    }
     return response.json()
   }
   const post = (url, body) => request(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
@@ -786,7 +790,7 @@
     try {
       await post('/api/subscriptions/import/apply', { previewId: preview.id, conflictChoice: $('import-choice').value, acceptPartial: $('accept-partial').checked })
       $('import-review').hidden = true; $('import-file').value = ''; state.importPreview = null; showNotice(text.importSuccess)
-    } catch { $('import-review').hidden = true; state.importPreview = null; showNotice(text.importApplyError) }
+    } catch (error) { $('import-review').hidden = true; state.importPreview = null; showNotice(error.recoveryRequired ? text.importRecovery : text.importApplyError) }
     finally { $('import-apply').disabled = false }
   })
   $('cookie-inspect').addEventListener('click', async () => {

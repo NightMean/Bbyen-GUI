@@ -15,7 +15,8 @@ import { exportSubscriptions } from './subscriptionExport'
 import type { Config } from './config'
 import { parseSubscriptionImport } from './subscriptionImport'
 import {
-	ImportChangedError, ImportConfirmationError, SubscriptionImportService,
+	ImportChangedError, ImportConfirmationError, ImportRecoveryError,
+	SubscriptionImportService,
 } from './subscriptionImportService'
 import { parseRefreshIntervals, RefreshIntervals } from './refreshSchedule'
 import {
@@ -485,6 +486,12 @@ export const createDashboardHandler = (
 					.then(() => {
 						actions.refresh('subscriptions'); send(200, { applied: true })
 					}, err => {
+						if (err instanceof ImportRecoveryError) {
+							actions.refresh('subscriptions')
+							send(500, { error: 'Import outcome needs review.',
+								recoveryRequired: true })
+							return
+						}
 						const status = err instanceof ImportChangedError ? 409 :
 							err instanceof ImportConfirmationError ? 400 : 500
 						send(status, { error: 'Import failed. Review the preview again.' })

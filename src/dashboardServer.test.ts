@@ -5,7 +5,9 @@ import { init } from './database'
 import { createDashboardServer, dashboardPort } from './dashboardServer'
 import { RefreshCoordinator } from './refreshCoordinator'
 import { Config } from './config'
-import { SubscriptionImportService } from './subscriptionImportService'
+import {
+	ImportRecoveryError, SubscriptionImportService,
+} from './subscriptionImportService'
 import { CookiePreviewService } from './cookiePreview'
 import { CookieConnectionStore } from './cookieConnection'
 import { ManualSourceSwitch } from './manualSourceSwitch'
@@ -144,6 +146,31 @@ test('validates the listening port', () => {
 	expect(() => dashboardPort('3031x')).toThrow()
 	expect(() => dashboardPort('65536')).toThrow()
 })
+
+test('refreshes channels after an import with uncertain acknowledgement',
+	async () => {
+		const db = await init({ filename: ':memory:' })
+		const jobs = new RefreshCoordinator(db, { warn: () => undefined })
+		const refresh = vi.fn()
+		const actions = { config: {}, refresh, imports: { apply: async () => {
+			throw new ImportRecoveryError('changed')
+		} } } as never
+		const server = createDashboardServer(db, jobs, actions)
+		try {
+			await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+			const port = (server.address() as AddressInfo).port
+			const result = await axios.post(
+				`http://127.0.0.1:${port}/api/subscriptions/import/apply`,
+				{ previewId: 'preview', conflictChoice: 'keep', acceptPartial: false },
+				{ validateStatus: () => true })
+			expect(result.status).toBe(500)
+			expect(refresh).toHaveBeenCalledWith('subscriptions')
+		} finally {
+			if (server.listening) await new Promise<void>((resolve, reject) =>
+				server.close(err => err ? reject(err) : resolve()))
+			await db.close()
+		}
+	})
 
 test('requires a current review before changing API email policy', async () => {
 	const db = await init({ filename: ':memory:' })

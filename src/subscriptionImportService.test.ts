@@ -1,9 +1,11 @@
 import fs from 'fs/promises'
 import os from 'os'
 import path from 'path'
-import { expect, test } from 'vitest'
+import { expect, test, vi } from 'vitest'
 import { Config } from './config'
-import { SubscriptionImportService } from './subscriptionImportService'
+import {
+	ImportRecoveryError, SubscriptionImportService,
+} from './subscriptionImportService'
 
 test('previews conflicts and requires consent for partial import', async () => {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-import-'))
@@ -80,5 +82,29 @@ test('detects preferences that conflict across channel lists', async () => {
 		const replace = await service.preview(input)
 		await service.apply(replace.id, 'replace', false)
 		expect(config.channelSettingsById?.get(id)?.notify).toBe(true)
+	} finally { await fs.rm(dir, { recursive: true, force: true }) }
+})
+
+test('reconciles a saved import when lock cleanup fails', async () => {
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'bbyen-import-lock-'))
+	const file = path.join(dir, 'channels.json')
+	const config = {} as Config
+	const id = 'UCabcdefghijklmnopqrstuv'
+	const unlink = fs.unlink.bind(fs)
+	try {
+		await fs.writeFile(file, JSON.stringify({ whitelistedChannelIds: [] }))
+		const service = new SubscriptionImportService(file, config)
+		const preview = await service.preview({ whitelistedChannelIds: [id] })
+		const spy = vi.spyOn(fs, 'unlink').mockImplementation(async target => {
+			if (target === `${file}.lock`) throw new Error('cleanup failed')
+			return unlink(target)
+		})
+		try {
+			await expect(service.apply(preview.id, 'keep', false))
+				.rejects.toBeInstanceOf(ImportRecoveryError)
+			expect(config.whitelistedChannelIds).toEqual([{ id }])
+			expect(JSON.parse(await fs.readFile(file, 'utf8')).whitelistedChannelIds)
+				.toEqual([{ id }])
+		} finally { spy.mockRestore() }
 	} finally { await fs.rm(dir, { recursive: true, force: true }) }
 })

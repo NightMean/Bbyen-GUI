@@ -46,6 +46,9 @@ interface Preview {
 
 export class ImportChangedError extends Error {}
 export class ImportConfirmationError extends Error {}
+export class ImportRecoveryError extends Error {
+	constructor(message: string, readonly cause?: unknown) { super(message) }
+}
 
 export class SubscriptionImportService {
 	private readonly previews = new Map<string, Preview>()
@@ -117,38 +120,61 @@ export class SubscriptionImportService {
 		if (preview.input.problems.length && partial !== true) {
 			throw new ImportConfirmationError('Partial import must be confirmed.')
 		}
-		const updated = await updateJsonFile(this.filename, value => {
-			const current = currentLists(value)
-			if (revision(current) !== preview.revision) {
-				throw new ImportChangedError('Channel data changed after preview.')
-			}
-			const result = { ...parseChannelLists(value) }
-			const effective = effectiveSettings(current)
-			for (const list of IMPORT_LISTS) {
-				const incoming = preview.input.lists[list]
-				if (!incoming) continue
-				const merged = new Map((current[list] ?? []).map(c => [c.id, c]))
-				for (const entry of incoming) {
-					const prior = merged.get(entry.id)
-					const next: ChannelEntry = prior ? { ...prior } : { id: entry.id }
-					for (const field of FIELDS) {
-						const previous = prior?.[field] ??
+		let updated: unknown
+		try {
+			updated = await updateJsonFile(this.filename, value => {
+				const current = currentLists(value)
+				if (revision(current) !== preview.revision) {
+					throw new ImportChangedError('Channel data changed after preview.')
+				}
+				const result = { ...parseChannelLists(value) }
+				const effective = effectiveSettings(current)
+				for (const list of IMPORT_LISTS) {
+					const incoming = preview.input.lists[list]
+					if (!incoming) continue
+					const merged = new Map((current[list] ?? []).map(c => [c.id, c]))
+					for (const entry of incoming) {
+						const prior = merged.get(entry.id)
+						const next: ChannelEntry = prior ? { ...prior } : { id: entry.id }
+						for (const field of FIELDS) {
+							const previous = prior?.[field] ??
 							(list === 'blacklistedChannelIds' ? undefined :
 								effective.get(entry.id)?.[field])
-						if (entry[field] !== undefined &&
+							if (entry[field] !== undefined &&
 								(choice === 'replace' || previous === undefined)) {
 							// The field types differ; retain their checked values as a group.
-							Object.assign(next, { [field]: entry[field] })
+								Object.assign(next, { [field]: entry[field] })
+							}
 						}
+						merged.set(entry.id, next)
 					}
-					merged.set(entry.id, next)
+					result[list] = [...merged.values()]
 				}
-				result[list] = [...merged.values()]
+				currentLists(result)
+				return result
+			})
+		} catch (error) {
+			if (error instanceof ImportChangedError) throw error
+			// Replacement can succeed before lock cleanup fails. Reconcile the
+			// live configuration with the file, then request a database refresh.
+			let lists: ImportedLists
+			try {
+				lists = currentLists(JSON.parse(await fs.readFile(this.filename,
+					'utf8')))
+			} catch { throw error }
+			this.useLists(lists)
+			if (revision(lists) !== preview.revision) {
+				this.previews.delete(id)
+				throw new ImportRecoveryError('Channel data changed during import.',
+					error)
 			}
-			currentLists(result)
-			return result
-		})
-		const lists = currentLists(updated)
+			throw error
+		}
+		this.useLists(currentLists(updated))
+		this.previews.delete(id)
+	}
+
+	private useLists(lists: ImportedLists): void {
 		this.config.whitelistedChannelIds = lists.whitelistedChannelIds ?? undefined
 		this.config.blacklistedChannelIds = lists.blacklistedChannelIds ?? undefined
 		this.config.manualChannelIds = lists.manualChannelIds ?? undefined
@@ -158,6 +184,5 @@ export class SubscriptionImportService {
 				...(lists.whitelistedChannelIds ?? []),
 				...(lists.manualChannelIds ?? []),
 			]))
-		this.previews.delete(id)
 	}
 }
