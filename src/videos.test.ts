@@ -88,11 +88,17 @@ describe('video failure recovery', () => {
 			if (String(url).includes('UCsecond')) throw new Error('RSS timeout')
 			return { title: 'Creator', items: [] } as never
 		})
-		const result = await parseFeedsAndNotify({ ...args(), config: {
+		const onProgress = vi.fn()
+		const result = await parseFeedsAndNotify({ ...args(), onProgress, config: {
 			...config, mode: 'whitelist',
 		} } as never)
 		expect(result).toMatchObject({ status: 'partial', total: 2,
 			succeeded: 1, failed: 1, skipped: 0 })
+		expect(onProgress.mock.calls.map(call => call[0])).toEqual([
+			{ total: 2, succeeded: 0, failed: 0 },
+			{ total: 2, succeeded: 1, failed: 0 },
+			{ total: 2, succeeded: 1, failed: 1 },
+		])
 	})
 
 	test('reports skipped channels after SMTP failure', async () => {

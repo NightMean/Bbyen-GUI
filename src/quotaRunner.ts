@@ -1,4 +1,6 @@
-import { RefreshCoordinator, RefreshKind } from './refreshCoordinator'
+import {
+	RefreshCoordinator, RefreshKind, ReportProgress,
+} from './refreshCoordinator'
 import { RefreshResult } from './refreshResult'
 import { QuotaBackoff } from './quotaBackoff'
 
@@ -7,8 +9,8 @@ interface QuotaRunnerOptions {
 	backoff: QuotaBackoff,
 	enabled: boolean | (() => boolean),
 	alertsEnabled: () => boolean,
-	work: Record<RefreshKind, () => Promise<RefreshResult>>,
-	rssFallback?: () => Promise<RefreshResult>,
+	work: Record<RefreshKind, (report: ReportProgress) => Promise<RefreshResult>>,
+	rssFallback?: (report: ReportProgress) => Promise<RefreshResult>,
 	subscriptionFallback?: () => Promise<RefreshResult>,
 	subscriptionFallbackEnabled?: () => boolean,
 	reportQuota: () => Promise<boolean>,
@@ -24,8 +26,8 @@ export class QuotaRunner {
 			? this.options.enabled() : this.options.enabled
 	}
 
-	private async fallback(): Promise<RefreshResult> {
-		const result = await this.options.rssFallback!()
+	private async fallback(report: ReportProgress): Promise<RefreshResult> {
+		const result = await this.options.rssFallback!(report)
 		return { ...result, status: result.status === 'success' ? 'partial' :
 			result.status, degradedReason: 'quota',
 		errorCategory: result.errorCategory ?? 'quota', apiChecked: false }
@@ -47,16 +49,16 @@ export class QuotaRunner {
 				})
 			}
 			if (kind !== 'videos' || !this.options.rssFallback) return undefined
-			return coordinator.run(kind, async () => {
-				try { return await this.fallback() } catch {
+			return coordinator.run(kind, async report => {
+				try { return await this.fallback(report) } catch {
 					return { status: 'failed', total: null, succeeded: 0, failed: 0,
 						skipped: 0, failedChannels: [], errorCategory: 'quota',
 						degradedReason: 'quota' }
 				}
 			})
 		}
-		return coordinator.run(kind, async () => {
-			const result = await this.options.work[kind]()
+		return coordinator.run(kind, async report => {
+			const result = await this.options.work[kind](report)
 			if (this.enabled()) {
 				try {
 					const update = await backoff.record(kind, result)
@@ -77,7 +79,7 @@ export class QuotaRunner {
 			}
 			if (kind === 'videos' && result.errorCategory === 'quota' &&
 					this.options.rssFallback) {
-				try { return await this.fallback() } catch {
+				try { return await this.fallback(report) } catch {
 					// Preserve the quota failure if independent RSS recovery fails.
 					return { ...result, degradedReason: 'quota' }
 				}

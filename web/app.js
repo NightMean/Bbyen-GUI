@@ -916,7 +916,11 @@
       const refresh = data[kind]
       const current = refresh.state
       const outcome = refresh.lastRun?.status === 'interrupted' ? 'interrupted' : refresh.lastRun?.result?.status
-      $('refresh-state').textContent = current === 'idle' && outcome ? text['refresh_' + outcome] : (text[current] || '')
+      const parts = [current === 'idle' && outcome ? text['refresh_' + outcome] : (text[current] || '')]
+      if (refresh.progress) parts.push(`${refresh.progress.succeeded + refresh.progress.failed}/${refresh.progress.total} ${text.refreshChecked} · ${refresh.progress.failed} ${text.refreshFailedCount}`)
+      else if (current === 'idle' && refresh.lastRun?.result) parts.push(`${refresh.lastRun.result.failed} ${text.refreshFailedCount}`)
+      if (refresh.lastSuccessfulAt) parts.push(`${text.lastSuccessful}: ${displayDate(refresh.lastSuccessfulAt)}`)
+      $('refresh-state').textContent = parts.filter(Boolean).join(' · ')
       if (state.previousRefresh[kind] && state.previousRefresh[kind] !== 'idle' && current === 'idle') load()
       state.previousRefresh[kind] = current
     } catch { $('refresh-state').textContent = text.refreshUnavailable }

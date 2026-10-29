@@ -7,6 +7,7 @@ import {
 	AlertDeps, AlertReporter, defaultAlertReporter,
 } from './lib/alertState'
 import { RefreshResult } from './refreshResult'
+import type { ReportProgress } from './refreshCoordinator'
 import { updateSubscriptions } from './subscriptions'
 import { parseFeedsAndNotify } from './videos'
 import { classifyError, ErrorCategory } from './lib/classifyError'
@@ -205,7 +206,9 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 		}
 		return deps.refreshCookies(await getMailers())
 	}
-	const runVideos = async (): Promise<RefreshResult> => {
+	const runVideos = async (
+		onProgress?: ReportProgress,
+	): Promise<RefreshResult> => {
 		if (deps.config.manualTransitionPending) return unavailable('other')
 		const mailers = await getMailers()
 		if (!mailers) return unavailable('other')
@@ -223,6 +226,7 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 			sendErrorEmail: mailers.sendErrorEmail,
 			alerts: jobAlerts,
 			rssOnly: rssFallback,
+			onProgress,
 		})
 		if (result.errorCategory === 'auth' && auth === currentAuth) {
 			auth = undefined
@@ -232,12 +236,14 @@ export const createServiceTasks = (deps: TaskDependencies) => {
 				errorCategory: result.errorCategory ?? 'auth', apiChecked: false } :
 			result
 	}
-	const runRssVideos = async (): Promise<RefreshResult> => {
+	const runRssVideos = async (
+		onProgress?: ReportProgress,
+	): Promise<RefreshResult> => {
 		if (deps.config.manualTransitionPending) return unavailable('other')
 		const mailers = await getMailers()
 		if (!mailers) return unavailable('other')
 		return parseFeedsAndNotify({ db: deps.db, service: deps.service,
-			config: deps.config, rssOnly: true, alerts: jobAlerts,
+			config: deps.config, rssOnly: true, alerts: jobAlerts, onProgress,
 			sendVideoEmail: mailers.sendVideoEmail,
 			sendErrorEmail: mailers.sendErrorEmail })
 	}

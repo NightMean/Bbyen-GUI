@@ -18,6 +18,7 @@ import { ChannelEntry, Config } from './config'
 import findNullishValues from './lib/findNullishValues'
 import { classifyError, ErrorCategory } from './lib/classifyError'
 import { RefreshResult } from './refreshResult'
+import type { ReportProgress } from './refreshCoordinator'
 import { AlertReporter, defaultAlertReporter } from './lib/alertState'
 import {
 	isChannelTerminatedOnYouTube,
@@ -442,6 +443,7 @@ interface IParseFeedsAndNotify {
 	sendErrorEmail: (error: ISendErrorEmail) => Promise<unknown>,
 	alerts?: AlertReporter,
 	rssOnly?: boolean,
+	onProgress?: ReportProgress,
 }
 export const parseFeedsAndNotify = async (
 	{ db, ...rest }: IParseFeedsAndNotify,
@@ -492,6 +494,7 @@ export const parseFeedsAndNotify = async (
 			WHERE deleted=0;
 		`)
 		total = channels.length
+		rest.onProgress?.({ total, succeeded, failed })
 
 		for (const [i, channel] of channels.entries()) {
 			activeChannel = channel.channelId
@@ -526,6 +529,7 @@ export const parseFeedsAndNotify = async (
 			}
 			activeChannel = undefined
 			checkedYouTube ||= channelResult.checkedYouTube
+			rest.onProgress?.({ total, succeeded, failed })
 			if (channelResult.stop) {
 				return result()
 			}

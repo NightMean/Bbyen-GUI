@@ -1,6 +1,6 @@
 import { expect, test, vi } from 'vitest'
 import { init } from './database'
-import { RefreshCoordinator } from './refreshCoordinator'
+import { RefreshCoordinator, ReportProgress } from './refreshCoordinator'
 import { RefreshResult } from './refreshResult'
 
 const success: RefreshResult = { status: 'success', total: 1, succeeded: 1,
@@ -66,6 +66,33 @@ test('exposes queued and running jobs sharing the database', async () => {
 		expect((await coordinator.status('subscriptions')).state).toBe('queued')
 		release()
 		await Promise.all([first, second])
+	} finally { await db.close() }
+})
+
+test('reports bounded progress and ignores late reports', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		const coordinator = new RefreshCoordinator(db, logger)
+		let release!: () => void
+		const gate = new Promise<void>(resolve => { release = resolve })
+		let started!: () => void
+		const ready = new Promise<void>(resolve => { started = resolve })
+		let late!: ReportProgress
+		const work = coordinator.run('videos', async report => {
+			late = report
+			report({ total: 4, succeeded: 2, failed: 1 })
+			report({ total: 4, succeeded: 5, failed: 0 })
+			started()
+			await gate
+			return success
+		})
+		await ready
+		expect((await coordinator.status('videos')).progress)
+			.toEqual({ total: 4, succeeded: 2, failed: 1 })
+		release()
+		await work
+		late({ total: 8, succeeded: 1, failed: 0 })
+		expect((await coordinator.status('videos')).progress).toBeNull()
 	} finally { await db.close() }
 })
 

@@ -8,6 +8,10 @@ import { RefreshResult } from './refreshResult'
 
 export type RefreshKind = 'videos' | 'subscriptions'
 type LiveState = 'idle' | 'queued' | 'running'
+export interface RefreshProgress {
+	total: number; succeeded: number; failed: number,
+}
+export type ReportProgress = (progress: RefreshProgress) => void
 const MAX_FAILED_CHANNELS = 1000
 
 const sanitizeResult = (value: unknown): RefreshResult => {
@@ -40,6 +44,7 @@ export class RefreshCoordinator {
 	private readonly jobs = serializeJobs()
 	private readonly pending = new Map<RefreshKind, Promise<RefreshResult>>()
 	private readonly live = new Map<RefreshKind, LiveState>()
+	private readonly progress = new Map<RefreshKind, RefreshProgress>()
 
 	constructor(
 		private readonly db: sqlite.Database,
@@ -72,13 +77,22 @@ export class RefreshCoordinator {
 	}
 
 	run(
-		kind: RefreshKind, work: () => Promise<RefreshResult>,
+		kind: RefreshKind, work: (report: ReportProgress) => Promise<RefreshResult>,
 	): Promise<RefreshResult> {
 		const existing = this.pending.get(kind)
 		if (existing) return existing
 		this.live.set(kind, 'queued')
 		const promise = this.jobs.run(kind, async () => {
 			this.live.set(kind, 'running')
+			let active = true
+			const report: ReportProgress = value => {
+				if (!active || ![value.total, value.succeeded, value.failed].every(
+					Number.isSafeInteger) || value.total < 0 || value.succeeded < 0 ||
+						value.failed < 0 || value.succeeded + value.failed > value.total) {
+					return
+				}
+				this.progress.set(kind, { ...value })
+			}
 			const id = randomUUID()
 			const startedAt = new Date().toISOString()
 			await this.record(() => this.db.run(SQL`INSERT INTO refresh_runs
@@ -86,12 +100,13 @@ export class RefreshCoordinator {
 				VALUES (${id}, ${kind}, 'running', ${startedAt});`))
 			let result: RefreshResult
 			try {
-				result = await work()
+				result = await work(report)
 			} catch (err) {
 				this.warn('A refresh stopped unexpectedly.')
 				result = { status: 'failed', total: null, succeeded: 0, failed: 0,
 					skipped: 0, failedChannels: [], errorCategory: classifyError(err) }
 			}
+			active = false
 			result = sanitizeResult(result)
 			const finishedAt = new Date().toISOString()
 			await this.record(() => {
@@ -103,13 +118,18 @@ export class RefreshCoordinator {
 			return result
 		})
 		this.pending.set(kind, promise)
-		const clear = () => { this.pending.delete(kind); this.live.delete(kind) }
+		const clear = () => {
+			this.pending.delete(kind)
+			this.live.delete(kind)
+			this.progress.delete(kind)
+		}
 		void promise.then(clear, clear)
 		return promise
 	}
 
 	async status(kind: RefreshKind): Promise<{
 		state: LiveState,
+		progress: RefreshProgress | null,
 		lastSuccessfulAt: string | null,
 		lastRun: { status: string; startedAt: string; finishedAt: string | null;
 			result: RefreshResult | null } | null,
@@ -129,6 +149,7 @@ export class RefreshCoordinator {
 			}
 		}
 		return { state: this.live.get(kind) ?? 'idle',
+			progress: this.progress.get(kind) ?? null,
 			lastSuccessfulAt: lastSuccess?.finishedAt ?? null,
 			lastRun: row ? { status: row.status, startedAt: row.startedAt,
 				finishedAt: row.finishedAt, result } : null }
