@@ -540,6 +540,7 @@
             const guidance = incident.source === 'smtp' ? text.help_smtp : incident.source === 'cookie' ? text.help_cookie : text['help_' + incident.category] || text.help_other
             row.append(element('p', 'incident-help', guidance))
           }
+          if (incident.emailState === 'failed' || incident.emailState === 'exhausted') row.append(element('p', 'incident-help', incident.emailState === 'failed' ? text.alertEmailRetrying : text.alertEmailExhausted))
           if (incident.reminderState === 'failed' || incident.reminderState === 'exhausted') row.append(element('p', 'incident-help', text.reminderFailed))
           if (incident.recoveryState === 'failed' || incident.recoveryState === 'exhausted') row.append(element('p', 'incident-help', text.recoveryFailed))
           return row
@@ -635,6 +636,7 @@
   $('videos-nav').addEventListener('click', () => setPage('videos'))
   $('channels-nav').addEventListener('click', () => setPage('channels'))
   $('activity-nav').addEventListener('click', () => setPage('activity'))
+  $('alert-delivery-warning').addEventListener('click', () => setPage('activity'))
   $('settings-nav').addEventListener('click', () => setPage('settings'))
   $('top-settings').addEventListener('click', () => setPage('settings'))
   $('account-control').addEventListener('click', () => setPage('settings'))
@@ -897,6 +899,11 @@
     catch { showNotice(text.refreshError) }
   })
   const poll = async () => {
+    try {
+      const incidents = await request('/api/incidents')
+      $('alert-delivery-warning').hidden = !incidents.failedAlertCount
+      $('alert-delivery-warning').textContent = text.alertDeliveryWarning
+    } catch { /* Preserve the last known warning while the service is unavailable. */ }
     if (state.page === 'activity' || state.page === 'settings') { $('refresh-state').textContent = ''; return }
     try {
       const data = await request('/api/refresh')

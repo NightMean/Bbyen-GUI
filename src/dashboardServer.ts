@@ -870,7 +870,13 @@ export const createDashboardHandler = (
 				FROM email_test_runs ORDER BY startedAt DESC, rowid DESC LIMIT 20`) }
 		}
 		if (url.pathname === '/api/incidents') {
-			return { incidents: await db.all(`SELECT i.id, i.source, i.category,
+			return { failedAlertCount: (await db.get(`SELECT COUNT(*) AS count
+				FROM incidents i LEFT JOIN incident_reminders r ON r.incidentId=i.id
+				LEFT JOIN incident_recovery_alerts c ON c.incidentId=i.id
+				WHERE i.emailState IN ('failed', 'exhausted')
+				OR r.state IN ('failed', 'exhausted')
+				OR c.state IN ('failed', 'exhausted')`)).count,
+			incidents: await db.all(`SELECT i.id, i.source, i.category,
 				i.channelId, i.openedAt, i.lastObservedAt, i.resolvedAt, i.occurrences,
 				i.emailState, r.state AS reminderState, c.state AS recoveryState
 				FROM incidents i LEFT JOIN incident_reminders r ON r.incidentId=i.id

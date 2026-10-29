@@ -24,7 +24,8 @@ const activityQuery = `
 	SELECT 'incident' AS kind, i.lastObservedAt AS date, i.id AS itemKey,
 		json_object('id', i.id, 'source', i.source, 'category', i.category,
 			'channelId', i.channelId, 'lastObservedAt', i.lastObservedAt,
-			'resolvedAt', i.resolvedAt, 'reminderState', r.state,
+			'resolvedAt', i.resolvedAt, 'emailState', i.emailState,
+			'reminderState', r.state,
 			'recoveryState', c.state) AS value
 	FROM incidents i LEFT JOIN incident_reminders r ON r.incidentId=i.id
 	LEFT JOIN incident_recovery_alerts c ON c.incidentId=i.id
