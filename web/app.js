@@ -99,6 +99,7 @@
     $('channel-search-label').hidden = page !== 'channels'
     $('filter-label').hidden = page !== 'videos' || !state.channel
     $('cookie-stale').hidden = true
+    $('metadata-stale').hidden = true
     load(); poll()
   }
   const makeLink = (label, href) => {
@@ -573,9 +574,11 @@
       const [all, apiActions] = await Promise.all([request('/api/channels'), state.page === 'channels' ? request('/api/youtube-actions') : Promise.resolve({ available: false, canManage: false, channels: [] })])
       if (sequence !== state.sequence) return
       state.cookieMode = all.cookieMode
+      state.apiMode = all.apiMode
       state.canAdd = !!(all.manualMode || all.cookieMode || all.apiMode)
       state.combined = !!all.apiEnrichment
       state.confirmUnsubscribe = all.confirmUnsubscribe
+      $('cookie-stale').hidden = !all.cookieMode || !all.cookieStale
       $('add').disabled = !state.canAdd
       $('add').textContent = all.manualMode || all.cookieMode || all.apiMode ? text.add : text.addManualOnly
       $('cookie-add-help').hidden = !all.cookieMode
@@ -606,7 +609,6 @@
         })
         if (sequence !== state.sequence) return
         $('list-label').textContent = `${found.length} ${text.channels}`
-        $('cookie-stale').hidden = !all.cookieMode || !all.cookieStale
         $('results').replaceChildren(...(found.length ? found.map(channel => renderChannel(channel, all.cookieMode, all.apiMode, all.manualMode, apiActions)) : [element('p', 'empty', term || filter !== 'all' ? text.noMatchingChannels : text.emptyChannels)]))
         $('paging').hidden = true; return
       }
@@ -935,6 +937,8 @@
       const refresh = data[kind]
       const current = refresh.state
       const outcome = refresh.lastRun?.status === 'interrupted' ? 'interrupted' : refresh.lastRun?.result?.status
+      const videoResult = data.videos.lastRun?.result
+      $('metadata-stale').hidden = state.page !== 'videos' || !(state.apiMode || state.combined) || !videoResult || videoResult.status === 'success' || !['auth', 'quota'].includes(videoResult.errorCategory)
       const parts = [current === 'idle' && outcome ? text['refresh_' + outcome] : (text[current] || '')]
       if (refresh.progress) parts.push(`${refresh.progress.succeeded + refresh.progress.failed}/${refresh.progress.total} ${text.refreshChecked} · ${refresh.progress.failed} ${text.refreshFailedCount}`)
       else if (current === 'idle' && refresh.lastRun?.result) parts.push(`${refresh.lastRun.result.failed} ${text.refreshFailedCount}`)
