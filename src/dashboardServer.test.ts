@@ -147,6 +147,31 @@ test('validates the listening port', () => {
 	expect(() => dashboardPort('65536')).toThrow()
 })
 
+test('returns a safe reference for server failures', async () => {
+	const db = await init({ filename: ':memory:' })
+	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
+	const server = createDashboardServer(db, jobs)
+	const log = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+	try {
+		await db.exec('DROP TABLE incidents')
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+		const port = (server.address() as AddressInfo).port
+		const result = await axios.get(`http://127.0.0.1:${port}/api/incidents`, {
+			validateStatus: () => true,
+		})
+		expect(result.status).toBe(500)
+		expect(result.data.reference).toMatch(/^[a-f0-9-]{36}$/)
+		expect(log).toHaveBeenCalledWith(expect.stringContaining(
+			`GET /api/incidents 500 reference=${result.data.reference}`))
+		expect(JSON.stringify(result.data)).not.toContain('SQLITE')
+	} finally {
+		log.mockRestore()
+		if (server.listening) await new Promise<void>((resolve, reject) =>
+			server.close(err => err ? reject(err) : resolve()))
+		await db.close()
+	}
+})
+
 test('refreshes channels after an import with uncertain acknowledgement',
 	async () => {
 		const db = await init({ filename: ':memory:' })

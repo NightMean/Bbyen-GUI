@@ -35,7 +35,14 @@
     const response = await fetch(url, options)
     if (!response.ok) {
       const error = new Error('request failed')
-      try { error.recoveryRequired = (await response.json()).recoveryRequired === true } catch { /* Response was not JSON. */ }
+      try {
+        const data = await response.json()
+        error.recoveryRequired = data.recoveryRequired === true
+        if (typeof data.reference === 'string' && /^[a-f0-9-]{36}$/.test(data.reference)) {
+          $('error-reference').textContent = `${text.errorReference}: ${data.reference}`
+          $('error-reference').hidden = false
+        }
+      } catch { /* Response was not JSON. */ }
       throw error
     }
     return response.json()

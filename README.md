@@ -149,6 +149,9 @@ pagination and date, channel and title filters. Set
 `BBYEN_DASHBOARD_PORT` to change the listening port and update the Compose
 port mapping to match. This endpoint has no login or built-in HTTPS; configure
 network access and any HTTPS proxy for your environment.
+For a dashboard server error, copy its reference and search the container logs
+for that reference. The log includes the route and HTTP status, not credentials
+or request contents. Container log retention is controlled by Docker/Portainer.
 Video search also suggests matching tracked channels; selecting one filters the
 video list to that channel. Video results support list and grid layouts and
 estimate watch time at the

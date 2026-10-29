@@ -89,11 +89,19 @@ export const createDashboardHandler = (
 	response.setHeader('Content-Type', 'application/json; charset=utf-8')
 	response.setHeader('Cache-Control', 'no-store')
 	response.setHeader('X-Content-Type-Options', 'nosniff')
+	let url: URL
 	const send = (status: number, value: unknown) => {
+		if (status >= 500 && value && typeof value === 'object') {
+			const reference = randomUUID()
+			value = { ...value, reference }
+			try {
+				console.error(`${new Date().toISOString()} [error] [dashboard] ` +
+					`${request.method} ${url.pathname} ${status} reference=${reference}`)
+			} catch { /* Logging must not prevent the response. */ }
+		}
 		response.writeHead(status)
 		response.end(JSON.stringify(value))
 	}
-	let url: URL
 	try { url = new URL(request.url ?? '/', 'http://localhost') } catch {
 		send(400, { error: 'Invalid request.' })
 		return
