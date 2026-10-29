@@ -94,6 +94,43 @@ test('returns channels beyond the previous dashboard limit', async () => {
 	}
 })
 
+test('shows dates only from the active account source', async () => {
+	const db = await init({ filename: ':memory:' })
+	const jobs = new RefreshCoordinator(db, { warn: () => undefined })
+	const config = { mode: 'youtube', emailSelectionPolicy: 'allowlist',
+		apiEnrichment: false } as unknown as Config
+	const actions = { config, manualMode: () => false,
+		channelNotify: () => true } as never
+	const server = createDashboardServer(db, jobs, actions)
+	try {
+		await db.run(`INSERT INTO subscriptions (channelId, channelTitle,
+			channelThumbnail) VALUES ('channel', 'Test', '')`)
+		await db.run(`INSERT INTO channel_sources
+			(channelId, apiSubscribed, apiSubscribedAt)
+			VALUES ('channel', 1, '2020-01-01')`)
+		await db.run('INSERT INTO combined_connection VALUES (1, ?)', 'profile')
+		await db.run(`INSERT INTO combined_subscription_metadata
+			(profileKey, channelId, subscribedAt, observedAt)
+			VALUES ('profile', 'channel', '2021-01-01', '2021-01-01')`)
+		await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
+		const port = (server.address() as AddressInfo).port
+		const channel = async () => (await axios.get(
+			`http://127.0.0.1:${port}/api/channels`)).data.channels[0]
+		expect((await channel()).apiSubscribedAt).toBe('2020-01-01')
+		await db.run('UPDATE channel_sources SET apiSubscribed=0')
+		expect((await channel()).apiSubscribedAt).toBeNull()
+		config.mode = 'cookie'
+		config.apiEnrichment = true
+		expect((await channel()).apiSubscribedAt).toBe('2021-01-01')
+		config.apiEnrichment = false
+		expect((await channel()).apiSubscribedAt).toBeNull()
+	} finally {
+		if (server.listening) await new Promise<void>((resolve, reject) =>
+			server.close(err => err ? reject(err) : resolve()))
+		await db.close()
+	}
+})
+
 test('validates the listening port', () => {
 	expect(dashboardPort(undefined)).toBe(3031)
 	expect(dashboardPort('0')).toBe(0)

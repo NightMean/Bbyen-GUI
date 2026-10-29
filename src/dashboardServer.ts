@@ -908,7 +908,10 @@ export const createDashboardHandler = (
 				bellUpdatedAt, (SELECT m.subscribedAt
 				FROM combined_subscription_metadata m JOIN combined_connection c
 				ON c.profileKey=m.profileKey AND c.id=1
-				WHERE m.channelId=subscriptions.channelId) AS apiSubscribedAt,
+				WHERE m.channelId=subscriptions.channelId) AS combinedSubscribedAt,
+				(SELECT s.apiSubscribedAt FROM channel_sources s
+				WHERE s.channelId=subscriptions.channelId AND s.apiSubscribed=1)
+				AS sourceSubscribedAt,
 				EXISTS(SELECT 1 FROM cookie_bell_actions a
 				JOIN cookie_connection c ON c.channelId=a.profileKey
 				WHERE a.channelId=subscriptions.channelId AND c.id=1
@@ -956,7 +959,10 @@ export const createDashboardHandler = (
 				apiEnrichment: !!actions?.config.apiEnrichment,
 				confirmUnsubscribe: actions?.config.confirmUnsubscribe !== false,
 				cookieStale: !!actions?.config.cookieStale,
-				channels: channels.map(channel => ({ ...channel,
+				channels: channels.map(({ combinedSubscribedAt, sourceSubscribedAt,
+					...channel }) => ({ ...channel,
+					apiSubscribedAt: apiMode ? sourceSubscribedAt :
+						(actions?.config.apiEnrichment ? combinedSubscribedAt : null),
 					muted: actions?.config.channelSettingsById?.get(
 						channel.channelId)?.notify === false,
 					...(apiMode ? { allowlisted: allowed.has(channel.channelId),

@@ -306,7 +306,7 @@
     })
     info.append(name)
     info.append(element('div', 'channel-detail', channel.latestPublishedAt ? `${text.latestUpload}: ${displayDate(channel.latestPublishedAt)}` : text.noRetainedUploads))
-    if (state.combined && channel.apiSubscribedAt) info.append(element('div', 'channel-detail', `${text.subscribedAt}: ${displayDate(channel.apiSubscribedAt)}`))
+    if (channel.apiSubscribedAt) info.append(element('div', 'channel-detail', `${text.subscribedAt}: ${displayDate(channel.apiSubscribedAt)}`))
     if (channel.deleted) info.append(element('div', 'channel-detail', channel.deletedReason === 'terminated' ? text.terminatedChannel : text.deleted))
     if (cookieMode && channel.cookieSubscribed && channel.deletedReason !== 'terminated' && text['bell_' + channel.bellState]) info.append(element('div', 'channel-detail', text['bell_' + channel.bellState]))
     row.append(img, info)
