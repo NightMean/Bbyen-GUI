@@ -858,7 +858,13 @@
     } catch { $('refresh-state').textContent = text.refreshUnavailable }
   }
   setLayout(localStorage.getItem('bbyen-layout') === 'grid' ? 'grid' : 'list')
-  setPage('videos'); setInterval(poll, 5000)
+  const setupDestination = window.location.hash
+  const setupConnection = setupDestination === '#connect-api' || setupDestination === '#connect-cookie'
+  setPage(setupConnection ? 'settings' : 'videos'); setInterval(poll, 5000)
+  if (setupConnection) {
+    showNotice(setupDestination === '#connect-api' ? text.setupApiNext : text.setupCookieNext)
+    history.replaceState(null, '', window.location.pathname + window.location.search)
+  }
   const initialSequence = state.sequence
   try {
     const general = await request('/api/settings')

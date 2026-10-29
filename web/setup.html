@@ -10,11 +10,22 @@
   <main class="setup-page">
     <p class="eyebrow" data-text="setupEyebrow"></p><h1 data-text="setupTitle"></h1>
     <p class="setup-intro" data-text="setupIntro"></p>
-    <section class="setup-choice"><h2 data-text="setupManualTitle"></h2>
-      <p data-text="setupManualHelp"></p><p id="setup-files"></p>
-      <button id="setup-start" class="primary" type="button" disabled data-text="setupStart"></button>
-    </section>
-    <p class="setup-note" data-text="setupOtherModes"></p>
+    <p id="setup-files" class="setup-note"></p>
+    <div class="setup-choices">
+      <section class="setup-choice"><h2 data-text="setupManualTitle"></h2>
+        <p data-text="setupManualHelp"></p><p data-text="setupManualLimits"></p>
+        <button id="setup-start" class="primary" type="button" disabled data-text="setupStart"></button>
+      </section>
+      <section class="setup-choice"><h2 data-text="setupApiTitle"></h2>
+        <p data-text="setupApiHelp"></p><p data-text="setupApiLimits"></p>
+        <button id="setup-api" class="outline" type="button" disabled data-text="setupApiStart"></button>
+      </section>
+      <section class="setup-choice"><h2 data-text="setupCookieTitle"></h2>
+        <p data-text="setupCookieHelp"></p><p data-text="setupCookieLimits"></p>
+        <button id="setup-cookie" class="outline" type="button" disabled data-text="setupCookieStart"></button>
+      </section>
+    </div>
+    <p class="setup-note" data-text="setupConnectionNote"></p>
     <p id="setup-status" role="status" aria-live="polite"></p>
   </main>
 </body>
