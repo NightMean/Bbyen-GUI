@@ -21,6 +21,8 @@ export const pruneActivity = async (
 	const cutoff = new Date(now.getTime() - days * DAY_MS).toISOString()
 	await db.exec('BEGIN IMMEDIATE')
 	try {
+		await db.run(SQL`DELETE FROM video_email_activity
+			WHERE sentAt < ${cutoff};`)
 		await db.run(SQL`DELETE FROM cookie_channel_events
 			WHERE observedAt < ${cutoff};`)
 		await db.run(SQL`DELETE FROM channel_title_events

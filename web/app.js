@@ -515,6 +515,11 @@
             row.append(element('h3', '', text.channelAddedActivity), element('p', 'meta', `${change.title} · ${displayDate(change.observedAt)} · ${text['titleEmail_' + change.emailState] || ''}`))
             return row
           }
+          if (item.kind === 'videoEmail') {
+            const sent = item.value, row = element('article', 'incident-row')
+            row.append(element('h3', '', text.videoEmailActivity), element('p', 'meta', `${sent.title || sent.videoId} · ${sent.channelTitle || sent.channelId} · ${displayDate(sent.sentAt)}`))
+            return row
+          }
           if (item.kind === 'title') {
             const change = item.value, row = element('article', 'incident-row')
             row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}${text['titleEmail_' + change.emailState] ? ` · ${text['titleEmail_' + change.emailState]}` : ''}`))

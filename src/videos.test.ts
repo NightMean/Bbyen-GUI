@@ -421,4 +421,16 @@ describe('video failure recovery', () => {
 				emailOutcome: 'sent', sentAt: expect.any(String),
 			})
 		})
+
+	test('keeps the sent outcome when activity storage fails', async () => {
+		await db.exec(`CREATE TRIGGER fail_video_activity
+			BEFORE INSERT ON video_email_activity
+			BEGIN SELECT RAISE(ABORT, 'storage failed'); END;`)
+		const manual = { ...config, mode: 'whitelist' }
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		await parseFeedsAndNotify({ ...args(), config: manual } as never)
+		expect(sendVideoEmail).toHaveBeenCalledTimes(1)
+		expect(await db.get('SELECT emailOutcome FROM video_observations'))
+			.toEqual({ emailOutcome: 'sent' })
+	})
 })

@@ -396,9 +396,24 @@ const getChannelsVideos = async ({
 					}
 					throw err
 				}
-				await db.run(SQL`UPDATE video_observations
-					SET emailOutcome='sent', sentAt=${new Date().toISOString()}
-					WHERE videoId=${videoId};`)
+				const sentAt = new Date().toISOString()
+				await db.exec('BEGIN IMMEDIATE')
+				try {
+					await db.run(SQL`UPDATE video_observations
+						SET emailOutcome='sent', sentAt=${sentAt}
+						WHERE videoId=${videoId};`)
+					await db.run(SQL`INSERT INTO video_email_activity
+						(videoId, channelId, title, sentAt)
+						VALUES (${videoId}, ${channelId}, ${videoTitle}, ${sentAt});`)
+					await db.exec('COMMIT')
+				} catch {
+					await db.exec('ROLLBACK')
+					// Activity failure must not turn a confirmed send into a retry.
+					logger.warn('Could not record video email activity.')
+					await db.run(SQL`UPDATE video_observations
+						SET emailOutcome='sent', sentAt=${sentAt}
+						WHERE videoId=${videoId};`)
+				}
 			} else {
 				logger.verbose([
 					`Skipping email for ${channelTitle} (${channelId}):`,

@@ -5,6 +5,9 @@ import { init as initDatabase } from './database'
 import { init as initMailer } from './email'
 import { parseFeedsAndNotify } from './videos'
 import { Config } from './config'
+import { listActivity } from './dashboardActivity'
+import { pruneVideoObservations } from './videoRetention'
+import { pruneActivity } from './activityRetention'
 
 vi.mock('./lib/logger', () => ({ default: async () => ({
 	info: vi.fn(), verbose: vi.fn(), warn: vi.fn(), error: vi.fn(),
@@ -66,6 +69,17 @@ test.each([
 			WHERE videoId='video'`)).toEqual({ emailOutcome: expected })
 		expect(await db.get('SELECT COUNT(*) AS count FROM videos'))
 			.toEqual({ count: 1 })
+		const activity = await listActivity(db, { limit: 30, offset: 0 })
+		expect(activity.items.filter(item => item.kind === 'videoEmail'))
+			.toHaveLength(expected === 'sent' ? 1 : 0)
+		if (expected === 'sent') {
+			await pruneVideoObservations(db, 1, new Date(Date.now() + 2 * 86400_000))
+			expect((await listActivity(db, { limit: 30, offset: 0 })).items
+				.filter(item => item.kind === 'videoEmail')).toHaveLength(1)
+			await pruneActivity(db, 1, new Date(Date.now() + 2 * 86400_000))
+			expect((await listActivity(db, { limit: 30, offset: 0 })).items
+				.filter(item => item.kind === 'videoEmail')).toHaveLength(0)
+		}
 	} finally {
 		await db.close()
 		for (const socket of sockets) socket.destroy()
