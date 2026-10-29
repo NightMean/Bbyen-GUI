@@ -78,3 +78,23 @@ test('validates activity paging parameters', () => {
 		expect(() => parseActivityPage(new URLSearchParams(input))).toThrow()
 	}
 })
+
+test('shows cookie actions without exposing the account profile', async () => {
+	const db = await init({ filename: ':memory:' })
+	try {
+		await db.run(`INSERT INTO cookie_subscription_actions
+			(id, profileKey, channelId, target, state, startedAt)
+			VALUES ('one', 'private-profile', 'channel', 0, 'uncertain', '2026')`)
+		await db.run(`INSERT INTO cookie_bell_actions
+			(id, profileKey, channelId, target, state, startedAt)
+			VALUES ('two', 'private-profile', 'channel', 'all', 'confirmed', '2026')`)
+		const result = await listActivity(db, { limit: 30, offset: 0 })
+		expect(result.items).toEqual(expect.arrayContaining([
+			expect.objectContaining({ kind: 'cookieSubscription', value:
+				expect.objectContaining({ target: 0, state: 'uncertain' }) }),
+			expect.objectContaining({ kind: 'cookieBell', value:
+				expect.objectContaining({ target: 'all', state: 'confirmed' }) }),
+		]))
+		expect(JSON.stringify(result)).not.toContain('private-profile')
+	} finally { await db.close() }
+})

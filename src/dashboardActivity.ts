@@ -57,6 +57,22 @@ const activityQuery = `
 	FROM api_subscription_actions a LEFT JOIN subscriptions s
 		ON s.channelId=a.channelId
 	UNION ALL
+	SELECT 'cookieSubscription', COALESCE(a.finishedAt, a.startedAt), a.id,
+		json_object('channelId', a.channelId,
+			'channelTitle', COALESCE(s.channelTitle, a.channelId),
+			'target', a.target, 'state', a.state,
+			'observedAt', COALESCE(a.finishedAt, a.startedAt))
+	FROM cookie_subscription_actions a LEFT JOIN subscriptions s
+		ON s.channelId=a.channelId
+	UNION ALL
+	SELECT 'cookieBell', COALESCE(a.finishedAt, a.startedAt), a.id,
+		json_object('channelId', a.channelId,
+			'channelTitle', COALESCE(s.channelTitle, a.channelId),
+			'target', a.target, 'state', a.state,
+			'observedAt', COALESCE(a.finishedAt, a.startedAt))
+	FROM cookie_bell_actions a LEFT JOIN subscriptions s
+		ON s.channelId=a.channelId
+	UNION ALL
 	SELECT 'refresh', COALESCE(finishedAt, startedAt), id,
 		json_object('kind', kind, 'status', status, 'startedAt', startedAt,
 			'finishedAt', finishedAt, 'resultStatus',

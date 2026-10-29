@@ -520,10 +520,12 @@
             row.append(element('h3', '', text.titleActivity), element('p', 'meta', `${change.previousTitle} → ${change.currentTitle} · ${displayDate(change.observedAt)}${text['titleEmail_' + change.emailState] ? ` · ${text['titleEmail_' + change.emailState]}` : ''}`))
             return row
           }
-          if (item.kind === 'apiSubscription') {
+          if (item.kind === 'apiSubscription' || item.kind === 'cookieSubscription' || item.kind === 'cookieBell') {
             const change = item.value, row = element('article', 'incident-row')
-            const target = change.target ? text.subscriptionOn : text.subscriptionOff
-            row.append(element('h3', '', text.apiActivity), element('p', 'meta', `${change.channelTitle || change.channelId} · ${target} · ${text['apiAction_' + change.state] || ''} · ${displayDate(change.observedAt)}`))
+            const bell = item.kind === 'cookieBell'
+            const target = bell ? (text['bell_' + change.target] || text.bell_unknown) : (change.target ? text.subscriptionOn : text.subscriptionOff)
+            const label = bell ? text.cookieBellActivity : item.kind === 'cookieSubscription' ? text.cookieSubscriptionActivity : text.apiActivity
+            row.append(element('h3', '', label), element('p', 'meta', `${change.channelTitle || change.channelId} · ${target} · ${text['apiAction_' + change.state] || ''} · ${displayDate(change.observedAt)}`))
             return row
           }
           if (item.kind === 'bell') {
