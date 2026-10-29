@@ -59,6 +59,9 @@ interface Channel {
 	channelThumbnail: string,
 }
 
+export const channelFeedUrl = (channelId: string): string =>
+	`https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
+
 interface IGetChannelsVideos {
 	channel: Channel,
 	logger: Logger,
@@ -121,7 +124,7 @@ const getChannelsVideos = async ({
 		SELECT channelId FROM video_scan_baselines WHERE channelId=${channelId};
 	`)
 
-	const url = `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`
+	const url = channelFeedUrl(channelId)
 	let feedError: Error | null = null
 	const feed = await parser.parseURL(url)
 		.catch((err) => {

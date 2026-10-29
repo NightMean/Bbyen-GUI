@@ -81,8 +81,10 @@ so SQLite and its journal stay in persistent storage. The template port is
 
 Open the preliminary dashboard on port 3031 to browse stored videos, search
 channels, add or remove a manual channel, mute its emails, or request a refresh.
-The dashboard resolves channel inputs before adding them and schedules a
-subscription refresh after saving. Muting does not replay missed videos when
+The dashboard resolves channel inputs before adding them, showing the known
+channel name, monitoring state, and saved email preference. If the public feed
+is unavailable, its name is shown as unavailable. It schedules a subscription
+refresh after saving. Muting does not replay missed videos when
 the channel is unmuted.
 When adding a channel, use the default first-scan policy or choose to skip,
 email all, or email only the newest specified number of existing videos.

@@ -35,6 +35,7 @@ import { ApiSourceSwitch, IncompleteApiSnapshot, UnconfirmedCookieSnapshot }
 	from './apiSourceSwitch'
 import { ApiManualSwitch } from './apiManualSwitch'
 import { ManualApiSwitch } from './manualApiSwitch'
+import { channelAddPreview, readPublicChannelTitle } from './channelAddPreview'
 
 interface ChannelActions {
 	add: (channelId: string, initialBacklog?: BacklogPolicy) => Promise<void>,
@@ -506,13 +507,16 @@ export const createDashboardHandler = (
 					send(400, { error: 'Enter a YouTube channel, video, or feed.' })
 					return
 				}
-				void actions.resolve(data.input).then(channelId => {
+				void actions.resolve(data.input).then(async channelId => {
 					if (!isChannelId(channelId)) {
 						send(422, { error: 'Could not resolve this YouTube address.' })
 						return
 					}
-					send(200, { channelId })
-				}, () => send(422, {
+					const preview = await jobs.maintenance(randomUUID(), () =>
+						channelAddPreview(db, actions.config, channelId))
+					preview.title ??= await readPublicChannelTitle(channelId)
+					send(200, preview)
+				}).catch(() => send(422, {
 					error: 'Could not resolve this YouTube address.',
 				}))
 				return

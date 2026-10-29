@@ -1,4 +1,5 @@
 {
+  "channelNameUnavailable": "Channel name unavailable", "previewTracked": "Currently monitored", "previewNotTracked": "Not currently monitored", "previewEmailOn": "Email preference on", "previewEmailOff": "Email preference off",
   "cookieAddBell": "Set the notification bell to All if YouTube allows it", "subscriptionAllSaved": "Subscription and All notifications confirmed.",
   "manualCombined": "The saved Google authorization will also be deleted. Google client credentials and channel history are retained.",
   "manualApiHelp": "Google subscriptions will be added to the channel list; your manually tracked channels and preferences will remain. API allowlist and blocklist settings control which channels send email. YouTube's API can omit subscriptions, so review the list before confirming.", "manualApiEmailChanges": "Changes to email eligibility", "manualApiEmailStart": "email will start", "manualApiEmailStop": "email will stop",

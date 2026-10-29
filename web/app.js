@@ -609,13 +609,14 @@
   for (const id of ['search','from','through']) $(id).addEventListener('input', () => { state.offset = 0; load() })
   $('previous').addEventListener('click', () => { state.offset = Math.max(0, state.offset-size); load() })
   $('next').addEventListener('click', () => { state.offset += size; load() })
-  $('add').addEventListener('click', () => { $('add-panel').hidden = !$('add-panel').hidden; $('preview').hidden = true; if (!$('add-panel').hidden) $('channel-input').focus() })
+  let resolveEpoch = 0
+  $('add').addEventListener('click', () => { resolveEpoch++; $('add-panel').hidden = !$('add-panel').hidden; $('preview').hidden = true; if (!$('add-panel').hidden) $('channel-input').focus() })
   $('resolve-form').addEventListener('submit', async event => {
-    event.preventDefault(); $('preview').hidden = true; showNotice(text.loading)
-    try { const result = await post('/api/channels/resolve', { input: $('channel-input').value }); $('resolved-id').textContent = result.channelId; $('preview').hidden = false; showNotice('') }
-    catch { showNotice(text.resolveError) }
+    event.preventDefault(); const epoch = ++resolveEpoch; $('preview').hidden = true; showNotice(text.loading)
+    try { const result = await post('/api/channels/resolve', { input: $('channel-input').value }); if (epoch !== resolveEpoch) return; $('resolved-id').textContent = result.channelId; $('resolved-details').textContent = `${result.title || text.channelNameUnavailable} · ${result.tracked ? text.previewTracked : text.previewNotTracked} · ${result.emailEnabled ? text.previewEmailOn : text.previewEmailOff}`; $('preview').hidden = false; showNotice('') }
+    catch { if (epoch === resolveEpoch) showNotice(text.resolveError) }
   })
-  $('channel-input').addEventListener('input', () => { $('preview').hidden = true })
+  $('channel-input').addEventListener('input', () => { resolveEpoch++; $('preview').hidden = true; showNotice('') })
   $('email-settings-form').addEventListener('submit', async event => {
     event.preventDefault()
     const settings = { host: $('smtp-host').value, port: Number($('smtp-port').value), secure: $('smtp-secure').checked, sendingContact: $('smtp-sender').value, destination: $('smtp-destination').value }

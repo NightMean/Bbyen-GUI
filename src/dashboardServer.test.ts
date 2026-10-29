@@ -318,9 +318,13 @@ test('validates writes and schedules refresh after saving', async () => {
 		const result = await axios.post(`${base}/api/channels`, { channelId: id })
 		expect(result.status).toBe(202)
 		expect(calls).toEqual([id, 'subscriptions'])
+		await db.run(`INSERT INTO subscriptions (channelId, channelTitle,
+			channelThumbnail) VALUES (?, 'Fixture name', '')`, id)
 		const resolved = await axios.post(`${base}/api/channels/resolve`,
 			{ input: id })
-		expect(resolved.data.channelId).toBe(id)
+		expect(resolved.data).toEqual({ channelId: id, title: 'Fixture name',
+			tracked: true, emailEnabled: true })
+		await db.run('DELETE FROM subscriptions WHERE channelId=?', id)
 		const refresh = await axios.post(`${base}/api/refresh`, { kind: 'videos' })
 		expect(refresh.status).toBe(202)
 		expect(calls).toEqual([id, 'subscriptions', 'videos'])
